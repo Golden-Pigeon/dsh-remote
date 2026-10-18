@@ -17,7 +17,6 @@ Remote development that appears as ordinary local sessions.
 - `+ 新会话` creates the remote session, creates its local mirror, and opens it through
   `uiWorkspace.openSession` — not a popup.
 - Sidebar **+** menu to create a workspace locally (native flow) or on a connected remote host.
-- Agent/debug tools to hide test workspaces from the local sidebar; no Settings UI control.
 - SSH-backed remote workspace file listing/preview.
 - Remote SSH PTY terminals for mirror Sessions; local Sessions keep the local terminal.
 - Remote approval questions bridged into the normal local approval UI.
@@ -55,11 +54,7 @@ Quit DSH Desktop before installing the desktop profile.
 
 `remote_hosts_list`, `remote_host_add`, `remote_host_connect`, `remote_host_provision`,
 `remote_workspace_add`, `remote_workspaces_list`, `remote_session_create`, `remote_sessions_list`,
-`remote_session_prompt`, `remote_session_snapshot`, `remote_session_cancel`, `remote_workspace_hide`,
-`remote_workspace_forget`.
-
-`remote_workspace_add` accepts `hidden: true` for agent-only test isolation; there is no Settings UI
-control for hidden workspaces.
+`remote_session_prompt`, `remote_session_snapshot`, `remote_session_cancel`.
 
 ## Configuration
 

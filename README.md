@@ -72,15 +72,24 @@ Reopen DSH. **Settings → 远程开发** appears.
 6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
    use the local machine, remote mirror Sessions use the remote workspace.
 
-
 The Settings page is now only host/workspace management. The conversation is not a popup.
 
-## Test-only workspace isolation
+## Test/CI workspace visibility
 
-This is intentionally not a Settings UI option. Agent tests can call `remote_workspace_add` with
-`hidden: true`, or `remote_workspace_hide` for an existing workspace. Hidden workspaces remain on the
-remote host, are not mirrored into the sidebar, and can be shown again with `remote_workspace_hide`
-`hidden: false`.
+Test isolation is controlled by a test-only manifest in the test DSH home, not by the Settings UI or
+an agent tool:
+
+```text
+$DSH_HOME/remote/test-visibility.json
+```
+
+```json
+{"hiddenPaths": ["/tmp/dsh-remote-tests"], "hiddenWorkspaceIds": ["remote-workspace-id"]}
+```
+
+`hiddenPaths` prevents local registration at creation. `hiddenWorkspaceIds` hides an existing visible
+test workspace after the run; local mirror sessions are archived, not deleted, and are restored when
+the entry is removed. See [docs/testing.md](docs/testing.md).
 
 ## How the native session works
 
@@ -119,9 +128,7 @@ credentials. The host card shows **模型代理：本地代理 / 远端直连 / 
 | `remote_host_add` | Add an SSH host and start provisioning |
 | `remote_host_connect` | Connect/reconnect/refresh |
 | `remote_host_provision` | Force reinstall/restart and reconnect |
-| `remote_workspace_add` | Register a remote directory; pass `hidden: true` for test-only isolation |
-| `remote_workspace_hide` | Test/debug: hide or restore a remote workspace in local sidebar surfaces |
-| `remote_workspace_forget` | Test/debug: forget a stale local mirror workspace |
+| `remote_workspace_add` | Register a remote directory |
 | `remote_workspaces_list` | List remote workspaces |
 | `remote_session_create` | Create a remote session |
 | `remote_sessions_list` | List remote sessions |

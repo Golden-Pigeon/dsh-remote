@@ -80,13 +80,11 @@ Session-routing provider. This is profile-local; `app.asar` is untouched.
 The Settings page is for host/workspace management only; the remote conversation is not a drawer or
 iframe.
 
-## Test-only workspace isolation
+## Test/CI workspace visibility
 
-Hidden workspaces are an agent/debug capability, not a Settings UI control. Use the agent tools:
-
-- `remote_workspace_add` with `hidden: true` creates the remote workspace without a local sidebar row;
-- `remote_workspace_hide` hides or restores an existing remote workspace. Hiding archives its local
-  mirror Sessions and removes the local row; showing rebuilds them from the remote log.
+Test workspaces use `$DSH_HOME/remote/test-visibility.json` (hidden paths/ids), never a Settings
+control or agent tool. The manifest is read during mirror sync. See [testing.md](testing.md) for the
+two supported flows: hidden-at-creation for backend tests and visible-then-hidden for UI tests.
 
 ## Model credentials
 

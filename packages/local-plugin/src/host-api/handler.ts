@@ -124,7 +124,7 @@ async function dispatch(
       const workspaces = await service.workspaces(hostId)
       return {
         workspaces: workspaces
-          .filter(workspace => mirrors?.isWorkspaceHidden(hostId, workspace.workspaceId) !== true)
+          .filter(workspace => mirrors?.isTestHidden(workspace.workspaceId, workspace.path) !== true)
           .map(workspace => {
             const localWorkspaceId = mirrors?.localWorkspaceId(hostId, workspace.workspaceId)
             return localWorkspaceId === undefined ? workspace : { ...workspace, localWorkspaceId }

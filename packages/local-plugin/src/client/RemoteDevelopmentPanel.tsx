@@ -9,10 +9,9 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import type { RemoteSessionSummary } from '@dsh-remote/protocol'
+import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
-import type { RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostsApi } from './api.ts'
 import panelCss from './panel.css'
 
