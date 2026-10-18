@@ -1,0 +1,20 @@
+# dsh-remote-local-plugin host bundle.
+#
+# One row owns the host registry, SSH tunnels, and the authenticated
+# Connection RPC channel. Its browser half registers the Settings page.
+- insert:
+    - id: dsh-remote-local
+      name: dsh-remote-local-plugin
+      config:
+        # Empty means $DSH_HOME/remote.
+        stateDir: ''
+        sshBinary: ssh
+        # Remote discovery document written by dsh-remote-agent.
+        remoteStateFile: ~/.dsh/remote-agent/agent.json
+        probeTimeoutMs: 10000
+        connectTimeoutMs: 15000
+        healthIntervalMs: 15000
+        reconnect: true
+        maxReconnectDelayMs: 30000
+        # TOFU by default; set to "yes" for a pre-populated known_hosts.
+        strictHostKeyChecking: accept-new

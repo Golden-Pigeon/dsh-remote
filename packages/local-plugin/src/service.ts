@@ -1,0 +1,550 @@
+/**
+ * Host registry + tunnel lifecycle service.
+ *
+ * One instance owns every configured remote host, at most one SSH tunnel per
+ * host, the remote agent client, health checks, and bounded reconnection with
+ * exponential backoff. The browser and agent tools only ever see
+ * {@link HostView}; tokens stay in this process.
+ *
+ * @module dsh-remote-local/service
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import {
+  PROTOCOL_VERSION,
+  RemoteAgentClient,
+  RemoteProtocolError,
+  type HostInfo,
+  type ListSessionsResult,
+  type ListWorkspacesResult,
+  type RemoteWorkspace,
+  type SessionSnapshot,
+  type WebUrlResult,
+} from '@dsh-remote/protocol'
+import type { ResolvedConfig } from './config.ts'
+import { LocalError, asLocalError } from './errors.ts'
+import { hostIdFor } from './hosts/id.ts'
+import { HostStore } from './hosts/store.ts'
+import {
+  idleRuntime,
+  toHostView,
+  type AddHostInput,
+  type HostRecord,
+  type HostRuntime,
+  type HostView,
+} from './hosts/types.ts'
+import { discoverAgent } from './ssh/probe.ts'
+import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
+import { Tunnel } from './ssh/tunnel.ts'
+
+/** Snapshot returned to the Settings page. */
+export interface HostsState {
+  readonly protocolVersion: number
+  readonly hosts: readonly HostView[]
+}
+
+/** Connected resources for one host. */
+interface Connected {
+  readonly record: HostRecord
+  readonly target: ParsedSshTarget
+  readonly tunnel: Tunnel
+  readonly client: RemoteAgentClient
+}
+
+/** One host registry service. */
+export class RemoteHostsService {
+  readonly ctx: Context
+  readonly config: ResolvedConfig
+
+  readonly #store: HostStore
+  readonly #records = new Map<string, HostRecord>()
+  readonly #runtime = new Map<string, HostRuntime>()
+  readonly #tunnels = new Map<string, Tunnel>()
+  readonly #clients = new Map<string, RemoteAgentClient>()
+  readonly #connectPromises = new Map<string, Promise<HostView>>()
+  readonly #healthTimers = new Map<string, NodeJS.Timeout>()
+  readonly #reconnectTimers = new Map<string, NodeJS.Timeout>()
+  readonly #healthInFlight = new Set<string>()
+  readonly #attempts = new Map<string, number>()
+  readonly #manualDisconnect = new Set<string>()
+  #disposed = false
+
+  constructor(ctx: Context, config: ResolvedConfig) {
+    this.ctx = ctx
+    this.config = config
+    this.#store = new HostStore(`${config.stateDir}/hosts.json`)
+  }
+
+  /** Load the registry and auto-connect opted-in hosts. */
+  async start(): Promise<void> {
+    const loaded = await this.#store.load()
+    for (const warning of loaded.warnings) this.ctx.logger.warn('dsh-remote: %s', warning)
+    for (const record of loaded.hosts) {
+      this.#records.set(record.id, record)
+      this.#runtime.set(record.id, idleRuntime())
+    }
+    for (const record of loaded.hosts) {
+      if (!record.autoConnect) continue
+      this.#manualDisconnect.delete(record.id)
+      this.#setRuntime(record.id, { phase: 'idle' })
+      void this.connect(record.id).catch(error => {
+        this.ctx.logger.warn('dsh-remote: auto-connect %s failed: %s', record.id, String(error))
+      })
+    }
+  }
+
+  /** Browser/tool snapshot. */
+  state(): HostsState {
+    return { protocolVersion: PROTOCOL_VERSION, hosts: this.list() }
+  }
+
+  /** All hosts in creation order. */
+  list(): HostView[] {
+    return [...this.#records.values()]
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .map(record => this.view(record.id))
+  }
+
+  /** One host view. */
+  view(id: string): HostView {
+    const record = this.#requireRecord(id)
+    return toHostView(record, this.#runtime.get(id) ?? idleRuntime())
+  }
+
+  /** Parse a destination without touching SSH. */
+  validateTarget(raw: string): { canonical: string; host: string; user: string | null; port: number | null } {
+    const target = parseSshTarget(raw)
+    return { canonical: target.canonical, host: target.host, user: target.user, port: target.port }
+  }
+
+  /** Register a host and (by default) start connecting in the background. */
+  async add(input: AddHostInput): Promise<HostView> {
+    this.#assertAlive()
+    const target = parseSshTarget(input.sshTarget)
+    if (this.#records.has(hostIdFor(target.canonical, input.label))) {
+      throw new LocalError('host/duplicate', `host ${target.canonical} already exists`)
+    }
+    if ([...this.#records.values()].some(record => record.sshTarget === target.canonical)) {
+      throw new LocalError('host/duplicate', `host ${target.canonical} already exists`)
+    }
+    if (input.token !== undefined && input.token.trim() !== '' && input.token.trim().length < 16) {
+      throw new LocalError('host/invalid', 'agent token must be at least 16 characters')
+    }
+    if (input.remoteAgentPort !== undefined
+      && (!Number.isInteger(input.remoteAgentPort) || input.remoteAgentPort < 1 || input.remoteAgentPort > 65_535)) {
+      throw new LocalError('host/invalid', 'remote agent port must be between 1 and 65535')
+    }
+
+    const label = validateHostLabel(input.label ?? target.host)
+    const now = new Date().toISOString()
+    const record: HostRecord = {
+      id: hostIdFor(target.canonical, label),
+      label,
+      sshTarget: target.canonical,
+      sshPort: target.port,
+      remoteAgentPort: input.remoteAgentPort ?? null,
+      token: input.token === undefined || input.token.trim() === '' ? null : input.token.trim(),
+      autoConnect: input.autoConnect ?? true,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await this.#store.add(record)
+    this.#records.set(record.id, record)
+    this.#runtime.set(record.id, idleRuntime())
+    this.#manualDisconnect.delete(record.id)
+
+    if (record.autoConnect) {
+      this.#setRuntime(record.id, { phase: 'discovering' })
+      void this.connect(record.id).catch(error => {
+        this.ctx.logger.warn('dsh-remote: connect %s failed: %s', record.id, String(error))
+      })
+    }
+    return this.view(record.id)
+  }
+
+  /** Remove a host and tear down its tunnel. */
+  async remove(id: string): Promise<void> {
+    this.#assertAlive()
+    this.#requireRecord(id)
+    this.#manualDisconnect.add(id)
+    this.#clearReconnect(id)
+    await this.#stopTransport(id)
+    await this.#store.remove(id)
+    this.#records.delete(id)
+    this.#runtime.delete(id)
+    this.#attempts.delete(id)
+    this.#manualDisconnect.delete(id)
+  }
+
+  /** Connect one host, waiting for discovery, tunnel, and health. */
+  async connect(id: string): Promise<HostView> {
+    this.#assertAlive()
+    this.#requireRecord(id)
+    const existing = this.#connectPromises.get(id)
+    if (existing !== undefined) return existing
+    const promise = this.#doConnect(id).finally(() => {
+      this.#connectPromises.delete(id)
+    })
+    this.#connectPromises.set(id, promise)
+    return promise
+  }
+
+  /** Disconnect one host and suppress automatic reconnection. */
+  async disconnect(id: string): Promise<HostView> {
+    this.#assertAlive()
+    this.#requireRecord(id)
+    this.#manualDisconnect.add(id)
+    this.#clearReconnect(id)
+    await this.#stopTransport(id)
+    this.#attempts.delete(id)
+    this.#setRuntime(id, {
+      phase: 'disconnected',
+      localPort: null,
+      localUrl: null,
+      hostInfo: null,
+      workspaceCount: null,
+      error: null,
+      errorCode: null,
+      connectedAt: null,
+    })
+    return this.view(id)
+  }
+
+  /** Re-discover the remote agent; reconnect when its port or token changed. */
+  async refresh(id: string): Promise<HostView> {
+    this.#assertAlive()
+    const record = this.#requireRecord(id)
+    const connected = this.#connected(id)
+    if (connected === undefined) return this.connect(id)
+
+    const target = parseSshTarget(record.sshTarget)
+    const discovery = await this.#discover(target)
+    if (discovery.state.port !== record.remoteAgentPort || discovery.state.token !== record.token) {
+      await this.#saveRecord(id, {
+        remoteAgentPort: discovery.state.port,
+        token: discovery.state.token,
+      })
+      return this.connect(id)
+    }
+    const health = await connected.client.health()
+    this.#setConnected(id, health)
+    return this.view(id)
+  }
+
+  /** List remote workspaces. */
+  async workspaces(id: string): Promise<readonly RemoteWorkspace[]> {
+    const client = this.#requireClient(id)
+    try {
+      const workspaces = await client.listWorkspaces()
+      this.#setRuntime(id, { workspaceCount: workspaces.length, error: null, errorCode: null })
+      return workspaces
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** List remote sessions, optionally within one workspace. */
+  async sessions(id: string, workspaceId?: string): Promise<ListSessionsResult> {
+    const client = this.#requireClient(id)
+    try {
+      const sessions = await client.listSessions(workspaceId)
+      return { sessions }
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Read one session snapshot. */
+  async snapshot(id: string, sessionId: string, limit?: number): Promise<SessionSnapshot> {
+    const client = this.#requireClient(id)
+    try {
+      return await client.snapshotSession(sessionId, limit === undefined ? {} : { limit })
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Resolve the remote Web UI behind this host's tunnel. */
+  async webUrl(id: string): Promise<{ url: string }> {
+    const client = this.#requireClient(id)
+    const connected = this.#connected(id)
+    if (connected === undefined) throw new LocalError('host/not-connected', `host ${id} is not connected`)
+    let path: WebUrlResult
+    try {
+      path = await client.webUrl()
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+    return { url: `${connected.tunnel.localUrl}${path.path}` }
+  }
+
+  /** Stop every tunnel and timer. */
+  async dispose(): Promise<void> {
+    if (this.#disposed) return
+    this.#disposed = true
+    for (const id of this.#healthTimers.keys()) this.#clearHealth(id)
+    for (const id of this.#reconnectTimers.keys()) this.#clearReconnect(id)
+    await Promise.all([...this.#tunnels.keys()].map(id => this.#stopTransport(id)))
+    this.#records.clear()
+    this.#runtime.clear()
+    this.#connectPromises.clear()
+  }
+
+  async #doConnect(id: string): Promise<HostView> {
+    this.#assertAlive()
+    const record = this.#requireRecord(id)
+    this.#manualDisconnect.delete(id)
+    this.#clearReconnect(id)
+    await this.#stopTransport(id)
+
+    this.#setRuntime(id, {
+      ...idleRuntime(),
+      phase: 'discovering',
+    })
+
+    const target = parseSshTarget(record.sshTarget)
+    let remotePort = record.remoteAgentPort
+    let token = record.token
+    try {
+      const discovery = await this.#discover(target)
+      remotePort = discovery.state.port
+      token = discovery.state.token
+      if (remotePort === null) {
+        throw new LocalError('agent/unavailable', 'remote agent has no active listener port')
+      }
+      await this.#saveRecord(id, { remoteAgentPort: remotePort, token })
+    } catch (error) {
+      if (token === null || remotePort === null) {
+        const failure = this.#markError(id, error, 'ssh/probe-failed')
+        this.#scheduleReconnect(id)
+        throw failure
+      }
+      this.ctx.logger.warn(
+        'dsh-remote: discovery for %s failed; using cached port %s: %s',
+        id,
+        String(remotePort),
+        String(error),
+      )
+    }
+
+    if (remotePort === null || token === null) {
+      const failure = this.#markError(
+        id,
+        new LocalError('agent/unavailable', 'no remote agent token or port is available; run discovery or paste them manually'),
+        'agent/unavailable',
+      )
+      this.#scheduleReconnect(id)
+      throw failure
+    }
+
+    this.#setRuntime(id, { ...this.#runtimeFor(id), phase: 'connecting' })
+
+    let tunnel: Tunnel | undefined
+    try {
+      tunnel = await Tunnel.start({
+        sshBinary: this.config.sshBinary,
+        target,
+        remotePort,
+        connectTimeoutMs: this.config.connectTimeoutMs,
+        strictHostKeyChecking: this.config.strictHostKeyChecking,
+        onExit: info => this.#onTunnelExit(id, info),
+      })
+      const client = new RemoteAgentClient({
+        baseUrl: tunnel.localUrl,
+        token,
+        hostId: id,
+      })
+      const health = await client.health()
+      this.#tunnels.set(id, tunnel)
+      this.#clients.set(id, client)
+      this.#setConnected(id, health)
+      this.#startHealthTimer(id)
+      this.#attempts.delete(id)
+      return this.view(id)
+    } catch (error) {
+      await tunnel?.stop()
+      const failure = this.#markError(id, error, 'host/connect-failed')
+      this.#scheduleReconnect(id)
+      throw failure
+    }
+  }
+
+  async #discover(target: ParsedSshTarget) {
+    return discoverAgent(target, {
+      sshBinary: this.config.sshBinary,
+      timeoutMs: this.config.probeTimeoutMs,
+      strictHostKeyChecking: this.config.strictHostKeyChecking,
+      remoteStateFile: this.config.remoteStateFile,
+    })
+  }
+
+  #onTunnelExit(id: string, info: { code: number | null; signal: NodeJS.Signals | null; stderr: string }): void {
+    if (this.#disposed || this.#manualDisconnect.has(id)) return
+    this.#clients.delete(id)
+    this.#tunnels.delete(id)
+    this.#clearHealth(id)
+    const detail = info.stderr === '' ? '' : `: ${info.stderr.split('\n')[0]}`
+    this.#setRuntime(id, {
+      ...this.#runtimeFor(id),
+      phase: 'error',
+      localPort: null,
+      localUrl: null,
+      error: `SSH tunnel exited (code ${String(info.code)}, signal ${String(info.signal)})${detail}`,
+      errorCode: 'ssh/tunnel-failed',
+    })
+    this.#scheduleReconnect(id)
+  }
+
+  #startHealthTimer(id: string): void {
+    this.#clearHealth(id)
+    const timer = setInterval(() => {
+      void this.#healthCheck(id)
+    }, this.config.healthIntervalMs)
+    timer.unref?.()
+    this.#healthTimers.set(id, timer)
+  }
+
+  async #healthCheck(id: string): Promise<void> {
+    if (this.#disposed || this.#healthInFlight.has(id)) return
+    const client = this.#clients.get(id)
+    if (client === undefined) return
+    this.#healthInFlight.add(id)
+    try {
+      const health = await client.health()
+      this.#setConnected(id, health)
+    } catch (error) {
+      this.ctx.logger.warn('dsh-remote: health check %s failed: %s', id, String(error))
+      const connected = this.#connected(id)
+      await connected?.tunnel.stop()
+      this.#tunnels.delete(id)
+      this.#clients.delete(id)
+      this.#clearHealth(id)
+      this.#markError(id, error, 'agent/unavailable')
+      this.#scheduleReconnect(id)
+    } finally {
+      this.#healthInFlight.delete(id)
+    }
+  }
+
+  #scheduleReconnect(id: string): void {
+    if (this.#disposed || !this.config.reconnect || this.#manualDisconnect.has(id)) return
+    if (this.#reconnectTimers.has(id)) return
+    if (!this.#records.has(id)) return
+    const attempt = (this.#attempts.get(id) ?? 0) + 1
+    this.#attempts.set(id, attempt)
+    const delay = Math.min(1_000 * 2 ** Math.min(attempt - 1, 10), this.config.maxReconnectDelayMs)
+    this.ctx.logger.info('dsh-remote: reconnecting %s in %dms (attempt %d)', id, delay, attempt)
+    const timer = setTimeout(() => {
+      this.#reconnectTimers.delete(id)
+      void this.connect(id).catch(error => {
+        this.ctx.logger.warn('dsh-remote: reconnect %s failed: %s', id, String(error))
+      })
+    }, delay)
+    timer.unref?.()
+    this.#reconnectTimers.set(id, timer)
+  }
+
+  #clearReconnect(id: string): void {
+    const timer = this.#reconnectTimers.get(id)
+    if (timer !== undefined) clearTimeout(timer)
+    this.#reconnectTimers.delete(id)
+  }
+
+  #clearHealth(id: string): void {
+    const timer = this.#healthTimers.get(id)
+    if (timer !== undefined) clearInterval(timer)
+    this.#healthTimers.delete(id)
+  }
+
+  async #stopTransport(id: string): Promise<void> {
+    this.#clearHealth(id)
+    const tunnel = this.#tunnels.get(id)
+    this.#tunnels.delete(id)
+    this.#clients.delete(id)
+    await tunnel?.stop()
+  }
+
+  #requireRecord(id: string): HostRecord {
+    const record = this.#records.get(id)
+    if (record === undefined) throw new LocalError('host/not-found', `host ${id} does not exist`)
+    return record
+  }
+
+  #connected(id: string): Connected | undefined {
+    const record = this.#records.get(id)
+    const tunnel = this.#tunnels.get(id)
+    const client = this.#clients.get(id)
+    if (record === undefined || tunnel === undefined || client === undefined) return undefined
+    return { record, target: parseSshTarget(record.sshTarget), tunnel, client }
+  }
+
+  #requireClient(id: string): RemoteAgentClient {
+    const client = this.#clients.get(id)
+    if (client === undefined || this.#runtime.get(id)?.phase !== 'connected') {
+      throw new LocalError('host/not-connected', `host ${id} is not connected; connect it first`)
+    }
+    return client
+  }
+
+  #runtimeFor(id: string): HostRuntime {
+    return this.#runtime.get(id) ?? idleRuntime()
+  }
+
+  #setRuntime(id: string, patch: Partial<HostRuntime>): void {
+    this.#runtime.set(id, { ...this.#runtimeFor(id), ...patch })
+  }
+
+  #setConnected(id: string, health: HostInfo): void {
+    const existing = this.#connected(id)
+    this.#setRuntime(id, {
+      phase: 'connected',
+      localPort: existing?.tunnel.localPort ?? this.#runtimeFor(id).localPort,
+      localUrl: existing?.tunnel.localUrl ?? this.#runtimeFor(id).localUrl,
+      hostInfo: health,
+      workspaceCount: health.workspaceCount,
+      error: null,
+      errorCode: null,
+      connectedAt: this.#runtimeFor(id).connectedAt ?? new Date().toISOString(),
+    })
+  }
+
+  async #saveRecord(id: string, patch: Partial<HostRecord>): Promise<void> {
+    const record = this.#requireRecord(id)
+    const next: HostRecord = { ...record, ...patch, id, updatedAt: new Date().toISOString() }
+    await this.#store.update(id, next)
+    this.#records.set(id, next)
+  }
+
+  #markError(id: string, error: unknown, fallback: Parameters<typeof asLocalError>[1]): LocalError {
+    const failure = asLocalError(error, fallback)
+    this.#setRuntime(id, {
+      ...this.#runtimeFor(id),
+      phase: 'error',
+      localPort: null,
+      localUrl: null,
+      error: failure.message,
+      errorCode: failure.code,
+    })
+    return failure
+  }
+
+  #remoteFailure(id: string, error: unknown): LocalError {
+    if (error instanceof LocalError) return error
+    if (error instanceof RemoteProtocolError) {
+      const failure = new LocalError('agent/error', `remote agent: ${error.message}`, {
+        details: { remoteCode: error.code, ...error.details },
+        retryable: error.retryable,
+        cause: error,
+      })
+      this.#setRuntime(id, { error: failure.message, errorCode: failure.code })
+      return failure
+    }
+    const failure = new LocalError('agent/unavailable', 'remote agent request failed', { cause: error })
+    this.#setRuntime(id, { error: failure.message, errorCode: failure.code })
+    return failure
+  }
+
+  #assertAlive(): void {
+    if (this.#disposed) throw new LocalError('internal', 'remote host service is disposed')
+  }
+}
