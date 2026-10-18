@@ -36,13 +36,9 @@ cd "$ROOT"
 pnpm install
 pnpm -r build
 
-printf 'install-local: packing the local plugin and terminal controller fork\n'
-cd "$ROOT/packages/local-plugin"
-pnpm pack >/dev/null
-cd "$ROOT/packages/terminal-controller"
-pnpm pack >/dev/null
-TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.7.16.tgz"
-FORK_TARBALL="$ROOT/packages/terminal-controller/dsh-remote-terminal-controller-0.1.2.tgz"
+printf 'install-local: packing the local plugin with the bundled terminal controller fork\n'
+cd "$ROOT"
+TARBALL="$(node scripts/release-plugin.mjs)"
 if [ ! -f "$TARBALL" ]; then
   printf 'install-local: plugin tarball was not produced at %s\n' "$TARBALL" >&2
   exit 1
@@ -50,7 +46,6 @@ fi
 
 printf 'install-local: installing into profile %s\n' "$PROFILE"
 "$DSH_BIN" plugin --profile "$PROFILE" add "$TARBALL"
-"$DSH_BIN" plugin --profile "$PROFILE" add "$FORK_TARBALL"
 
 printf '\ninstall-local: done.\n'
 printf '1. Open DSH and go to Settings -> 远程开发.\n'

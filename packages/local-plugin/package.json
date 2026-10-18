@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-local-plugin",
-  "version": "0.7.16",
+  "version": "0.8.0",
   "description": "DSH remote-development local plugin: host registry, SSH tunnels, remote workspace/session discovery, an authenticated Connection RPC surface, agent tools, and a Settings page.",
   "keywords": [
     "dsh",
@@ -60,7 +60,8 @@
     "@deepseek-ai/dsh-scope": "0.2.1-rc.2",
     "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2",
     "@deepseek-ai/dsh-api-workspace-files": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-api-terminal-controller": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-api-terminal-controller": "0.2.1-rc.2",
+    "dsh-remote-terminal-controller": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
@@ -142,5 +143,18 @@
     "build": "tsc -p tsconfig.build.json && node ../../scripts/package-agent.mjs && node ../../scripts/build-host.mjs && node ../../scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "test": "node ../../scripts/build-client.mjs && node --import tsx --test test/*.test.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Golden-Pigeon/dsh-remote.git",
+    "directory": "packages/local-plugin"
+  },
+  "homepage": "https://github.com/Golden-Pigeon/dsh-remote#readme",
+  "bugs": {
+    "url": "https://github.com/Golden-Pigeon/dsh-remote/issues"
+  },
+  "author": "Golden-Pigeon",
+  "publishConfig": {
+    "access": "public"
   }
 }

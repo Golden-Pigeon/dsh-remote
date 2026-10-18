@@ -3,7 +3,13 @@
 # One row owns the host registry, SSH tunnels, plugin-owned remote
 # provisioning, the local model credential proxy, and the authenticated host
 # API. Its browser half registers the Settings page and remote chat drawer.
+# The terminal-controller fork is bundled with this package; this patch disables
+# the stock row and mounts the fork so mirrored Sessions use SSH PTYs.
+- id: terminal-controller
+  disabled: true
 - insert:
+    - id: terminal-controller-remote
+      name: dsh-remote-terminal-controller
     - id: dsh-remote-local
       name: dsh-remote-local-plugin
       config:

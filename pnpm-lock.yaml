@@ -138,6 +138,9 @@ importers:
       dsh-remote-agent:
         specifier: workspace:*
         version: link:../remote-agent
+      dsh-remote-terminal-controller:
+        specifier: workspace:*
+        version: link:../terminal-controller
 
   packages/protocol: {}
 

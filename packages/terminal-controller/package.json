@@ -42,5 +42,18 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-api-terminal-controller": "0.2.1-rc.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Golden-Pigeon/dsh-remote.git",
+    "directory": "packages/terminal-controller"
+  },
+  "homepage": "https://github.com/Golden-Pigeon/dsh-remote#readme",
+  "bugs": {
+    "url": "https://github.com/Golden-Pigeon/dsh-remote/issues"
+  },
+  "author": "Golden-Pigeon",
+  "publishConfig": {
+    "access": "public"
   }
 }

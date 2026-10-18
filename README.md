@@ -38,16 +38,31 @@ Local DSH                                         Remote host
 
 ## Install
 
-Run the installer. It can install while DSH Desktop is open; restart the app afterwards to load the
-new host and client bundles:
+### From the DSH plugin page
+
+Once the npm package is published, open **Plugins → Add plugin** and enter:
+
+```text
+dsh-remote-local-plugin
+```
+
+DSH installs the bundle from npm. The package includes the remote agent asset and the
+terminal-controller fork, so there is nothing else to install. Restart DSH when the plugin page asks
+for it; **Settings → 远程开发** then appears.
+
+### From a source checkout
+
+For development, clone the repository and run the installer:
 
 ```sh
 cd /path/to/dsh-remote/dsh-remote
+pnpm install
+pnpm -r build
 ./scripts/install-local.sh
 ```
 
-The script builds the workspace, packs the plugin with the bundled remote agent, packs the terminal
-controller fork, and installs both into the `desktop` profile. For a DSH Web profile:
+The script builds the workspace, creates a single plugin tarball containing the terminal-controller
+fork, and installs that tarball into the `desktop` profile. For a DSH Web profile:
 
 ```sh
 ./scripts/install-local.sh --profile web

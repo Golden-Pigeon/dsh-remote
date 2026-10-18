@@ -27,21 +27,36 @@ Remote development that appears as ordinary local sessions.
 
 ## Install
 
+### From the DSH plugin page
+
+After the npm package is published, use **Plugins → Add plugin** and enter:
+
+```text
+dsh-remote-local-plugin
+```
+
+The package bundles the remote agent asset and the terminal-controller fork. Restart DSH after the
+plugin page asks for it.
+
+### From a source checkout
+
 ```sh
 cd ../..
 ./scripts/install-local.sh          # desktop profile
 ./scripts/install-local.sh --profile web
 ```
 
-Quit DSH Desktop before installing the desktop profile.
+The installer creates one tarball containing the terminal-controller fork; restart DSH after it
+finishes.
 
 ## Use
 
 1. **Settings → 远程开发**
 2. Enter an SSH target (`my-host`) and click **保存并连接**.
 3. Wait for `已连接` (first use installs the remote side).
-4. Use **Workspaces + → 远程新建工作区…** to add an existing remote directory.
-5. Click **+ 新会话** (Settings or the workspace row). The mirrored session opens in the normal
+4. Use **Workspaces +** to create a workspace; local folders use the native picker, remote folders
+   use the SSH browser.
+5. Create a session from the workspace row or Settings. The mirrored session opens in the normal
    Conversation UI.
 6. Continue prompting. **Workspace files** and **New terminal** follow the selected Session.
 

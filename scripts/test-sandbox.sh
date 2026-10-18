@@ -27,15 +27,9 @@ fi
 cd "$ROOT"
 pnpm install >/dev/null
 pnpm -r build >/dev/null
-cd "$ROOT/packages/local-plugin"
-pnpm pack >/dev/null
-TARBALL="$PWD/$(ls -t dsh-remote-local-plugin-*.tgz | head -1)"
-cd "$ROOT/packages/terminal-controller"
-pnpm pack >/dev/null
-FORK="$PWD/$(ls -t dsh-remote-terminal-controller-*.tgz | head -1)"
-
+cd "$ROOT"
+TARBALL="$(node scripts/release-plugin.mjs)"
 "$DSH_BIN" plugin --profile "$PROFILE" add "$TARBALL" >/dev/null
-"$DSH_BIN" plugin --profile "$PROFILE" add "$FORK" >/dev/null
 # The standalone web shell needs the sidebar package outside the desktop app.
 (cd "$DSH_HOME/profiles/$PROFILE" && pnpm add @deepseek-ai/dsh-client-ui-sidebar@0.2.1-rc.2 >/dev/null 2>&1 || true)
 

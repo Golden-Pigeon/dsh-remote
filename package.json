@@ -12,7 +12,8 @@
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "pnpm -r --workspace-concurrency=1 test",
     "verify": "pnpm build && pnpm test",
-    "clean": "node scripts/clean.mjs"
+    "clean": "node scripts/clean.mjs",
+    "release:plugin": "node scripts/release-plugin.mjs"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
@@ -34,5 +35,15 @@
     "react-dom": "^18.3.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Golden-Pigeon/dsh-remote.git"
+  },
+  "homepage": "https://github.com/Golden-Pigeon/dsh-remote#readme",
+  "bugs": {
+    "url": "https://github.com/Golden-Pigeon/dsh-remote/issues"
+  },
+  "author": "Golden-Pigeon",
+  "license": "MIT"
 }
