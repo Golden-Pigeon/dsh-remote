@@ -66,8 +66,8 @@ The sidebar **Workspaces** header **+** opens a small chooser:
 
 - the **+** button opens one create dialog;
 - the destination switcher offers **本机** and connected **远端设备**;
-- **添加** opens a local or remote folder browser. The remote browser lists directories over SSH and
-  never writes to the remote host;
+- **添加** uses the native system picker for **本机** and a read-only SSH folder browser for remote
+  directories. The remote browser never writes to the remote host;
 - creating a remote workspace creates its first remote Session, waits for the local mirror, and opens
   it; a local workspace is registered through the normal local workspace registry.
 

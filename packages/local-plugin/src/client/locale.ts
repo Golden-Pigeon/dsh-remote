@@ -107,6 +107,7 @@ export const zh = {
   'dialog.reading': '正在读取目录…',
   'dialog.emptyFolder': '此目录没有子目录',
   'dialog.readFailed': '读取目录失败',
+  'dialog.nativePickerFailed': '无法打开系统目录选择器',
   'dialog.useFolder': '使用此目录',
 } as const
 
@@ -211,6 +212,7 @@ export const en: Record<CopyKey, string> = {
   'dialog.reading': 'Reading folder…',
   'dialog.emptyFolder': 'No subfolders here',
   'dialog.readFailed': 'Could not read the folder',
+  'dialog.nativePickerFailed': 'Could not open the system folder picker',
   'dialog.useFolder': 'Use folder',
 }
 

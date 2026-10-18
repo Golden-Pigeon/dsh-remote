@@ -28,6 +28,13 @@ interface WorkspaceFlowContext {
 
 type Destination = { readonly kind: 'local' } | { readonly kind: 'remote'; readonly host: HostView }
 
+interface HostDirectoryPicker {
+  pick(): Promise<
+    | { readonly ok: true; readonly value: string | null }
+    | { readonly ok: false; readonly error: { readonly message: string } }
+  >
+}
+
 interface DirectoryListing {
   readonly path: string
   readonly parent: string
@@ -216,9 +223,26 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
     })
   })
   addFolder.addEventListener('click', () => {
-    const initial = destination.kind === 'local'
-      ? '~'
-      : destination.host.hostInfo?.home ?? '~'
+    if (destination.kind === 'local') {
+      const remote = (flow.ctx as unknown as { remote?: { directoryPicker?: HostDirectoryPicker } }).remote
+      if (remote?.directoryPicker === undefined) {
+        error.textContent = flow.t('dialog.nativePickerFailed')
+        return
+      }
+      addFolder.disabled = true
+      void remote.directoryPicker.pick()
+        .then(result => {
+          if (!result.ok) throw new Error(result.error.message)
+          if (result.value !== null) {
+            selectedPath = result.value
+            update()
+          }
+        })
+        .catch(failure => { error.textContent = messageOf(failure, flow.t('dialog.nativePickerFailed')) })
+        .finally(() => { addFolder.disabled = false })
+      return
+    }
+    const initial = destination.host.hostInfo?.home ?? '~'
     openDirectoryBrowser(flow, destination, initial, path => {
       selectedPath = path
       update()
