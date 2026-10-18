@@ -42,7 +42,7 @@ The host card shows `安装中 → 正在连接 → 已连接`. If it fails, fix
 
 ## 3. Add a remote workspace
 
-Click **工作区**, enter an existing absolute remote directory, and click **添加工作区**.
+Click **Workspaces +** and choose **远程新建工作区…**, then enter an existing absolute remote directory.
 
 The plugin creates a local anchor and a mirror workspace. The remote workspace then appears in the
 normal left sidebar, titled `<host label> · <remote title>`. Sessions in that remote workspace are
@@ -193,7 +193,7 @@ The normal plugin flow calls the same provisioning library.
 | Install never finishes | SSH auth is interactive or remote lacks Node/npm | `ssh -o BatchMode=yes host true`; run `doctor`; inspect the card |
 | `remote agent state file was not found` | Auto-provision disabled or remote start failed | Click **重新安装**; inspect `$DSH_HOME/remote-agent/web.log` |
 | `does not accept POST` | Remote agent older than local plugin | Click **重新安装** |
-| Remote workspace not in sidebar | Not added yet or sync pending | Add it in **工作区**; wait a few seconds |
+| Remote workspace not in sidebar | Not added yet or sync pending | Use **Workspaces + → 远程新建工作区…**, or add it in **工作区** |
 | Native session has no reply | No local key copied and remote has no credentials | Check **模型代理**; configure remote credentials |
 | `DeepSeek Messages request failed (404)` | Proxy upstream points at the wrong provider root/path | Set `credentialProxyUpstream: https://api.deepseek.com/anthropic`; the fixed proxy preserves the `/anthropic` prefix and tolerates it already being on the request path; reinstall the local plugin |
 | Approval appears locally but remote tool still fails | The decision was delivered but the tool failed remotely | Inspect the remote tool result |
