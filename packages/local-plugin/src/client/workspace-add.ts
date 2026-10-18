@@ -77,6 +77,14 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   const title = document.createElement('h2')
   title.className = `${DIALOG_CLASS}-title`
   title.textContent = '新建工作区'
+  const header = document.createElement('div')
+  header.className = `${DIALOG_CLASS}-header`
+  const closeButton = document.createElement('button')
+  closeButton.type = 'button'
+  closeButton.className = `${DIALOG_CLASS}-close`
+  closeButton.setAttribute('aria-label', '关闭')
+  closeButton.textContent = '×'
+  header.append(title, closeButton)
 
   const nameLabel = document.createElement('label')
   nameLabel.className = `${DIALOG_CLASS}-field`
@@ -89,7 +97,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   setFolderIcon(nameIcon)
   const nameInput = document.createElement('input')
   nameInput.className = `${DIALOG_CLASS}-input`
-  nameInput.placeholder = '工作区名称'
+  nameInput.placeholder = '工作区名称（可选）'
   nameInput.autocomplete = 'off'
   nameRow.append(nameIcon, nameInput)
   nameLabel.append(nameText, nameRow)
@@ -97,6 +105,16 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   const sourceTitle = document.createElement('h3')
   sourceTitle.className = `${DIALOG_CLASS}-section-title`
   sourceTitle.textContent = '源目录'
+  const sourceHeader = document.createElement('div')
+  sourceHeader.className = `${DIALOG_CLASS}-source-header`
+  const hostIndicator = document.createElement('span')
+  hostIndicator.className = `${DIALOG_CLASS}-host-indicator`
+  const hostIcon = document.createElement('span')
+  hostIcon.className = `${DIALOG_CLASS}-host-icon`
+  setComputerIcon(hostIcon)
+  const hostLabelText = document.createElement('span')
+  hostIndicator.append(hostIcon, hostLabelText)
+  sourceHeader.append(sourceTitle, hostIndicator)
   const sourceBox = document.createElement('div')
   sourceBox.className = `${DIALOG_CLASS}-source-box`
   const sourceCenter = document.createElement('div')
@@ -118,7 +136,19 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   addFolderText.textContent = '添加'
   addFolder.append(addFolderIcon, addFolderText)
   sourceCenter.append(sourceTrigger, addFolder)
-  sourceBox.append(sourceCenter)
+  const selectedFolder = document.createElement('div')
+  selectedFolder.className = `${DIALOG_CLASS}-selected-folder`
+  const selectedIcon = document.createElement('span')
+  selectedIcon.textContent = '📁'
+  const selectedName = document.createElement('span')
+  selectedName.className = `${DIALOG_CLASS}-selected-name`
+  const removeFolder = document.createElement('button')
+  removeFolder.type = 'button'
+  removeFolder.className = `${DIALOG_CLASS}-remove-folder`
+  removeFolder.setAttribute('aria-label', '移除目录')
+  removeFolder.textContent = '×'
+  selectedFolder.append(selectedIcon, selectedName, removeFolder)
+  sourceBox.append(sourceCenter, selectedFolder)
 
   const error = document.createElement('p')
   error.className = `${DIALOG_CLASS}-error`
@@ -136,7 +166,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   create.textContent = '创建工作区'
   actions.append(cancel, create)
 
-  dialog.append(title, nameLabel, sourceTitle, sourceBox, error, actions)
+  dialog.append(header, nameLabel, sourceHeader, sourceBox, error, actions)
   overlay.append(dialog)
   document.body.append(overlay)
 
@@ -146,20 +176,15 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   const update = (): void => {
     const label = destination.kind === 'local' ? '本机' : destination.host.label
     sourceTriggerText.textContent = `将目录添加到 ${label}`
-    addFolderIcon.textContent = selectedPath === '' ? '+ ' : '✓ '
-    create.disabled = nameInput.value.trim() === '' || selectedPath === ''
-    const last = sourceBox.querySelector(`.${DIALOG_CLASS}-selected-folder`)
-    last?.remove()
-    if (selectedPath !== '') {
-      const row = document.createElement('div')
-      row.className = `${DIALOG_CLASS}-selected-folder`
-      const icon = document.createElement('span')
-      icon.textContent = '📁'
-      const text = document.createElement('span')
-      text.textContent = selectedPath
-      row.append(icon, text)
-      sourceBox.append(row)
-    }
+    hostLabelText.textContent = label
+    addFolderIcon.textContent = '+ '
+    const hasFolder = selectedPath !== ''
+    sourceCenter.style.display = hasFolder ? 'none' : 'flex'
+    selectedFolder.style.display = hasFolder ? 'flex' : 'none'
+    sourceBox.classList.toggle(`${DIALOG_CLASS}-source-box-selected`, hasFolder)
+    selectedName.textContent = hasFolder ? folderName(selectedPath) : ''
+    selectedFolder.title = hasFolder ? selectedPath : ''
+    create.disabled = !hasFolder
   }
   const close = (): void => {
     closeBrowser?.()
@@ -179,6 +204,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   window.addEventListener('keydown', keyHandler, true)
   overlay.addEventListener('pointerdown', outside, true)
   cancel.addEventListener('click', close)
+  closeButton.addEventListener('click', close)
 
   sourceTrigger.addEventListener('click', () => {
     openDestinationMenu(sourceTrigger, hosts, destination, next => {
@@ -196,6 +222,10 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
       update()
     })
   })
+  removeFolder.addEventListener('click', () => {
+    selectedPath = ''
+    update()
+  })
   nameInput.addEventListener('input', update)
 
   try {
@@ -204,13 +234,10 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   } catch {
     hosts = []
   }
-  if (hosts.length === 0) {
-    error.textContent = '还没有已连接的远端主机；当前仍可在本机创建。'
-  }
   update()
   create.addEventListener('click', () => {
-    const title = nameInput.value.trim()
-    if (title === '' || selectedPath === '') return
+    if (selectedPath === '') return
+    const title = nameInput.value.trim() || folderName(selectedPath)
     create.disabled = true
     cancel.disabled = true
     create.textContent = '创建中…'
@@ -460,6 +487,16 @@ function setFolderIcon(icon: HTMLElement): void {
   icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" stroke="currentColor" stroke-width="1.5"/></svg>'
 }
 
+function folderName(path: string): string {
+  const clean = path.replace(/[\\/]+$/u, '')
+  const parts = clean.split(/[\\/]+/u)
+  return parts[parts.length - 1] ?? clean
+}
+
+function setComputerIcon(icon: HTMLElement): void {
+  icon.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="1.7" stroke="currentColor" stroke-width="1.5"/><path d="M8 20h8M12 17v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
+}
+
 function ensureStyles(): void {
   if (document.getElementById('dshr-workspace-add-style') !== null) return
   const style = document.createElement('style')
@@ -475,15 +512,19 @@ function ensureStyles(): void {
       background: #242424; color: #f2f2f2; box-shadow: 0 28px 80px rgba(0,0,0,.65);
       font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .${DIALOG_CLASS}-title {
-      margin: 0 0 24px; font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em;
-    }
+    .${DIALOG_CLASS}-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    .${DIALOG_CLASS}-title { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
+    .${DIALOG_CLASS}-close { border: 0; background: transparent; color: rgba(255,255,255,.75); font-size: 30px; line-height: 1; cursor: pointer; padding: 0 2px; }
+    .${DIALOG_CLASS}-close:hover { color: #fff; }
     .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
     .${DIALOG_CLASS}-field > span { font-size: 13px; color: rgba(255,255,255,.72); }
     .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 10px; padding: 0 14px; background: transparent; }
     .${DIALOG_CLASS}-input-icon { display: inline-flex; color: rgba(255,255,255,.7); }
     .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; padding: 14px 0; }
-    .${DIALOG_CLASS}-section-title { margin: 4px 0 10px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.72); }
+    .${DIALOG_CLASS}-source-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
+    .${DIALOG_CLASS}-section-title { margin: 0; font-size: 16px; font-weight: 600; color: rgba(255,255,255,.92); }
+    .${DIALOG_CLASS}-host-indicator { display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,.62); font-size: 15px; }
+    .${DIALOG_CLASS}-host-icon { display: inline-flex; }
     .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 28px 20px 16px; min-height: 130px; display: flex; flex-direction: column; align-items: center; }
     .${DIALOG_CLASS}-source-center { display: flex; flex-direction: column; align-items: center; gap: 16px; }
     .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 16px; cursor: pointer; }
@@ -492,8 +533,11 @@ function ensureStyles(): void {
     .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 9px; padding: 9px 16px; background: rgba(255,255,255,.12); color: #fff; font: inherit; cursor: pointer; }
     .${DIALOG_CLASS}-add-folder:hover { background: rgba(255,255,255,.18); }
     .${DIALOG_CLASS}-add-folder-icon { font-size: 18px; line-height: 1; }
-    .${DIALOG_CLASS}-selected-folder { display: flex; gap: 8px; align-items: center; max-width: 100%; margin-top: 18px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,.07); color: rgba(255,255,255,.86); font-size: 13px; overflow: hidden; }
-    .${DIALOG_CLASS}-selected-folder span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .${DIALOG_CLASS}-source-box-selected { padding: 0; min-height: 0; }
+    .${DIALOG_CLASS}-selected-folder { display: none; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 15px 16px; color: rgba(255,255,255,.9); font-size: 18px; }
+    .${DIALOG_CLASS}-selected-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .${DIALOG_CLASS}-remove-folder { flex: none; border: 0; background: transparent; color: rgba(255,255,255,.6); font-size: 24px; line-height: 1; cursor: pointer; padding: 0 2px; }
+    .${DIALOG_CLASS}-remove-folder:hover { color: #fff; }
     .${DIALOG_CLASS}-error { min-height: 18px; margin: 12px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
     .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 26px; }
     .${DIALOG_CLASS}-button { padding: 10px 16px; border-radius: 9px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; }
