@@ -18,6 +18,7 @@ Features:
 - snapshot with limit/truncation;
 - SSE replay from a cursor;
 - `appendEvent()` pushes live events to open streams;
+- workspace/session create and prompt/cancel;
 - auth, protocol-version, and not-found failures;
 - request log for assertions.
 

@@ -55,6 +55,22 @@ describe('remote agent wire contract', () => {
     assert.equal(gamma?.cwd, '/tmp')
   })
 
+  it('creates a workspace, creates a session, and prompts it', async () => {
+    const workspace = await client().createWorkspace({ path: '/srv/created', title: 'Created' })
+    assert.equal(workspace.title, 'Created')
+    assert.equal((await client().listWorkspaces()).some(item => item.workspaceId === workspace.workspaceId), true)
+
+    const created = await client().createSession({ workspaceId: workspace.workspaceId })
+    assert.match(created.sessionId, /^session-created-/)
+    const prompt = await client().promptSession(created.sessionId, { text: 'hello remote' })
+    assert.deepEqual(prompt, undefined)
+    const snapshot = await client().snapshotSession(created.sessionId)
+    assert.deepEqual(snapshot.events.map(event => event.type), ['user/message', 'assistant/message'])
+    const assistant = snapshot.events[1]?.data as { message?: { content?: Array<{ text?: string }> } }
+    assert.equal(assistant.message?.content?.[0]?.text, 'echo: hello remote')
+    assert.deepEqual(await client().cancelSession(created.sessionId), undefined)
+  })
+
   it('snapshots the newest page and reports truncation', async () => {
     const full = await client().snapshotSession('session-alpha')
     assert.equal(full.cursor, 4)

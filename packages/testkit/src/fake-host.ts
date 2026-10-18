@@ -149,13 +149,71 @@ export class FakeRemoteHost {
           httpStatus: 409,
         })
       }
-      if (req.method !== 'GET') {
-        throw new RemoteProtocolError({ code: 'request/invalid', message: 'only GET', httpStatus: 405 })
-      }
-
       const route = matchAgentRoute(url.pathname)
       if (route === undefined) throw new RemoteProtocolError({ code: 'route/not-found', message: 'unknown route' })
       const hostId = firstHeader(req.headers[HEADER_HOST_ID]) ?? this.hostId
+
+      if (req.method === 'POST') {
+        const body = await readJson(req)
+        switch (route.kind) {
+          case 'workspaces': {
+            const record = body as { path?: unknown; title?: unknown }
+            if (typeof record.path !== 'string' || record.path.trim() === '') {
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'path is required' })
+            }
+            const workspaceId = `workspace-created-${this.#fixtures.workspaces.length + 1}`
+            const workspace = {
+              workspaceId,
+              path: record.path,
+              title: typeof record.title === 'string' && record.title !== '' ? record.title : record.path,
+              sessionIds: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+            this.#fixtures.workspaces.push(workspace)
+            sendJson(res, workspace)
+            return
+          }
+          case 'sessions': {
+            const record = body as { workspaceId?: unknown; cwd?: unknown; agentPreset?: unknown }
+            const sessionId = `session-created-${this.#sessions.size + 1}`
+            const session: FakeSession = {
+              sessionId,
+              workspaceId: typeof record.workspaceId === 'string' ? record.workspaceId : null,
+              cwd: typeof record.cwd === 'string' ? record.cwd : null,
+              createdAt: new Date().toISOString(),
+              live: true,
+              events: [],
+            }
+            this.#sessions.set(sessionId, session)
+            sendJson(res, { sessionId, ...typeof record.agentPreset === 'string' ? { agentPreset: record.agentPreset } : {} })
+            return
+          }
+          case 'session-prompt': {
+            const record = body as { text?: unknown }
+            if (typeof record.text !== 'string' || record.text.trim() === '') {
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'text is required' })
+            }
+            const session = this.#getSession(route.sessionId)
+            const time = Date.now()
+            const userSeq = session.events.length
+            session.events.push({ seq: userSeq, type: 'user/message', time, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: record.text }], id: `msg-${userSeq}` } })
+            const assistantSeq = session.events.length
+            session.events.push({ seq: assistantSeq, type: 'assistant/message', time: time + 1, data: { message: { role: 'assistant', content: [{ type: 'text', text: `echo: ${record.text}` }] } } })
+            sendJson(res, { accepted: true })
+            return
+          }
+          case 'session-cancel':
+            this.#getSession(route.sessionId)
+            sendJson(res, { accepted: true })
+            return
+          default:
+            throw new RemoteProtocolError({ code: 'request/invalid', message: 'POST is not supported here', httpStatus: 405 })
+        }
+      }
+      if (req.method !== 'GET') {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'unsupported method', httpStatus: 405 })
+      }
 
       switch (route.kind) {
         case 'health':
@@ -326,6 +384,13 @@ function sendJson(res: ServerResponse, data: unknown): void {
   res.statusCode = 200
   res.setHeader('content-type', 'application/json')
   res.end(JSON.stringify(body))
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  if (chunks.length === 0) return {}
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
 function writeFrame(res: ServerResponse, frame: SessionStreamFrame): void {
