@@ -71,6 +71,8 @@ Reopen DSH. **Settings → 远程开发** appears.
 6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
    use the local machine, remote mirror Sessions use the remote workspace.
 
+![Remote terminal attached to a mirrored Session](docs/images/remote-terminal-native.png)
+
 The Settings page is now only host/workspace management. The conversation is not a popup.
 
 ## How the native session works
