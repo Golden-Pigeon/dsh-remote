@@ -1,5 +1,10 @@
 # dsh-remote
 
+[![CI](https://github.com/Golden-Pigeon/dsh-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/Golden-Pigeon/dsh-remote/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-remote-local-plugin.svg)](https://www.npmjs.com/package/dsh-remote-local-plugin)
+
+English | [Chinese](README.zh.md)
+
 Remote development that behaves like a local session.
 
 Add an SSH host once. The plugin provisions the remote DSH runtime itself, mirrors its workspaces and
@@ -40,15 +45,15 @@ Local DSH                                         Remote host
 
 ### From the DSH plugin page
 
-Once the npm package is published, open **Plugins → Add plugin** and enter:
+Open **Plugins → Add plugin** and enter:
 
 ```text
 dsh-remote-local-plugin
 ```
 
-DSH installs the bundle from npm. The package includes the remote agent asset and the
+The package is published on npm; DSH installs the bundle from the registry. The package includes the remote agent asset and the
 terminal-controller fork, so there is nothing else to install. Restart DSH when the plugin page asks
-for it; **Settings → 远程开发** then appears.
+for it; **Settings → Remote development** then appears.
 
 ### From a source checkout
 
@@ -69,16 +74,16 @@ fork, and installs that tarball into the `desktop` profile. For a DSH Web profil
 # restart that DSH Web process
 ```
 
-Reopen DSH. **Settings → 远程开发** appears.
+Reopen DSH. **Settings → Remote development** appears.
 
 ## Use
 
-1. In **Settings → 远程开发**, enter the SSH target (`my-host`) and click **保存并连接**.
+1. In **Settings → Remote development**, enter the SSH target (`my-host`) and click **Save and connect**.
 2. On first use the plugin discovers or installs the remote agent, starts remote `dsh web`, opens the
    loopback tunnel, and copies the resolved model key into the remote environment. The card shows
-   **安装中 → 已连接** and **模型代理：远端直连**.
-3. In the sidebar **Workspaces** header, click **+**. The create dialog chooses **本机** or a
-   connected **远端设备**, then **添加** a source folder. Local folders use the native system
+   **Installing → Connected** and **Model credentials: Remote direct**.
+3. In the sidebar **Workspaces** header, click **+**. The create dialog chooses **This computer** or a
+   connected **Remote device**, then **Add** a source folder. Local folders use the native system
    directory picker; remote folders use the read-only SSH browser.
 4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
    Conversation UI**. The workspace row's **New session** action uses the same remote path.
@@ -144,7 +149,7 @@ credential store and writes it into the remote `dsh web` environment, with
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
 If no local key resolves, the plugin still provisions and connects; configure the remote DSH's own
-credentials. The host card shows **模型代理：本地代理 / 远端直连 / 远端默认**.
+credentials. The host card shows **Model credentials: Local proxy / Remote direct / Remote default**.
 
 ## Agent tools
 
@@ -247,15 +252,15 @@ The remote agent config remains available for advanced deployments:
 
 | Symptom | Action |
 |---|---|
-| **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes my-host true`; the installer discovers nvm/Volta/fnm and automatically downloads Node.js when needed. If the host blocks nodejs.org or checksum tools, install Node.js 22.19+ manually or use `remoteStart: nohup`; then **重新安装** |
-| `does not accept POST` | Remote agent is old; click **重新安装** |
-| No remote workspace in sidebar | Use **Workspaces + → 远程新建工作区…**, or Settings → 远程开发 → 工作区 |
-| Native session has no reply | Check **模型代理**; configure remote credentials |
+| **Installing** never finishes / `Waiting for remote dsh web…` | Check `ssh -o BatchMode=yes my-host true`; the installer discovers nvm/Volta/fnm and automatically downloads Node.js when needed. If the host blocks nodejs.org or checksum tools, install Node.js 22.19+ manually or use `remoteStart: nohup`; then **Reinstall** |
+| `does not accept POST` | Remote agent is old; click **Reinstall** |
+| No remote workspace in sidebar | Use **Workspaces +**, or Settings → Remote development → Workspaces |
+| Native session has no reply | Check **Model credentials**; configure remote credentials |
 | `DeepSeek Messages request failed (404)` | Proxy upstream must be `https://api.deepseek.com/anthropic`; the fixed proxy joins/preserves the provider prefix. Reinstall the local plugin and reconnect |
 | Approval appears locally but remote tool still fails | The local decision was sent; check the remote tool result |
 | Local terminal opens local shell | Expected for local Sessions; remote Sessions use `Remote · <dir>` terminals |
 | Remote terminal opens local zsh | The terminal-controller fork is not active; run `./scripts/install-local.sh` again |
-| Port changed after remote restart | Click **重新发现** |
+| Port changed after remote restart | Click **Rediscover** |
 
 Remote logs: `journalctl --user -u dsh-remote-agent -f` or `$DSH_HOME/remote-agent/web.log`.
 
@@ -274,6 +279,10 @@ into the ordinary Conversation UI, a second follow-up, and a remote tool call/re
 
 - [Wire protocol](docs/protocol.md)
 - [Operations guide](docs/operations.md)
+- [Testing](docs/testing.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 - [ADR-001](docs/decisions/ADR-001-protocol-envelope.md)
 - [Design document copy](docs/remote-development-design.md)
 

@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible problem
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include tokens, model keys, private hostnames, or `.secret/` contents.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: 0.8.0
+    validations:
+      required: true
+  - type: input
+    id: dsh
+    attributes:
+      label: DSH version
+      placeholder: 0.2.1-rc.2
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Local install
+        - Remote provisioning
+        - Remote workspace/session
+        - Remote terminal
+        - Remote files
+        - Approval UI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact tokens, paths, hostnames, and credentials.

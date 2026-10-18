@@ -1,0 +1,40 @@
+# Changelog
+
+## 0.8.0
+
+- Publish one installable `dsh-remote-local-plugin` package.
+- Bundle `dsh-remote-terminal-controller` inside the plugin and merge its bundle patch.
+- Add the DSH plugin-page installation path.
+- Add online metadata, CI, release workflow, and release documentation.
+- Harden systemd unit permissions, credential-proxy authentication, terminal fallback, approval
+  gating, and remote file/terminal resource limits.
+
+## 0.7.16
+
+- Truncate oversized remote text lines and bound remote file page sizes.
+
+## 0.7.15
+
+- Use mode `0600` for the remote systemd unit that may contain a model key.
+- Add per-host credential-proxy tokens and model-key fingerprint reconciliation.
+- Refuse to fall back to a local terminal when a mirrored remote terminal fails.
+- Bound terminal output queues and clean up aborted terminal waiters.
+- Serialize mirror state writes.
+- Bound installer output and handle stdin errors.
+- Require approval for agent host-write tools.
+
+## 0.7.14
+
+- Add automatic remote Node.js discovery/install with checksum verification.
+
+## 0.7.13
+
+- Add live remote folder filtering and native local directory selection.
+
+## 0.7.12
+
+- Follow the DSH locale service with English/Chinese client copy.
+
+## 0.7.11
+
+- Add unified workspace creation and remote directory browsing.
