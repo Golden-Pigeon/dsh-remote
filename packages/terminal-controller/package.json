@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-terminal-controller",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Terminal controller fork that routes terminals by Session: local Sessions keep the local PTY, mirrored remote Sessions use the plugin's SSH PTY route.",
   "license": "MIT",
   "type": "module",
