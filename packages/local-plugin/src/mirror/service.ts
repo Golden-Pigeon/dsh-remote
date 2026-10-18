@@ -845,7 +845,9 @@ export class RemoteMirrorService {
     const before = (runtime.session as unknown as { seq: number }).seq
     runtime.applyingRemote = true
     try {
-      if (!isMirrorNoise(event.type)) appendRemoteEvent(runtime.session, event, runtime)
+      if (!isMirrorNoise(event.type)) {
+        appendRemoteEvent(runtime.session, remapRemoteEvent(event, runtime.remoteToLocalSeq), runtime)
+      }
     } finally {
       runtime.applyingRemote = false
     }
@@ -1066,6 +1068,27 @@ export class RemoteMirrorService {
     this.#saveQueue = task.then(() => undefined, () => undefined)
     return task
   }
+}
+
+function remapRemoteEvent(
+  event: RemoteSessionEvent,
+  remoteToLocal: ReadonlyMap<number, number>,
+): RemoteSessionEvent {
+  const sourceEventSeqs = event.sourceEventSeqs
+    ?.map(seq => remoteToLocal.get(seq))
+    .filter((seq): seq is number => seq !== undefined)
+  const surfaceOp = typeof event.surfaceOp === 'object'
+    ? {
+        op: 'replace' as const,
+        startSeq: remoteToLocal.get(event.surfaceOp.startSeq) ?? 0,
+        endSeq: remoteToLocal.get(event.surfaceOp.endSeq) ?? 0,
+      }
+    : event.surfaceOp
+  return {
+    ...event,
+    ...sourceEventSeqs === undefined || sourceEventSeqs.length === 0 ? {} : { sourceEventSeqs },
+    ...surfaceOp === undefined ? {} : { surfaceOp },
+  } as RemoteSessionEvent
 }
 
 function isMirrorNoise(type: string): boolean {
