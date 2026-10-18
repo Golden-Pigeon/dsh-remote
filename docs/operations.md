@@ -62,6 +62,12 @@ local mirror appends its committed events, so tool cards, usage, follow-ups, and
 local session. A second prompt on the same session resumes the remote agent and restarts the mirror
 poll.
 
+The sidebar **Workspaces** header **+** opens a small chooser:
+
+- **本地新建工作区** replays the native click, so the shipped directory browser is unchanged;
+- **远程新建工作区…** asks for a connected host and an absolute remote path, creates the remote
+  workspace, creates its first remote Session, waits for the local mirror, and opens it.
+
 The **Workspace files** and **New terminal** panels are Session-scoped:
 
 - local Session: stock local workspace files and local PTY;

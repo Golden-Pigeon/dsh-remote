@@ -16,6 +16,7 @@ Remote development that appears as ordinary local sessions.
   while the normal Conversation UI renders the mirrored events.
 - `+ 新会话` creates the remote session, creates its local mirror, and opens it through
   `uiWorkspace.openSession` — not a popup.
+- Sidebar **+** menu to create a workspace locally (native flow) or on a connected remote host.
 - SSH-backed remote workspace file listing/preview.
 - Remote SSH PTY terminals for mirror Sessions; local Sessions keep the local terminal.
 - Remote approval questions bridged into the normal local approval UI.

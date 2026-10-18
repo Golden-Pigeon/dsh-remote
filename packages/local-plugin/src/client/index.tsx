@@ -15,6 +15,7 @@ import { createHostsApi } from './api.ts'
 import { RemoteDevelopmentPanel } from './RemoteDevelopmentPanel.tsx'
 import { installNativeWorkspaceRouting } from './routing.ts'
 import { installRemoteFiles } from './remote-files.ts'
+import { installWorkspaceAddMenu } from './workspace-add.ts'
 
 /** The Settings shell's slot registry and the authenticated connection. */
 export const inject = ['slots', 'uiWorkspace']
@@ -23,6 +24,7 @@ export const inject = ['slots', 'uiWorkspace']
 export function apply(ctx: Context): void {
   const api = createHostsApi(ctx)
   installNativeWorkspaceRouting(ctx, api)
+  installWorkspaceAddMenu(ctx, api)
   ctx.inject(['remote.workspaceFiles'], child => {
     installRemoteFiles(child, api)
   })
