@@ -62,8 +62,9 @@ Reopen DSH. **Settings → 远程开发** appears.
    loopback tunnel, and starts the local credential proxy. The card shows **安装中 → 已连接**.
 3. Click **工作区**, add an existing remote directory (for example `/tmp`), and click **添加工作区**.
    The remote workspace appears in the normal left sidebar as `Native Example host · tmp`.
-4. Click **+ 新会话** (in Settings or the normal workspace sidebar). The plugin creates the remote
-   session, creates a local mirror, and **opens it in the ordinary Conversation UI**.
+4. Click **+ 新会话** (in Settings or the normal workspace row). The plugin creates the remote
+   session, creates a local mirror, and **opens it in the ordinary Conversation UI**. The workspace
+   row's **New session** action uses the same remote path.
 5. Type in the usual composer. The remote DSH runs the turn; the local transcript updates live. Tool
    calls, usage, stop, and multi-turn follow-ups behave like a local session.
 6. **开始使用** on the host card opens the complete remote DSH UI when you need the remote file tree,

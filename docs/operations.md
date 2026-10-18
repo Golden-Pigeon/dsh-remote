@@ -49,7 +49,8 @@ mirrored automatically.
 
 ## 4. Use the ordinary Conversation UI
 
-Click **+ 新会话** in Settings or the normal sidebar. The plugin:
+Click **+ 新会话** in Settings, or the workspace row's **New session** action. Both use this remote path.
+The plugin:
 
 1. creates the remote session;
 2. creates a local mirror Session and registers the custom Agent façade;

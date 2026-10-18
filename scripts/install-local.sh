@@ -39,7 +39,7 @@ pnpm -r build
 printf 'install-local: packing the local plugin\n'
 cd "$ROOT/packages/local-plugin"
 pnpm pack >/dev/null
-TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.4.0.tgz"
+TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.4.1.tgz"
 if [ ! -f "$TARBALL" ]; then
   printf 'install-local: plugin tarball was not produced at %s\n' "$TARBALL" >&2
   exit 1

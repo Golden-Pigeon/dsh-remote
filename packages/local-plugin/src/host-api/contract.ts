@@ -56,8 +56,13 @@ export interface ValidatedTarget {
 }
 
 /** Result of listing workspaces. */
+export interface HostWorkspace extends RemoteWorkspace {
+  /** Local mirror workspace id, when it has been synced. */
+  readonly localWorkspaceId?: string
+}
+
 export interface WorkspacesResult {
-  readonly workspaces: readonly RemoteWorkspace[]
+  readonly workspaces: readonly HostWorkspace[]
 }
 
 /** Result of listing sessions. */

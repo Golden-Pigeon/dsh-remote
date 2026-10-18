@@ -117,8 +117,16 @@ async function dispatch(
       return service.refresh(requireStringField(payload, 'hostId'))
     case 'host/provision':
       return service.provision(requireStringField(payload, 'hostId'))
-    case 'host/workspaces':
-      return { workspaces: await service.workspaces(requireStringField(payload, 'hostId')) }
+    case 'host/workspaces': {
+      const hostId = requireStringField(payload, 'hostId')
+      const workspaces = await service.workspaces(hostId)
+      return {
+        workspaces: workspaces.map(workspace => {
+          const localWorkspaceId = mirrors?.localWorkspaceId(hostId, workspace.workspaceId)
+          return localWorkspaceId === undefined ? workspace : { ...workspace, localWorkspaceId }
+        }),
+      }
+    }
     case 'host/workspace/create': {
       const body = requireRecord(payload)
       return service.createWorkspace(requireStringField(body, 'hostId'), {

@@ -222,6 +222,11 @@ export class RemoteMirrorService {
     }
   }
 
+  /** Find the local mirror workspace for one remote workspace. */
+  localWorkspaceId(hostId: string, remoteWorkspaceId: string): string | undefined {
+    return this.#state.workspaces[key(hostId, remoteWorkspaceId)]?.localWorkspaceId
+  }
+
   /** Find the local mirror for one remote session. */
   localSessionId(hostId: string, remoteSessionId: string): string | undefined {
     return this.#state.sessions[key(hostId, remoteSessionId)]?.localSessionId

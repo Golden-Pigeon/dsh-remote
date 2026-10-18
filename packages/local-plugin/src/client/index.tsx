@@ -13,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { createHostsApi } from './api.ts'
 import { RemoteDevelopmentPanel } from './RemoteDevelopmentPanel.tsx'
+import { installNativeWorkspaceRouting } from './routing.ts'
 
 /** The Settings shell's slot registry and the authenticated connection. */
 export const inject = ['slots', 'uiWorkspace']
@@ -20,6 +21,7 @@ export const inject = ['slots', 'uiWorkspace']
 /** Register the 远程开发 page. */
 export function apply(ctx: Context): void {
   const api = createHostsApi(ctx)
+  installNativeWorkspaceRouting(ctx, api)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'remote-development',

@@ -36,7 +36,8 @@ Quit DSH Desktop before installing the desktop profile.
 2. Enter an SSH target (`example-host`) and click **保存并连接**.
 3. Wait for `已连接` (first use installs the remote side).
 4. Click **工作区**, add an existing remote directory.
-5. Click **+ 新会话**. The mirrored session opens in the normal Conversation UI.
+5. Click **+ 新会话** (Settings or the workspace row). The mirrored session opens in the normal
+   Conversation UI.
 6. Continue prompting, or click **开始使用** for the full remote UI.
 
 ## Mirror boundaries
