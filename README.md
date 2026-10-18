@@ -91,6 +91,17 @@ $DSH_HOME/remote/test-visibility.json
 test workspace after the run; local mirror sessions are archived, not deleted, and are restored when
 the entry is removed. See [docs/testing.md](docs/testing.md).
 
+## Development and testing
+
+Agent-facing testing instructions live in [AGENTS.md](AGENTS.md). For UI/integration work use the
+isolated environment:
+
+```sh
+./scripts/test-sandbox.sh
+```
+
+See [docs/testing.md](docs/testing.md) for test workspace visibility.
+
 ## How the native session works
 
 The plugin does not embed a second chat UI and does not iframe the remote page. It:
