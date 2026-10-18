@@ -19,6 +19,8 @@ export interface BootstrapOptions {
   readonly dshHome: string
   readonly dshVersion: string
   readonly pnpmVersion: string
+  readonly nodeVersion: string
+  readonly autoInstallNode: boolean
   readonly start: StartMode
   readonly agentTarball: string
   /** Remote DSH model endpoint; the local credential proxy URL when proxying. */
@@ -58,7 +60,7 @@ export function renderSystemdUnit(options: BootstrapOptions): string {
     'Environment="DSH_HOME=$DSH_HOME"',
     // $PATH is expanded by the bootstrap shell after nodePathPrelude(), so the
     // systemd unit sees the discovered nvm/Volta/fnm Node bin directory too.
-    'Environment="PATH=$INSTALL_DIR/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:$PATH"',
+    'Environment="PATH=$INSTALL_DIR/node/bin:$INSTALL_DIR/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:$PATH"',
     ...options.modelBaseUrl === undefined ? [] : ['Environment="DEEPSEEK_BASE_URL=$MODEL_BASE_URL"'],
     ...options.modelApiKey === undefined ? [] : ['Environment="DEEPSEEK_API_KEY=$MODEL_API_KEY"'],
     'ExecStart="$DSH_BIN" web --host 127.0.0.1 --port $PORT --no-open',
@@ -72,16 +74,120 @@ export function renderSystemdUnit(options: BootstrapOptions): string {
   ].join('\n')
 }
 
-/** Shell prelude that finds a non-interactive Node installation (nvm, Volta, fnm, Bun). */
+/** Shell prelude that finds an existing non-interactive Node installation. */
 export function nodePathPrelude(): string {
   return `if ! command -v node >/dev/null 2>&1; then
-  for candidate in "$HOME/.volta/bin" "$HOME/.local/share/fnm" "$HOME/.bun/bin"; do
+  for candidate in \\
+    "$HOME/.volta/bin" \\
+    "$HOME/.local/share/fnm" \\
+    "$HOME/.bun/bin" \\
+    "$HOME/.asdf/shims" \\
+    "$HOME/.local/share/mise/shims" \\
+    "$HOME/.nix-profile/bin" \\
+    "$HOME/.n/bin" \\
+    "$HOME/.local/bin" \\
+    "/opt/homebrew/bin" \\
+    "/usr/local/bin"; do
     if [ -d "$candidate" ]; then PATH="$candidate:$PATH"; fi
   done
   NODE_BIN_DIR="$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
   if [ -n "$NODE_BIN_DIR" ]; then PATH="$NODE_BIN_DIR:$PATH"; fi
+  if ! command -v node >/dev/null 2>&1; then
+    LOGIN_SHELL="\${SHELL:-}"
+    if command -v getent >/dev/null 2>&1; then
+      LOGIN_SHELL="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)"
+    fi
+    case "$LOGIN_SHELL" in
+      */bash|*/zsh|*/sh|*/dash|*/ksh)
+        NODE_BIN="$(env -i HOME="$HOME" PATH="$PATH" "$LOGIN_SHELL" -lc 'command -v node' 2>/dev/null | tail -n 1 || true)"
+        if [ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ]; then PATH="$(dirname "$NODE_BIN"):$PATH"; fi
+        ;;
+    esac
+  fi
   export PATH
 fi`
+}
+
+/** Shell function that installs the pinned official Node.js tarball without root. */
+export function nodeInstallFunction(): string {
+  return `install_node() {
+  case "$(uname -s)" in
+    Linux) NODE_OS=linux ;;
+    Darwin) NODE_OS=darwin ;;
+    *) echo "dsh-remote: unsupported OS for automatic Node.js install: $(uname -s)" >&2; return 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) NODE_ARCH=x64 ;;
+    aarch64|arm64) NODE_ARCH=arm64 ;;
+    armv7l) NODE_ARCH=armv7l ;;
+    *) echo "dsh-remote: unsupported architecture for automatic Node.js install: $(uname -m)" >&2; return 1 ;;
+  esac
+
+  NODE_INSTALL_ROOT="$INSTALL_DIR/node"
+  NODE_DOWNLOAD="$INSTALL_DIR/.node-download.$$"
+  NODE_ARCHIVE="node-v$NODE_VERSION-$NODE_OS-$NODE_ARCH.tar.gz"
+  NODE_URL="https://nodejs.org/dist/v$NODE_VERSION"
+  rm -rf "$NODE_DOWNLOAD"
+  mkdir -p "$NODE_DOWNLOAD"
+  echo "dsh-remote: downloading Node.js $NODE_VERSION ($NODE_OS-$NODE_ARCH)"
+  if command -v curl >/dev/null 2>&1; then
+    if ! curl -fsSL --retry 3 "$NODE_URL/SHASUMS256.txt" -o "$NODE_DOWNLOAD/SHASUMS256.txt" \\
+      || ! curl -fsSL --retry 3 "$NODE_URL/$NODE_ARCHIVE" -o "$NODE_DOWNLOAD/$NODE_ARCHIVE"; then
+      echo "dsh-remote: could not download Node.js from $NODE_URL" >&2
+      rm -rf "$NODE_DOWNLOAD"
+      return 1
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if ! wget -q -O "$NODE_DOWNLOAD/SHASUMS256.txt" "$NODE_URL/SHASUMS256.txt" \\
+      || ! wget -q -O "$NODE_DOWNLOAD/$NODE_ARCHIVE" "$NODE_URL/$NODE_ARCHIVE"; then
+      echo "dsh-remote: could not download Node.js from $NODE_URL" >&2
+      rm -rf "$NODE_DOWNLOAD"
+      return 1
+    fi
+  else
+    echo "dsh-remote: curl or wget is required to install Node.js automatically" >&2
+    rm -rf "$NODE_DOWNLOAD"
+    return 1
+  fi
+
+  EXPECTED="$(awk -v name="$NODE_ARCHIVE" '$2 == name { print $1; exit }' "$NODE_DOWNLOAD/SHASUMS256.txt")"
+  if [ -z "$EXPECTED" ]; then
+    echo "dsh-remote: Node.js checksum is missing from SHASUMS256.txt" >&2
+    rm -rf "$NODE_DOWNLOAD"
+    return 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL="$(sha256sum "$NODE_DOWNLOAD/$NODE_ARCHIVE" | awk '{ print $1 }')"
+  elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL="$(shasum -a 256 "$NODE_DOWNLOAD/$NODE_ARCHIVE" | awk '{ print $1 }')"
+  else
+    echo "dsh-remote: sha256sum or shasum is required to verify Node.js" >&2
+    rm -rf "$NODE_DOWNLOAD"
+    return 1
+  fi
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "dsh-remote: Node.js checksum mismatch" >&2
+    rm -rf "$NODE_DOWNLOAD"
+    return 1
+  fi
+  if ! command -v tar >/dev/null 2>&1; then
+    echo "dsh-remote: tar is required to install Node.js automatically" >&2
+    rm -rf "$NODE_DOWNLOAD"
+    return 1
+  fi
+
+  rm -rf "$NODE_INSTALL_ROOT"
+  mkdir -p "$NODE_INSTALL_ROOT"
+  if ! tar -xzf "$NODE_DOWNLOAD/$NODE_ARCHIVE" -C "$NODE_INSTALL_ROOT" --strip-components=1; then
+    echo "dsh-remote: could not extract Node.js" >&2
+    rm -rf "$NODE_DOWNLOAD" "$NODE_INSTALL_ROOT"
+    return 1
+  fi
+  rm -rf "$NODE_DOWNLOAD"
+  PATH="$NODE_INSTALL_ROOT/bin:$PATH"
+  export PATH
+  echo "dsh-remote: installed Node.js $NODE_VERSION at $NODE_INSTALL_ROOT"
+}`
 }
 
 /** Render the complete bootstrap script. */
@@ -97,6 +203,8 @@ PROFILE=${shellLiteral(options.profile)}
 PORT=${shellLiteral(String(options.port))}
 DSH_VERSION=${shellLiteral(options.dshVersion)}
 PNPM_VERSION=${shellLiteral(options.pnpmVersion)}
+NODE_VERSION=${shellLiteral(options.nodeVersion)}
+AUTO_INSTALL_NODE=${options.autoInstallNode ? '1' : '0'}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
 MODEL_BASE_URL=${options.modelBaseUrl === undefined ? "''" : shellLiteral(options.modelBaseUrl)}
 MODEL_API_KEY=${options.modelApiKey === undefined ? "''" : shellLiteral(options.modelApiKey)}
@@ -108,8 +216,16 @@ mkdir -p "$INSTALL_DIR" "$DSH_HOME/remote-agent"
 
 ${nodePathPrelude()}
 
+${nodeInstallFunction()}
+if ! command -v node >/dev/null 2>&1 \
+  || ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 19) ? 0 : 1)' >/dev/null 2>&1 \
+  || ! command -v npm >/dev/null 2>&1; then
+  if [ "$AUTO_INSTALL_NODE" -eq 1 ]; then
+    install_node || exit 25
+  fi
+fi
 if ! command -v node >/dev/null 2>&1; then
-  echo "dsh-remote: Node.js is required but not on PATH" >&2
+  echo "dsh-remote: Node.js is required but not on PATH; rerun with automatic Node.js installation enabled" >&2
   exit 21
 fi
 if ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 19) ? 0 : 1)'; then
@@ -117,7 +233,7 @@ if ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number
   exit 22
 fi
 if ! command -v npm >/dev/null 2>&1; then
-  echo "dsh-remote: npm is required but not on PATH" >&2
+  echo "dsh-remote: npm is required; install a Node.js distribution that includes npm" >&2
   exit 23
 fi
 
@@ -210,6 +326,8 @@ export function fromOptions(options: InstallerOptions, agentTarball: string): st
     dshHome: options.dshHome,
     dshVersion: options.dshVersion,
     pnpmVersion: options.pnpmVersion,
+    nodeVersion: options.nodeVersion,
+    autoInstallNode: options.autoInstallNode,
     start: options.start,
     agentTarball,
   })

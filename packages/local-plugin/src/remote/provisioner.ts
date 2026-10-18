@@ -57,6 +57,8 @@ export class RemoteProvisioner {
         dshHome: this.#config.remoteDshHome,
         dshVersion: this.#config.remoteDshVersion,
         pnpmVersion: this.#config.remotePnpmVersion,
+        nodeVersion: this.#config.remoteNodeVersion,
+        autoInstallNode: this.#config.autoInstallNode,
         start: this.#config.remoteStart,
         timeoutMs: this.#config.provisionTimeoutMs,
         ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },

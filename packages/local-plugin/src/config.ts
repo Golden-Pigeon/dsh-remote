@@ -29,6 +29,10 @@ export interface Config {
   readonly remoteInstallDir?: string
   readonly remoteDshVersion?: string
   readonly remotePnpmVersion?: string
+  /** Node.js version installed into the remote install dir when none is usable. */
+  readonly remoteNodeVersion?: string
+  /** Download Node.js into the remote install dir when it is missing or too old. */
+  readonly autoInstallNode?: boolean
   /** `systemd`, `nohup`, or `none`. */
   readonly remoteStart?: string
   readonly provisionTimeoutMs?: number
@@ -67,6 +71,8 @@ export const Config: z<Config> = z.object({
   remoteInstallDir: z.string().default('~/.local/share/dsh-remote'),
   remoteDshVersion: z.string().default('0.2.1-rc.2'),
   remotePnpmVersion: z.string().default('11.21.0'),
+  remoteNodeVersion: z.string().default('22.19.0'),
+  autoInstallNode: z.boolean().default(true),
   remoteStart: z.string().default('systemd'),
   provisionTimeoutMs: z.number().min(60_000).max(1_800_000).default(600_000),
   credentialProxy: z.boolean().default(false),
@@ -99,6 +105,8 @@ export interface ResolvedConfig {
   readonly remoteInstallDir: string
   readonly remoteDshVersion: string
   readonly remotePnpmVersion: string
+  readonly remoteNodeVersion: string
+  readonly autoInstallNode: boolean
   readonly remoteStart: RemoteStartMode
   readonly provisionTimeoutMs: number
   readonly credentialProxy: boolean
@@ -164,6 +172,8 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
     remoteInstallDir: config.remoteInstallDir ?? '~/.local/share/dsh-remote',
     remoteDshVersion: config.remoteDshVersion ?? '0.2.1-rc.2',
     remotePnpmVersion: config.remotePnpmVersion ?? '11.21.0',
+    remoteNodeVersion: config.remoteNodeVersion ?? '22.19.0',
+    autoInstallNode: config.autoInstallNode ?? true,
     remoteStart,
     provisionTimeoutMs: config.provisionTimeoutMs ?? 600_000,
     credentialProxy: config.credentialProxy ?? false,

@@ -16,6 +16,8 @@ describe('installer options', () => {
     assert.equal(options.port, 0)
     assert.equal(options.start, 'systemd')
     assert.equal(options.dshVersion, '0.2.1-rc.2')
+    assert.equal(options.nodeVersion, '22.19.0')
+    assert.equal(options.autoInstallNode, true)
     assert.equal(options.strictHostKeyChecking, 'accept-new')
   })
 
@@ -79,6 +81,8 @@ describe('bootstrap rendering', () => {
       dshHome: '$HOME/.dsh',
       dshVersion: '0.2.1-rc.2',
       pnpmVersion: '11.21.0',
+      nodeVersion: '22.19.0',
+      autoInstallNode: true,
       start: 'systemd',
       agentTarball: '/tmp/agent.tgz',
     })
@@ -90,7 +94,7 @@ describe('bootstrap rendering', () => {
   it('renders proxy env only when configured', () => {
     const script = renderBootstrapScript({
       profile: 'web', port: 0, installDir: '/opt/dsh', dshHome: '/srv/dsh',
-      dshVersion: '0.2.1-rc.2', pnpmVersion: '11.21.0', start: 'nohup',
+      dshVersion: '0.2.1-rc.2', pnpmVersion: '11.21.0', nodeVersion: '22.19.0', autoInstallNode: true, start: 'nohup',
       agentTarball: '/tmp/a.tgz', modelBaseUrl: 'http://127.0.0.1:47821', modelApiKey: 'placeholder',
     })
     assert.match(script, /DEEPSEEK_BASE_URL="\$MODEL_BASE_URL" DEEPSEEK_API_KEY="\$MODEL_API_KEY" nohup/)
@@ -99,6 +103,11 @@ describe('bootstrap rendering', () => {
   it('renders the bootstrap script and never embeds a token', () => {
     const script = fromOptions(options, '/tmp/agent.tgz')
     assert.match(script, /set -euo pipefail/)
+    assert.match(script, /AUTO_INSTALL_NODE=1/)
+    assert.match(script, /NODE_VERSION='22\.19\.0'/)
+    assert.match(script, /install_node\(\)/)
+    assert.match(script, /SHASUMS256\.txt/)
+    assert.match(script, /--strip-components=1/)
     assert.match(script, /npm install --prefix "\$INSTALL_DIR"/)
     assert.match(script, /plugin --profile "\$PROFILE" add "\$AGENT_TARBALL"/)
     assert.match(script, /systemd/)
@@ -131,6 +140,8 @@ describe('bootstrap rendering', () => {
       dshHome: '/srv/dsh-home',
       dshVersion: '0.2.1-rc.2',
       pnpmVersion: '11.21.0',
+      nodeVersion: '22.19.0',
+      autoInstallNode: true,
       start: 'systemd',
       agentTarball: '/tmp/agent.tgz',
     })

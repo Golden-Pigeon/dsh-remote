@@ -147,6 +147,8 @@ Local plugin profile override:
     remoteInstallDir: ~/.local/share/dsh-remote
     remoteDshVersion: 0.2.1-rc.2
     remotePnpmVersion: 11.21.0
+    remoteNodeVersion: 22.19.0
+    autoInstallNode: true
     remoteStart: systemd            # systemd | nohup | none
     provisionTimeoutMs: 600000
 
@@ -198,7 +200,7 @@ The normal plugin flow calls the same provisioning library.
 
 | Symptom | Likely cause | Action |
 |---|---|---|
-| `等待远端 dsh web 就绪…` | The remote `webServer` files installed but the service did not write its state file. Common cause: a systemd user unit without the nvm Node bin in PATH. | Check `systemctl --user status dsh-remote-agent`; the installer now adds the bootstrap `$PATH`; reinstall/rebuild the local plugin, or use `remoteStart: nohup` |
+| `等待远端 dsh web 就绪…` | The remote DSH web host did not write its state file. | Check `systemctl --user status dsh-remote-agent` and `~/.dsh/remote-agent/web.log`. The installer discovers Node through PATH/version managers and installs a verified official Node.js tarball when needed; reinstall if the bootstrap failed |
 | Install never finishes | SSH auth is interactive or remote lacks Node/npm | `ssh -o BatchMode=yes host true`; run `doctor`; inspect the card |
 | `remote agent state file was not found` | Auto-provision disabled or remote start failed | Click **重新安装**; inspect `$DSH_HOME/remote-agent/web.log` |
 | `does not accept POST` | Remote agent older than local plugin | Click **重新安装** |

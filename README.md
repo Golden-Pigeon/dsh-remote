@@ -151,8 +151,11 @@ credentials. The host card shows **模型代理：本地代理 / 远端直连 / 
 
 **Local:** DSH Desktop/Web, `ssh` with key or ssh-agent auth.
 
-**Remote:** Linux or macOS, Node.js 22.19+, npm, SSH server. The installer discovers nvm, Volta, fnm,
-and Bun. Windows remotes are not supported.
+**Remote:** Linux or macOS with an SSH server. Node.js 22.19+ is preferred and discovered through
+PATH, nvm, Volta, fnm, Bun, asdf, mise, Nix, Homebrew, and the login shell. When no usable Node.js is
+found, the installer downloads the official Node.js tarball into `remoteInstallDir`, verifies its
+SHA-256 checksum, and uses it without root. This needs `curl` or `wget`, `tar`, and `sha256sum` or
+`shasum`; Windows remotes are not supported.
 
 ## Security
 
@@ -178,6 +181,9 @@ and Bun. Windows remotes are not supported.
     remoteDshHome: ~/.dsh
     remoteInstallDir: ~/.local/share/dsh-remote
     remoteDshVersion: 0.2.1-rc.2
+    remotePnpmVersion: 11.21.0
+    remoteNodeVersion: 22.19.0
+    autoInstallNode: true
     remoteStart: systemd          # systemd | nohup | none
     # Direct key mode (default): copy the resolved key to the remote service env.
     credentialProxy: false
@@ -224,7 +230,7 @@ The remote agent config remains available for advanced deployments:
 
 | Symptom | Action |
 |---|---|
-| **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes my-host true`; if the remote uses nvm under systemd, ensure the unit PATH includes the Node bin (new installer does), or use `remoteStart: nohup`; then **重新安装** |
+| **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes my-host true`; the installer discovers nvm/Volta/fnm and automatically downloads Node.js when needed. If the host blocks nodejs.org or checksum tools, install Node.js 22.19+ manually or use `remoteStart: nohup`; then **重新安装** |
 | `does not accept POST` | Remote agent is old; click **重新安装** |
 | No remote workspace in sidebar | Use **Workspaces + → 远程新建工作区…**, or Settings → 远程开发 → 工作区 |
 | Native session has no reply | Check **模型代理**; configure remote credentials |

@@ -28,6 +28,8 @@ export interface ProvisionRemoteOptions {
   readonly dshHome: string
   readonly dshVersion: string
   readonly pnpmVersion: string
+  readonly nodeVersion: string
+  readonly autoInstallNode: boolean
   readonly start: StartMode
   /** Remote model endpoint, for example the reverse-tunnel credential proxy. */
   readonly modelBaseUrl?: string
@@ -59,6 +61,8 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     dshHome: options.dshHome,
     dshVersion: options.dshVersion,
     pnpmVersion: options.pnpmVersion,
+    nodeVersion: options.nodeVersion,
+    autoInstallNode: options.autoInstallNode,
     start: options.start,
     agentTarball: remoteTarball,
     ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },

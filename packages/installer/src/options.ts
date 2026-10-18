@@ -20,6 +20,8 @@ export interface InstallerOptions {
   readonly dshHome: string
   readonly dshVersion: string
   readonly pnpmVersion: string
+  readonly nodeVersion: string
+  readonly autoInstallNode: boolean
   readonly start: StartMode
   readonly agentTarball: string | undefined
   readonly sshBinary: string
@@ -48,6 +50,8 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
   let dshHome = '$HOME/.dsh'
   let dshVersion = '0.2.1-rc.2'
   let pnpmVersion = '11.21.0'
+  let nodeVersion = '22.19.0'
+  let autoInstallNode = true
   let start: StartMode = 'systemd'
   let agentTarball: string | undefined
   let sshBinary = 'ssh'
@@ -104,6 +108,12 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
       case '--pnpm-version':
         pnpmVersion = value()
         break
+      case '--node-version':
+        nodeVersion = value()
+        break
+      case '--no-auto-install-node':
+        autoInstallNode = false
+        break
       case '--start':
         start = parseStart(value())
         break
@@ -152,6 +162,8 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
     dshHome,
     dshVersion,
     pnpmVersion,
+    nodeVersion,
+    autoInstallNode,
     start,
     agentTarball,
     sshBinary,
@@ -200,6 +212,8 @@ Options:
   --dsh-home               Remote DSH home (default: $HOME/.dsh)
   --dsh-version            @deepseek-ai/dsh version (default: 0.2.1-rc.2)
   --pnpm-version           pnpm version installed into --install-dir (default: 11.21.0)
+  --node-version           Node.js version to install when none is usable (default: 22.19.0)
+  --no-auto-install-node   Fail instead of downloading Node.js
   --start                  systemd | nohup | none (default: systemd)
   --no-start               Same as --start none
   --agent-tarball          Use an existing dsh-remote-agent .tgz
