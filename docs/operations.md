@@ -66,7 +66,10 @@ The sidebar **Workspaces** header **+** opens a small chooser:
 
 - **本地新建工作区** replays the native click, so the shipped directory browser is unchanged;
 - **远程新建工作区…** asks for a connected host and an absolute remote path, creates the remote
-  workspace, creates its first remote Session, waits for the local mirror, and opens it.
+  workspace, creates its first remote Session, waits for the local mirror, and opens it. Check
+  **不显示在本地侧栏** for temporary/test workspaces; the remote workspace is not mirrored locally.
+- Settings → 远程开发 → 工作区 has **隐藏 / 显示到侧栏** for every remote workspace. Hiding archives
+  its local mirror Sessions and removes the local row; showing rebuilds them from the remote log.
 
 The **Workspace files** and **New terminal** panels are Session-scoped:
 

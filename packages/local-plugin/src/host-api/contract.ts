@@ -34,6 +34,7 @@ export type HostApiEndpoint =
   | 'host/provision'
   | 'host/workspaces'
   | 'host/workspace/create'
+  | 'host/workspace/hide'
   | 'host/sessions'
   | 'host/session'
   | 'host/session/create'
@@ -63,6 +64,8 @@ export interface ValidatedTarget {
 export interface HostWorkspace extends RemoteWorkspace {
   /** Local mirror workspace id, when it has been synced. */
   readonly localWorkspaceId?: string
+  /** Whether this remote workspace is intentionally omitted from local surfaces. */
+  readonly hidden?: boolean
 }
 
 export interface WorkspacesResult {
@@ -124,7 +127,8 @@ export interface HostApiPayloads {
   'host/refresh': { hostId: string }
   'host/provision': { hostId: string }
   'host/workspaces': { hostId: string }
-  'host/workspace/create': { hostId: string; path: string; title?: string }
+  'host/workspace/create': { hostId: string; path: string; title?: string; hidden?: boolean }
+  'host/workspace/hide': { hostId: string; workspaceId: string; hidden: boolean }
   'host/sessions': { hostId: string; workspaceId?: string }
   'host/session': { hostId: string; sessionId: string; limit?: number }
   'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
@@ -157,6 +161,7 @@ export interface HostApiValues {
   'host/provision': HostView
   'host/workspaces': WorkspacesResult
   'host/workspace/create': RemoteWorkspace
+  'host/workspace/hide': { hidden: boolean }
   'host/sessions': SessionsResult
   'host/session': SessionSnapshot
   'host/session/create': HostCreateSessionResult

@@ -63,10 +63,19 @@ interface WorkspaceRecord {
   readonly updatedAt: string
 }
 
+interface HiddenWorkspaceRecord {
+  readonly hostId: string
+  readonly remoteWorkspaceId: string
+  readonly remoteRoot: string
+  readonly title: string
+  readonly updatedAt: string
+}
+
 interface MirrorState {
   readonly version: number
   sessions: Record<string, MirrorRecord>
   workspaces: Record<string, WorkspaceRecord>
+  hiddenWorkspaces: Record<string, HiddenWorkspaceRecord>
 }
 
 interface MirrorRuntime {
@@ -174,7 +183,7 @@ export class RemoteMirrorService {
   #ctx: Context
   #hosts: RemoteHostsService
   #config: ResolvedConfig
-  #state: MirrorState = { version: MIRROR_VERSION, sessions: {}, workspaces: {} }
+  #state: MirrorState = { version: MIRROR_VERSION, sessions: {}, workspaces: {}, hiddenWorkspaces: {} }
   #runtimes = new Map<string, MirrorRuntime>()
   #registrations = new Map<string, () => void>()
   #approvalStreams = new Map<string, AbortController>()
@@ -244,6 +253,62 @@ export class RemoteMirrorService {
     return undefined
   }
 
+  /** Whether a remote workspace is deliberately excluded from local surfaces. */
+  isWorkspaceHidden(hostId: string, remoteWorkspaceId: string): boolean {
+    return this.#state.hiddenWorkspaces[key(hostId, remoteWorkspaceId)] !== undefined
+  }
+
+  /**
+   * Hide or show one remote workspace. Hiding archives its mirrored Sessions
+   * and removes the local workspace registration; the remote data is untouched.
+   * Showing unarchives those Sessions and lets the next sync rebuild the mapping.
+   */
+  async setWorkspaceHidden(
+    hostId: string,
+    remoteWorkspaceId: string,
+    remoteRoot: string,
+    title: string,
+    hidden: boolean,
+  ): Promise<void> {
+    const ref = key(hostId, remoteWorkspaceId)
+    if (!hidden) {
+      delete this.#state.hiddenWorkspaces[ref]
+      for (const record of Object.values(this.#state.sessions)) {
+        if (record.hostId !== hostId || record.remoteWorkspaceId !== remoteWorkspaceId) continue
+        try {
+          await this.#workspaceRegistry.unarchiveSession(record.localSessionId as SessionId)
+        } catch {
+          // The local Session may already be gone; showing the workspace can
+          // still recreate the mapping on the next sync.
+        }
+      }
+      await this.#save()
+      await this.sync()
+      return
+    }
+    this.#state.hiddenWorkspaces[ref] = {
+      hostId,
+      remoteWorkspaceId,
+      remoteRoot,
+      title,
+      updatedAt: new Date().toISOString(),
+    }
+    for (const record of Object.values(this.#state.sessions)) {
+      if (record.hostId !== hostId || record.remoteWorkspaceId !== remoteWorkspaceId) continue
+      await this.#archive(record.localSessionId as SessionId)
+    }
+    const workspaceRecord = this.#state.workspaces[ref]
+    if (workspaceRecord !== undefined) {
+      try {
+        await this.#workspaceRegistry.delete(workspaceRecord.localWorkspaceId as WorkspaceId)
+      } catch (error) {
+        this.#ctx.logger.warn('dsh-remote-local: could not remove hidden workspace %s: %s', ref, String(error))
+      }
+      delete this.#state.workspaces[ref]
+    }
+    await this.#save()
+  }
+
   /** Find the local mirror workspace for one remote workspace. */
   localWorkspaceId(hostId: string, remoteWorkspaceId: string): string | undefined {
     return this.#state.workspaces[key(hostId, remoteWorkspaceId)]?.localWorkspaceId
@@ -262,6 +327,7 @@ export class RemoteMirrorService {
     if (existing !== undefined && this.#sessions.get(existing as SessionId) !== undefined) return existing
     const workspaces = await this.#hosts.workspaces(hostId)
     for (const workspace of workspaces) {
+      if (this.isWorkspaceHidden(hostId, workspace.workspaceId)) continue
       const sessions = await this.#hosts.sessions(hostId, workspace.workspaceId)
       const summary = sessions.sessions.find(item => item.sessionId === remoteSessionId)
       if (summary === undefined) continue
@@ -272,6 +338,7 @@ export class RemoteMirrorService {
     const all = await this.#hosts.sessions(hostId)
     const summary = all.sessions.find(item => item.sessionId === remoteSessionId)
     if (summary === undefined) return undefined
+    if (summary.cwd !== null && this.#isHiddenCwd(hostId, summary.cwd)) return undefined
     const localWorkspace = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
     return (await this.#ensureMirror(host, summary, localWorkspace.workspace, localWorkspace.anchor))?.localSessionId
   }
@@ -314,7 +381,15 @@ export class RemoteMirrorService {
     const workspaces = await this.#hosts.workspaces(host.id)
     const covered = new Set<string>()
     const byPath = new Map<string, { workspace: Workspace; anchor: string }>()
+    const hiddenRoots = Object.values(this.#state.hiddenWorkspaces)
+      .filter(record => record.hostId === host.id)
+      .map(record => canonicalPath(record.remoteRoot))
     for (const workspace of workspaces) {
+      if (this.isWorkspaceHidden(host.id, workspace.workspaceId)) {
+        const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId)
+        for (const summary of sessions.sessions) covered.add(summary.sessionId)
+        continue
+      }
       const local = await this.#ensureWorkspace(host, workspace)
       byPath.set(workspace.path, { workspace: local, anchor: this.#anchorFor(local) })
       const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId)
@@ -326,6 +401,7 @@ export class RemoteMirrorService {
     const all = await this.#hosts.sessions(host.id)
     for (const summary of all.sessions) {
       if (covered.has(summary.sessionId)) continue
+      if (summary.cwd !== null && hiddenRoots.some(root => isWithin(summary.cwd ?? '', root))) continue
       const workspace = summary.cwd === null ? undefined : byPath.get(summary.cwd)
       if (workspace !== undefined) {
         await this.#ensureMirror(host, summary, workspace.workspace, workspace.anchor)
@@ -632,12 +708,24 @@ export class RemoteMirrorService {
     return join(this.#config.stateDir, 'anchors', safe(String(workspace.id)))
   }
 
+  #isHiddenCwd(hostId: string, cwd: string): boolean {
+    const path = canonicalPath(cwd)
+    return Object.values(this.#state.hiddenWorkspaces).some(
+      record => record.hostId === hostId && isWithin(path, canonicalPath(record.remoteRoot)),
+    )
+  }
+
   async #load(): Promise<void> {
     try {
       const raw = await readFile(join(this.#config.stateDir, 'mirrors.json'), 'utf8')
       const parsed = JSON.parse(raw) as Partial<MirrorState>
       if (parsed.version === MIRROR_VERSION && parsed.sessions !== undefined && parsed.workspaces !== undefined) {
-        this.#state = parsed as MirrorState
+        this.#state = {
+          version: MIRROR_VERSION,
+          sessions: parsed.sessions,
+          workspaces: parsed.workspaces,
+          hiddenWorkspaces: parsed.hiddenWorkspaces ?? {},
+        }
       }
     } catch {
       // First run or a corrupt cache: rebuild from connected hosts.
@@ -651,6 +739,11 @@ export class RemoteMirrorService {
     await writeFile(temp, `${JSON.stringify(this.#state, null, 2)}\n`, { mode: 0o600 })
     await rename(temp, path)
   }
+}
+
+/** Whether a path is the root or below it. */
+function isWithin(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`)
 }
 
 function isMirrorNoise(type: string): boolean {
