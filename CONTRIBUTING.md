@@ -4,7 +4,10 @@
 
 - Node.js 22.19 or newer
 - pnpm 11.21.0 (the version declared by the workspace)
-- DSH 0.2.1-rc.2 for the compatibility target
+- Official DSH Desktop 0.2.1-rc.2 for the supported compatibility target
+
+Other DSH GUI plugins, forks, modified clients, non-DSH GUIs, and other DSH versions are outside the
+tested support matrix.
 
 ## Setup
 

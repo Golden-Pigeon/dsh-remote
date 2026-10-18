@@ -22,6 +22,23 @@ Local DSH                                         Remote host
 └──────────────────────────────────────┘          └──────────────────────────────┘
 ```
 
+## Supported environment
+
+This plugin is developed for the **official DSH Desktop application**. The only tested and supported
+DSH version is:
+
+| Component | Tested version |
+|---|---|
+| DSH Desktop / official client | **0.2.1-rc.2** |
+| Plugin | **0.8.0** |
+| Remote DSH runtime | **0.2.1-rc.2** |
+| Remote Node.js | **22.19+** |
+| Remote OS | Linux or macOS |
+
+Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and other DSH versions have
+**not** been tested. The package's dependency range is intentionally permissive for installation, but
+it is not a compatibility or support guarantee. Pin DSH to `0.2.1-rc.2` when using this release.
+
 ## What works now
 
 | Capability | State |

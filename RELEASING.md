@@ -66,4 +66,5 @@ attaches the tarball to the GitHub release.
 ## Compatibility
 
 Keep `dsh.compatibility.dsh` aligned with the DSH releases exercised by `pnpm -r test`. The current
-test target is DSH `0.2.1-rc.2`.
+supported and tested client is the official DSH Desktop `0.2.1-rc.2`; other DSH GUI plugins, forks,
+modified clients, non-DSH GUIs, and other DSH versions have not been tested.

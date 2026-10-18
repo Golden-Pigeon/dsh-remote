@@ -2,6 +2,18 @@
 
 Remote development that appears as ordinary local sessions.
 
+## Supported environment
+
+This plugin targets the official **DSH Desktop** application. Tested/supported versions:
+
+- DSH Desktop `0.2.1-rc.2`
+- Plugin `0.8.0`
+- Remote DSH `0.2.1-rc.2`
+- Remote Node.js `22.19+` on Linux/macOS
+
+Other DSH GUI plugins, forks, modified clients, and other DSH versions have not been tested. The
+package dependency range is permissive for installation only; it is not a support guarantee.
+
 ## What it does
 
 - Durable host registry at `$DSH_HOME/remote/hosts.json` (mode `0600`).
