@@ -261,3 +261,40 @@ export interface SessionSnapshotOptions {
   /** Number of most-recent events to include. Defaults to 500; capped by the agent. */
   readonly limit?: number
 }
+
+/** Dense process-local Assistant stream frame forwarded by the remote agent. */
+export interface RemoteAssistantFrame {
+  readonly type: 'start' | 'chunk' | 'end'
+  readonly attemptId: string
+  readonly revision: number
+  readonly turn?: number
+  readonly step?: number
+  readonly index?: number
+  readonly time?: number
+  readonly chunk?: unknown
+  readonly outcome?:
+    | { readonly kind: 'committed'; readonly eventType: string; readonly seq: number }
+    | { readonly kind: 'abandoned' }
+}
+
+/** Validate a remote assistant frame without constraining its model chunk. */
+export function isRemoteAssistantFrame(value: unknown): value is RemoteAssistantFrame {
+  if (typeof value !== 'object' || value === null) return false
+  const frame = value as Record<string, unknown>
+  if (frame.type !== 'start' && frame.type !== 'chunk' && frame.type !== 'end') return false
+  if (typeof frame.attemptId !== 'string' || typeof frame.revision !== 'number') return false
+  if (frame.type === 'start') {
+    return typeof frame.turn === 'number' && typeof frame.step === 'number'
+  }
+  if (frame.type === 'chunk') {
+    return typeof frame.index === 'number' && typeof frame.time === 'number' && 'chunk' in frame
+  }
+  if (typeof frame.index !== 'number') return false
+  const outcome = frame.outcome
+  if (typeof outcome !== 'object' || outcome === null) return false
+  const kind = (outcome as Record<string, unknown>).kind
+  if (kind === 'abandoned') return true
+  if (kind !== 'committed') return false
+  const record = outcome as Record<string, unknown>
+  return typeof record.eventType === 'string' && typeof record.seq === 'number'
+}

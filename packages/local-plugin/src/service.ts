@@ -18,6 +18,7 @@ import {
   type AcceptedResult,
   type ApprovalOutcome,
   type RemoteApprovalFrame,
+  type RemoteAssistantFrame,
   type CreateSessionRequest,
   type CreateSessionResult,
   type CreateWorkspaceRequest,
@@ -337,6 +338,21 @@ export class RemoteHostsService {
     try {
       return await client.snapshotSession(sessionId, limit === undefined ? {} : { limit })
     } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Follow dense remote Assistant frames for one live Session. */
+  async *followAssistantFrames(
+    id: string,
+    sessionId: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<RemoteAssistantFrame> {
+    const client = this.#requireClient(id)
+    try {
+      yield* client.followAssistantFrames(sessionId, signal)
+    } catch (error) {
+      if (signal.aborted) return
       throw this.#remoteFailure(id, error)
     }
   }

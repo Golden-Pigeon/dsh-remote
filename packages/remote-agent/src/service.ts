@@ -22,6 +22,7 @@ import {
   RemoteProtocolError,
   type AcceptedResult,
   type RemoteApprovalRequest,
+  type RemoteAssistantFrame,
   type CreateSessionRequest,
   type CreateSessionResult,
   type CreateWorkspaceRequest,
@@ -57,6 +58,7 @@ import {
   writeState,
   type AgentState,
 } from './state.ts'
+import { AsyncQueue } from './queue.ts'
 import { followLiveSession } from './stream.ts'
 import { AGENT_VERSION, resolveDshVersion } from './version.ts'
 
@@ -459,6 +461,55 @@ export class RemoteAgentService {
       })
     }
     return live
+  }
+
+  /** Require one live Session without imposing a durable-event cursor. */
+  assertLiveSession(sessionId: string): Session {
+    const live = this.ctx.sessions.get(sessionId as SessionId)
+    if (live === undefined) {
+      throw new RemoteProtocolError({
+        code: 'session/not-live',
+        message: `session ${sessionId} is not live on this host`,
+        details: { sessionId },
+      })
+    }
+    return live
+  }
+
+  /** Follow dense process-local Assistant frames for one live Session. */
+  async *followAssistantFrames(
+    sessionId: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<RemoteAssistantFrame> {
+    this.assertLiveSession(sessionId)
+    const queue = new AsyncQueue<RemoteAssistantFrame>(2_048)
+    const onFrame = (payload: unknown): void => {
+      const record = payload as { agent?: { session?: { id?: unknown } }; frame?: unknown }
+      if (String(record.agent?.session?.id) !== sessionId) return
+      if (record.frame !== undefined) {
+        queue.push(record.frame as RemoteAssistantFrame)
+      }
+    }
+    const onDisposed = (session: Session): void => {
+      if (String(session.id) !== sessionId) return
+      queue.close()
+    }
+    const offFrame = this.ctx.on('agent/assistant-stream' as never, onFrame as never, { global: true } as never)
+    const offDisposed = this.ctx.on('session/disposed' as never, onDisposed as never, { global: true } as never)
+    const onAbort = (): void => { queue.close() }
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+    try {
+      for await (const frame of queue) {
+        if (signal.aborted) break
+        yield frame
+      }
+    } finally {
+      signal.removeEventListener('abort', onAbort)
+      offFrame()
+      offDisposed()
+      queue.close()
+    }
   }
 
   /** Follow one live session; call {@link assertCanFollow} first. */

@@ -36,6 +36,7 @@ export type {
   RemoteApprovalAnswer,
   RemoteApprovalFrame,
   RemoteApprovalRequest,
+  RemoteAssistantFrame,
   HostInfo,
   JsonPrimitive,
   JsonValue,
@@ -71,6 +72,7 @@ export {
   isRetryableCode,
 } from './errors.ts'
 export type { ProtocolErrorCode, RemoteProtocolErrorInit } from './errors.ts'
+export { isRemoteAssistantFrame } from './types.ts'
 
 export { EventCursor, cursorAfter, isCursor, parseCursorQuery } from './cursor.ts'
 export type { CursorAcceptance } from './cursor.ts'
@@ -78,6 +80,7 @@ export type { CursorAcceptance } from './cursor.ts'
 export {
   AGENT_ROUTES,
   matchAgentRoute,
+  sessionAssistantEventsPath,
   sessionCancelPath,
   sessionEventsPath,
   sessionPath,

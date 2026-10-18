@@ -12,6 +12,7 @@ import {
   matchAgentRoute,
   negotiateProtocol,
   parseSseStream,
+  sessionAssistantEventsPath,
   sessionEventsPath,
   sessionPath,
   workspaceSessionsPath,
@@ -70,6 +71,10 @@ describe('route table', () => {
     assert.deepEqual(matchAgentRoute(sessionPath('session-1')), { kind: 'session', sessionId: 'session-1' })
     assert.deepEqual(matchAgentRoute(sessionEventsPath('session-1', 3).split('?')[0] ?? ''), {
       kind: 'session-events',
+      sessionId: 'session-1',
+    })
+    assert.deepEqual(matchAgentRoute(sessionAssistantEventsPath('session-1')), {
+      kind: 'session-assistant-events',
       sessionId: 'session-1',
     })
     assert.deepEqual(matchAgentRoute(workspaceSessionsPath('workspace/a')), {

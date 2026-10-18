@@ -25,6 +25,7 @@ import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {
   ApprovalOutcome,
   RemoteApprovalRequest,
+  RemoteAssistantFrame,
   RemoteSessionEvent,
   RemoteSessionSummary,
   RemoteWorkspace,
@@ -78,6 +79,9 @@ interface MirrorRuntime {
   readonly session: Session
   timer: NodeJS.Timeout | undefined
   stream: AbortController | undefined
+  assistant: AbortController | undefined
+  remoteToLocalSeq: Map<number, number>
+  pendingAssistantEnds: Map<number, RemoteAssistantFrame>
   running: boolean
   stopped: boolean
   lastError: string | null
@@ -211,6 +215,7 @@ export class RemoteMirrorService {
       runtime.stopped = true
       if (runtime.timer !== undefined) clearTimeout(runtime.timer)
       runtime.stream?.abort()
+      runtime.assistant?.abort()
     }
     for (const dispose of this.#registrations.values()) dispose()
     this.#registrations.clear()
@@ -538,7 +543,10 @@ export class RemoteMirrorService {
       const runtime = this.#runtimes.get(existing.localSessionId)
       if (live !== undefined && runtime !== undefined && !runtime.stopped) {
         await this.#attach(workspace, live.id)
-        if (remote.live) this.#startStream(runtime)
+        if (remote.live) {
+          this.#startStream(runtime)
+          this.#startAssistantStream(runtime)
+        }
         return existing
       }
       const stalled = this.#runtimes.get(existing.localSessionId)
@@ -546,6 +554,7 @@ export class RemoteMirrorService {
         stalled.stopped = true
         if (stalled.timer !== undefined) clearTimeout(stalled.timer)
         stalled.stream?.abort()
+        stalled.assistant?.abort()
         this.#runtimes.delete(existing.localSessionId)
       }
       const registration = this.#registrations.get(existing.localSessionId)
@@ -574,8 +583,10 @@ export class RemoteMirrorService {
     await mkdir(anchor, { recursive: true })
     const localId = `session-${randomUUID()}`
     let session: Session
+    const remoteToLocalSeq = new Map<number, number>()
     try {
       const filtered = snapshot.events.filter(event => !isMirrorNoise(event.type))
+      for (const [index, event] of filtered.entries()) remoteToLocalSeq.set(event.seq, index)
       const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
       const seed = filtered.map((event, index) => toSeedEvent(event, index, seqMap))
       session = this.#sessions.create(localId as SessionId, {
@@ -610,6 +621,9 @@ export class RemoteMirrorService {
       session,
       timer: undefined,
       stream: undefined,
+      assistant: undefined,
+      remoteToLocalSeq,
+      pendingAssistantEnds: new Map(),
       running: false,
       stopped: false,
       lastError: null,
@@ -623,7 +637,10 @@ export class RemoteMirrorService {
     this.#registrations.set(localId, this.#agents.enter(agent as never, undefined))
     await this.#save()
     this.#schedule(runtime)
-    if (remote.live) this.#startStream(runtime)
+    if (remote.live) {
+      this.#startStream(runtime)
+      this.#startAssistantStream(runtime)
+    }
     this.#ctx.logger.info(
       'dsh-remote-local: mirrored remote session %s as local %s',
       remote.sessionId,
@@ -644,6 +661,7 @@ export class RemoteMirrorService {
       if (local === undefined) {
         runtime.stopped = true
         runtime.stream?.abort()
+        runtime.assistant?.abort()
         return
       }
       const snapshot = await this.#hosts.snapshot(
@@ -655,6 +673,7 @@ export class RemoteMirrorService {
         runtime.lastError = 'remote log grew past the mirror window'
         runtime.stopped = true
         runtime.stream?.abort()
+        runtime.assistant?.abort()
         return
       }
       let sawEnd = false
@@ -663,7 +682,7 @@ export class RemoteMirrorService {
         if (event.seq !== runtime.record.lastSeq) {
           throw new Error(`remote event gap at ${event.seq}, mirror ${runtime.record.lastSeq}`)
         }
-        if (!isMirrorNoise(event.type)) appendRemoteEvent(local, event, runtime)
+        this.#appendEvent(runtime, event)
         runtime.record.lastSeq = event.seq + 1
         if (event.type === 'turn/end') sawEnd = true
       }
@@ -672,9 +691,13 @@ export class RemoteMirrorService {
       if (!snapshot.live && runtime.record.lastSeq >= snapshot.cursor) {
         runtime.stopped = true
         runtime.stream?.abort()
+        runtime.assistant?.abort()
       }
       await this.#save()
-      if (snapshot.live && !runtime.stopped) this.#startStream(runtime)
+      if (snapshot.live && !runtime.stopped) {
+        this.#startStream(runtime)
+        this.#startAssistantStream(runtime)
+      }
     } catch (error) {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       this.#ctx.logger.warn(
@@ -712,7 +735,7 @@ export class RemoteMirrorService {
           runtime.lastError = `remote event gap at ${event.seq}, mirror ${runtime.record.lastSeq}`
           return
         }
-        if (!isMirrorNoise(event.type)) appendRemoteEvent(runtime.session, event, runtime)
+        this.#appendEvent(runtime, event)
         runtime.record.lastSeq = event.seq + 1
         runtime.record.updatedAt = new Date().toISOString()
         if (event.type === 'turn/end') this.#setRunning(runtime, false)
@@ -725,6 +748,97 @@ export class RemoteMirrorService {
         'dsh-remote-local: mirror stream %s failed: %s',
         runtime.record.remoteSessionId,
         runtime.lastError,
+      )
+    }
+  }
+
+  #appendEvent(runtime: MirrorRuntime, event: RemoteSessionEvent): void {
+    const before = (runtime.session as unknown as { seq: number }).seq
+    if (!isMirrorNoise(event.type)) appendRemoteEvent(runtime.session, event, runtime)
+    const after = (runtime.session as unknown as { seq: number }).seq
+    if (after > before) {
+      runtime.remoteToLocalSeq.set(event.seq, after - 1)
+      this.#flushAssistantEnd(runtime, event.seq)
+    }
+  }
+
+  #flushAssistantEnd(runtime: MirrorRuntime, remoteSeq: number): void {
+    const pending = runtime.pendingAssistantEnds.get(remoteSeq)
+    if (pending === undefined) return
+    const localSeq = runtime.remoteToLocalSeq.get(remoteSeq)
+    if (localSeq === undefined) return
+    runtime.pendingAssistantEnds.delete(remoteSeq)
+    if (pending.outcome?.kind !== 'committed') {
+      this.#emitAssistant(runtime, pending)
+      return
+    }
+    this.#emitAssistant(runtime, {
+      ...pending,
+      outcome: { ...pending.outcome, seq: localSeq },
+    })
+  }
+
+  #emitAssistant(runtime: MirrorRuntime, frame: RemoteAssistantFrame): void {
+    try {
+      const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
+      emit.call(this.#ctx, 'agent/assistant-stream', { agent: runtime.agent, frame })
+    } catch (error) {
+      this.#ctx.logger.warn(
+        'dsh-remote-local: local assistant frame %s failed: %s',
+        runtime.record.remoteSessionId,
+        String(error),
+      )
+    }
+  }
+
+  #startAssistantStream(runtime: MirrorRuntime): void {
+    if (runtime.stopped || this.#disposed || runtime.assistant !== undefined) return
+    const controller = new AbortController()
+    runtime.assistant = controller
+    void this.#followAssistant(runtime, controller.signal).finally(() => {
+      if (runtime.assistant === controller) runtime.assistant = undefined
+    })
+  }
+
+  async #followAssistant(runtime: MirrorRuntime, signal: AbortSignal): Promise<void> {
+    try {
+      for await (const frame of this.#hosts.followAssistantFrames(
+        runtime.record.hostId,
+        runtime.record.remoteSessionId,
+        signal,
+      )) {
+        if (runtime.stopped || this.#disposed || signal.aborted) return
+        if (frame.type === 'start') {
+          const { startedAfterSeq: _startedAfterSeq, ...rest } = frame as RemoteAssistantFrame & { startedAfterSeq?: number }
+          this.#emitAssistant(runtime, rest as RemoteAssistantFrame)
+          continue
+        }
+        if (frame.type === 'chunk') {
+          this.#emitAssistant(runtime, frame)
+          continue
+        }
+        const outcome = frame.outcome
+        if (outcome === undefined) return
+        if (outcome.kind !== 'committed') {
+          this.#emitAssistant(runtime, frame)
+          continue
+        }
+        const localSeq = runtime.remoteToLocalSeq.get(outcome.seq)
+        if (localSeq === undefined) {
+          runtime.pendingAssistantEnds.set(outcome.seq, frame)
+          continue
+        }
+        this.#emitAssistant(runtime, {
+          ...frame,
+          outcome: { ...outcome, seq: localSeq },
+        })
+      }
+    } catch (error) {
+      if (signal.aborted || runtime.stopped || this.#disposed) return
+      this.#ctx.logger.warn(
+        'dsh-remote-local: assistant stream %s failed: %s',
+        runtime.record.remoteSessionId,
+        error instanceof Error ? error.message : String(error),
       )
     }
   }

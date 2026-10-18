@@ -12,6 +12,7 @@
 import { EventCursor } from './cursor.ts'
 import { RemoteProtocolError } from './errors.ts'
 import {
+  sessionAssistantEventsPath,
   sessionCancelPath,
   sessionEventsPath,
   sessionPath,
@@ -20,10 +21,12 @@ import {
   AGENT_ROUTES,
 } from './routes.ts'
 import { parseSseStream } from './sse.ts'
+import { isRemoteAssistantFrame } from './types.ts'
 import type {
   AcceptedResult,
   ApprovalOutcome,
   RemoteApprovalFrame,
+  RemoteAssistantFrame,
   CreateSessionRequest,
   CreateSessionResult,
   CreateWorkspaceRequest,
@@ -260,6 +263,41 @@ export class RemoteAgentClient {
         throw new RemoteProtocolError({
           code: 'request/invalid',
           message: 'remote agent sent an unknown event frame',
+        })
+      }
+      yield frame
+    }
+  }
+
+  /** Follow one session's dense process-local Assistant frames. */
+  async *followAssistantFrames(
+    sessionId: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<RemoteAssistantFrame> {
+    const response = await this.#openStream(sessionAssistantEventsPath(sessionId), signal)
+    const body = response.body
+    if (body === null) {
+      throw new RemoteProtocolError({
+        code: 'request/invalid',
+        message: 'remote agent returned an empty assistant stream',
+      })
+    }
+    for await (const message of parseSseStream(body)) {
+      if (message.data === '') continue
+      let frame: unknown
+      try {
+        frame = JSON.parse(message.data)
+      } catch (error) {
+        throw new RemoteProtocolError({
+          code: 'request/invalid',
+          message: 'remote agent sent malformed assistant JSON',
+          cause: error,
+        })
+      }
+      if (!isRemoteAssistantFrame(frame)) {
+        throw new RemoteProtocolError({
+          code: 'request/invalid',
+          message: 'remote agent sent an unknown assistant frame',
         })
       }
       yield frame

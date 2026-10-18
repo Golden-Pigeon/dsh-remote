@@ -144,6 +144,10 @@ async function handleAgentRequest(
       streamApprovals(service, req, res)
       return
     }
+    if (route.kind === 'session-assistant-events') {
+      await streamAssistant(ctx, service, req, res, route.sessionId)
+      return
+    }
     const hostId = parseHostId(req)
     switch (route.kind) {
       case 'health':
@@ -238,6 +242,41 @@ async function streamSession(
     res.end()
   } catch (error) {
     ctx.logger.warn('dsh-remote-agent: session stream %s failed: %s', sessionId, String(error))
+    writeStreamEnd(res, 'error')
+    res.end()
+  } finally {
+    req.off('close', onClose)
+    controller.abort()
+  }
+}
+
+async function streamAssistant(
+  ctx: Context,
+  service: RemoteAgentService,
+  req: IncomingMessage,
+  res: ServerResponse,
+  sessionId: string,
+): Promise<void> {
+  service.assertLiveSession(sessionId)
+  const controller = new AbortController()
+  const onClose = (): void => controller.abort()
+  req.on('close', onClose)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders?.()
+  res.write('retry: 5000\n\n')
+  try {
+    for await (const frame of service.followAssistantFrames(sessionId, controller.signal)) {
+      if (res.writableEnded) break
+      res.write(`event: assistant\ndata: ${JSON.stringify(frame)}\n\n`)
+    }
+    res.end()
+  } catch (error) {
+    ctx.logger.warn('dsh-remote-agent: assistant stream %s failed: %s', sessionId, String(error))
     writeStreamEnd(res, 'error')
     res.end()
   } finally {
