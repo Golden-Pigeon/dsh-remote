@@ -5,9 +5,10 @@
 #   ./scripts/install-local.sh                 # desktop profile
 #   ./scripts/install-local.sh --profile web   # a DSH Web profile
 #
-# The desktop app must be fully quit first. The script builds the workspace,
-# packages the plugin (including the bundled dsh-remote-agent tarball), and
-# installs it with the DSH CLI.
+# The script builds the workspace, packages the plugin (including the bundled
+# dsh-remote-agent tarball), and installs it with the DSH CLI. It is safe to run
+# while the desktop app is open; restart the app afterwards to load the new host
+# and client bundles.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,8 +16,7 @@ PROFILE="desktop"
 if [ "${1:-}" = "--profile" ] && [ -n "${2:-}" ]; then PROFILE="$2"; fi
 
 if [ "$PROFILE" = "desktop" ] && pgrep -f "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness" >/dev/null 2>&1; then
-  printf 'install-local: please fully quit DSH Desktop (Cmd+Q, including the tray process), then rerun.\n' >&2
-  exit 1
+  printf 'install-local: DSH Desktop is running; installing now. Restart it after this finishes to load the new bundles.\n'
 fi
 
 DSH_BIN="${DSH_BIN:-}"

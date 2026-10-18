@@ -39,7 +39,8 @@ Local DSH                                         Remote host
 
 ## Install
 
-Quit DSH Desktop completely (including the tray process), then:
+Run the installer. It can install while DSH Desktop is open; restart the app afterwards to load the
+new host and client bundles:
 
 ```sh
 cd /path/to/dsh-remote/dsh-remote
