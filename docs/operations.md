@@ -66,10 +66,7 @@ The sidebar **Workspaces** header **+** opens a small chooser:
 
 - **本地新建工作区** replays the native click, so the shipped directory browser is unchanged;
 - **远程新建工作区…** asks for a connected host and an absolute remote path, creates the remote
-  workspace, creates its first remote Session, waits for the local mirror, and opens it. Check
-  **不显示在本地侧栏** for temporary/test workspaces; the remote workspace is not mirrored locally.
-- Settings → 远程开发 → 工作区 has **隐藏 / 显示到侧栏** for every remote workspace. Hiding archives
-  its local mirror Sessions and removes the local row; showing rebuilds them from the remote log.
+  workspace, creates its first remote Session, waits for the local mirror, and opens it.
 
 The **Workspace files** and **New terminal** panels are Session-scoped:
 
@@ -82,6 +79,14 @@ Session-routing provider. This is profile-local; `app.asar` is untouched.
 
 The Settings page is for host/workspace management only; the remote conversation is not a drawer or
 iframe.
+
+## Test-only workspace isolation
+
+Hidden workspaces are an agent/debug capability, not a Settings UI control. Use the agent tools:
+
+- `remote_workspace_add` with `hidden: true` creates the remote workspace without a local sidebar row;
+- `remote_workspace_hide` hides or restores an existing remote workspace. Hiding archives its local
+  mirror Sessions and removes the local row; showing rebuilds them from the remote log.
 
 ## Model credentials
 

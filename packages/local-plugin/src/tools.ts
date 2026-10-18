@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@dsh-remote/protocol'
 import type { RemoteHostsService } from './service.ts'
+import type { RemoteMirrorService } from './mirror/service.ts'
 
 type JsonObject = Record<string, JsonValue>
 
@@ -25,7 +26,7 @@ function toJsonObject(value: unknown): JsonObject {
 }
 
 /** Register the remote-development tool family. */
-export function registerRemoteTools(ctx: Context, service: RemoteHostsService): void {
+export function registerRemoteTools(ctx: Context, service: RemoteHostsService, mirrors?: RemoteMirrorService): void {
   ctx.tools.register(defineTool({
     name: 'remote_hosts_list',
     description: 'List configured remote development hosts, their SSH destinations, connection phases, and remote host facts. Use this before connecting or listing remote workspaces.',
@@ -144,6 +145,10 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
       hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
       path: { type: 'string', required: true, description: 'Absolute remote directory path.' },
       title: { type: 'string', description: 'Optional display title.' },
+      hidden: {
+        type: 'boolean',
+        description: 'Test/debug only: keep this remote workspace out of local sidebar surfaces. Not a Settings UI option.',
+      },
     },
     output: {
       schema: {
@@ -156,10 +161,44 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
       render: renderJson,
     },
     async execute(args) {
-      return { workspace: toJsonObject(await service.createWorkspace(args.hostId, {
+      const workspace = await service.createWorkspace(args.hostId, {
         path: args.path,
         ...args.title === undefined ? {} : { title: args.title },
-      })) }
+      })
+      if (args.hidden === true) {
+        if (mirrors === undefined) throw new Error('session mirroring is disabled')
+        await mirrors.setWorkspaceHidden(args.hostId, workspace.workspaceId, workspace.path, workspace.title, true)
+      }
+      return { workspace: toJsonObject(workspace) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remote_workspace_hide',
+    description: 'Test/debug only: hide or show one remote workspace in local sidebar surfaces. Hidden workspaces remain on the remote host and are not exposed as a Settings UI control.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
+      workspaceId: { type: 'string', required: true, description: 'Remote workspace id.' },
+      hidden: { type: 'boolean', description: 'True to hide (default), false to show again.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          hidden: { type: 'boolean', required: true },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      if (mirrors === undefined) throw new Error('session mirroring is disabled')
+      const hidden = args.hidden !== false
+      const workspaces = await service.workspaces(args.hostId)
+      const workspace = workspaces.find(item => item.workspaceId === args.workspaceId)
+      if (workspace === undefined) throw new Error(`unknown remote workspace ${args.workspaceId}`)
+      await mirrors.setWorkspaceHidden(args.hostId, args.workspaceId, workspace.path, workspace.title, hidden)
+      return { hidden }
     },
   }))
 

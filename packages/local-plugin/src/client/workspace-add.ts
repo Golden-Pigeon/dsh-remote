@@ -148,14 +148,6 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
   pathInput.autocomplete = 'off'
   pathLabel.append(pathText, pathInput)
 
-  const hiddenLabel = document.createElement('label')
-  hiddenLabel.className = `${DIALOG_CLASS}-check`
-  const hiddenInput = document.createElement('input')
-  hiddenInput.type = 'checkbox'
-  const hiddenText = document.createElement('span')
-  hiddenText.textContent = '不显示在本地侧栏（临时/测试工作区）'
-  hiddenLabel.append(hiddenInput, hiddenText)
-
   const error = document.createElement('p')
   error.className = `${DIALOG_CLASS}-error`
   error.setAttribute('role', 'alert')
@@ -172,7 +164,7 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
   create.textContent = '创建并打开'
   actions.append(cancel, create)
 
-  dialog.append(title, subtitle, hostLabel, pathLabel, hiddenLabel, error, actions)
+  dialog.append(title, subtitle, hostLabel, pathLabel, error, actions)
   overlay.append(dialog)
   document.body.append(overlay)
 
@@ -232,15 +224,7 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
     create.textContent = '创建中…'
     void (async () => {
       try {
-        const hidden = hiddenInput.checked
-        const workspace = await flow.api.createWorkspace(host.id, {
-          path,
-          ...hidden ? { hidden: true } : {},
-        })
-        if (hidden) {
-          close()
-          return
-        }
+        const workspace = await flow.api.createWorkspace(host.id, { path })
         const session = await flow.api.createSession(host.id, { workspaceId: workspace.workspaceId })
         if (session.localSessionId !== undefined) {
           close()
@@ -326,8 +310,6 @@ function ensureStyles(): void {
       font: inherit; outline: none;
     }
     .${DIALOG_CLASS}-input:focus { border-color: #4f8cff; }
-    .${DIALOG_CLASS}-check { display: flex; align-items: center; gap: 7px; margin: 12px 0; color: rgba(255,255,255,.72); font-size: 12px; }
-    .${DIALOG_CLASS}-check input { margin: 0; }
     .${DIALOG_CLASS}-error { min-height: 18px; margin: 10px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
     .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
     .${DIALOG_CLASS}-button {

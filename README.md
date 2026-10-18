@@ -64,8 +64,7 @@ Reopen DSH. **Settings → 远程开发** appears.
 3. In the sidebar **Workspaces** header, click **+** and choose **远程新建工作区…**; pick the
    connected host and enter an existing remote directory (for example `/tmp`), then **创建并打开**.
    The remote workspace appears in the normal left sidebar as `my-host · tmp`. Choose
-   **本地新建工作区** to keep the native local directory flow. For temporary/test workspaces, check
-   **不显示在本地侧栏** before **创建并打开**: the remote workspace is created but never mirrored locally.
+   **本地新建工作区** to keep the native local directory flow.
 4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
    Conversation UI**. The workspace row's **New session** action uses the same remote path.
 5. Type in the usual composer. The remote DSH runs the turn; the local transcript updates live. Tool
@@ -73,11 +72,15 @@ Reopen DSH. **Settings → 远程开发** appears.
 6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
    use the local machine, remote mirror Sessions use the remote workspace.
 
-Existing remote workspaces can be hidden or restored from **Settings → 远程开发 → 工作区** without
-deleting remote data. Hiding archives its local mirror Sessions and removes the local workspace row;
-showing rebuilds the mirror.
 
 The Settings page is now only host/workspace management. The conversation is not a popup.
+
+## Test-only workspace isolation
+
+This is intentionally not a Settings UI option. Agent tests can call `remote_workspace_add` with
+`hidden: true`, or `remote_workspace_hide` for an existing workspace. Hidden workspaces remain on the
+remote host, are not mirrored into the sidebar, and can be shown again with `remote_workspace_hide`
+`hidden: false`.
 
 ## How the native session works
 
@@ -116,7 +119,8 @@ credentials. The host card shows **模型代理：本地代理 / 远端直连 / 
 | `remote_host_add` | Add an SSH host and start provisioning |
 | `remote_host_connect` | Connect/reconnect/refresh |
 | `remote_host_provision` | Force reinstall/restart and reconnect |
-| `remote_workspace_add` | Register a remote directory |
+| `remote_workspace_add` | Register a remote directory; pass `hidden: true` for test-only isolation |
+| `remote_workspace_hide` | Test/debug: hide or restore a remote workspace in local sidebar surfaces |
 | `remote_workspaces_list` | List remote workspaces |
 | `remote_session_create` | Create a remote session |
 | `remote_sessions_list` | List remote sessions |

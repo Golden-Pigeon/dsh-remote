@@ -7,7 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { AcceptedResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
-import type { HostCreateSessionResult, HostWorkspace, MirrorFileResult } from '../host-api/contract.ts'
+import type { HostCreateSessionResult, MirrorFileResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -43,9 +43,8 @@ export interface HostsApi {
   readonly disconnect: (hostId: string) => Promise<HostView>
   readonly refresh: (hostId: string) => Promise<HostView>
   readonly provision: (hostId: string) => Promise<HostView>
-  readonly workspaces: (hostId: string) => Promise<{ readonly workspaces: readonly HostWorkspace[] }>
-  readonly createWorkspace: (hostId: string, input: { path: string; title?: string; hidden?: boolean }) => Promise<RemoteWorkspace>
-  readonly setWorkspaceHidden: (hostId: string, workspaceId: string, hidden: boolean) => Promise<{ hidden: boolean }>
+  readonly workspaces: (hostId: string) => Promise<WorkspacesResult>
+  readonly createWorkspace: (hostId: string, input: { path: string; title?: string }) => Promise<RemoteWorkspace>
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
@@ -72,7 +71,6 @@ export function createHostsApi(ctx: Context): HostsApi {
     provision: hostId => call('host/provision', { hostId }),
     workspaces: hostId => call('host/workspaces', { hostId }),
     createWorkspace: (hostId, input) => call('host/workspace/create', { hostId, ...input }),
-    setWorkspaceHidden: (hostId, workspaceId, hidden) => call('host/workspace/hide', { hostId, workspaceId, hidden }),
     sessions: (hostId, workspaceId) => call('host/sessions', {
       hostId,
       ...workspaceId === undefined ? {} : { workspaceId },

@@ -61,7 +61,7 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   )
 
   ctx.inject(['tools'], child => {
-    registerRemoteTools(child, service)
+    registerRemoteTools(child, service, mirrors)
   })
 
   ctx.effect(

@@ -11,7 +11,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { RemoteSessionSummary } from '@dsh-remote/protocol'
 import type { HostView } from '../hosts/types.ts'
-import type { HostWorkspace, RemoteHostsState } from '../host-api/contract.ts'
+import type { RemoteHostsState } from '../host-api/contract.ts'
+import type { RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostsApi } from './api.ts'
 import panelCss from './panel.css'
 
@@ -39,7 +40,7 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [expandedHost, setExpandedHost] = useState<string | null>(null)
-  const [workspaces, setWorkspaces] = useState<Record<string, HostWorkspace[] | undefined>>({})
+  const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
   const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
   const [workspaceDraft, setWorkspaceDraft] = useState('')
@@ -176,20 +177,6 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
   }
 
 
-
-  async function setWorkspaceHidden(host: HostView, workspace: HostWorkspace, hidden: boolean): Promise<void> {
-    setBusy(`hide:${host.id}:${workspace.workspaceId}`)
-    setError(null)
-    try {
-      await api.setWorkspaceHidden(host.id, workspace.workspaceId, hidden)
-      await loadWorkspaces(host.id)
-      setNotice(hidden ? '工作区已隐藏，不再显示在本地侧栏。' : '工作区已恢复显示，正在同步到本地侧栏。')
-    } catch (failure) {
-      setError(messageOf(failure, hidden ? '隐藏工作区失败' : '显示工作区失败'))
-    } finally {
-      setBusy(null)
-    }
-  }
 
   async function newSession(host: HostView, workspaceId: string): Promise<void> {
     setBusy(`create:${host.id}:${workspaceId}`)
@@ -426,28 +413,16 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
                               >
                                 <span className="dshr-caret">{open ? '▾' : '▸'}</span>
                                 <span>{workspace.title}</span>
-                                {workspace.hidden === true && <span className="dshr-hidden-badge">已隐藏</span>}
                                 <code>{workspace.path}</code>
                                 <span className="dshr-count">{workspace.sessionIds.length} 个会话</span>
                               </button>
                               <button
                                 type="button"
                                 className="dshr-button dshr-button-small"
-                                disabled={busy !== null || workspace.hidden === true}
-                                title={workspace.hidden === true ? '先显示到侧栏，再创建本地镜像会话' : undefined}
+                                disabled={busy !== null}
                                 onClick={() => { void newSession(host, workspace.workspaceId) }}
                               >
                                 {busy === `create:${host.id}:${workspace.workspaceId}` ? '创建中…' : '+ 新会话'}
-                              </button>
-                              <button
-                                type="button"
-                                className="dshr-button dshr-button-small"
-                                disabled={busy !== null}
-                                onClick={() => { void setWorkspaceHidden(host, workspace, workspace.hidden !== true) }}
-                              >
-                                {busy === `hide:${host.id}:${workspace.workspaceId}`
-                                  ? '处理中…'
-                                  : workspace.hidden === true ? '显示到侧栏' : '隐藏'}
                               </button>
                             </div>
                             {open && (
