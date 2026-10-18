@@ -30,7 +30,7 @@ Local DSH                                         Remote host
 | Remote sessions appear in the normal sidebar | Available |
 | Remote sessions open in the normal Conversation UI | Available |
 | Prompts, stop, transcripts, tool cards, usage | Available |
-| Local model key proxy through a reverse SSH tunnel | Available |
+| Direct remote key (default) or optional local key proxy | Available |
 | Remote file tree and file previews | Available (SSH-backed) |
 | Remote terminal per Session | Available (local Sessions keep local PTY; remote Sessions use SSH PTY) |
 | Agent tools for host/workspace/session operations | Available |
@@ -91,15 +91,18 @@ ordinary client code paths handle rendering, selection, streaming, and the trans
 
 ## Model credentials
 
-The model API key stays on the local machine:
+**Default: direct key on the remote host.** The plugin resolves `DEEPSEEK_API_KEY` from the local DSH
+credential store and writes it into the remote `dsh web` environment, with
+`DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic`. The remote agent calls DeepSeek directly.
 
-- local plugin resolves `DEEPSEEK_API_KEY` from the local DSH credential store;
-- remote DSH starts with `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
+**Optional: local proxy.** Set `credentialProxy: true` to keep the key local:
+
+- remote DSH gets `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
 - the SSH tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
-If no local key is resolved, the plugin still provisions and connects; configure credentials in the
-remote DSH UI or use `credentialProxy: false`. The host card shows **模型代理：本地代理 / 远端**.
+If no local key resolves, the plugin still provisions and connects; configure the remote DSH's own
+credentials. The host card shows **模型代理：本地代理 / 远端直连 / 远端默认**.
 
 ## Agent tools
 
@@ -131,7 +134,9 @@ and Bun. Windows remotes are not supported.
 - The remote agent is loopback-only and bearer-authenticated. Its write surface is limited to
   workspace/session create, prompt, and cancel. Prompts can make the remote DSH use its own tools under
   the remote sandbox and approval policy.
-- The real model key never reaches the remote host; only the local proxy has it.
+- In the default direct mode, the resolved model key is written to the remote systemd/nohup
+  environment. Use this only on a trusted remote account. Set `credentialProxy: true` to keep the key
+  local and proxy model traffic through the reverse SSH tunnel.
 - Browser requests use DSH Connection's authenticated `/api` Fetch route. Tokens/credentials are stored
   in `0600` files and never returned to the browser.
 - File-tree, preview, and terminal traffic also stays inside the authenticated SSH tunnel.
@@ -147,7 +152,12 @@ and Bun. Windows remotes are not supported.
     remoteInstallDir: ~/.local/share/dsh-remote
     remoteDshVersion: 0.2.1-rc.2
     remoteStart: systemd          # systemd | nohup | none
-    credentialProxy: true
+    # Direct key mode (default): copy the resolved key to the remote service env.
+    credentialProxy: false
+    copyModelKey: true
+    remoteModelBaseUrl: https://api.deepseek.com/anthropic
+
+    # Optional proxy mode: keep the key local.
     credentialProxyUpstream: https://api.deepseek.com/anthropic
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY

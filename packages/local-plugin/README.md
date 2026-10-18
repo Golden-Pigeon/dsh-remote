@@ -9,8 +9,8 @@ Remote development that appears as ordinary local sessions.
 - **Plugin-owned provisioning**: uploads the bundled `dsh-remote-agent` tarball, installs pnpm/DSH
   when missing, starts remote `dsh web`, waits for it, and connects. No separate installer command.
 - One loopback SSH tunnel per host, health checks, exponential backoff, manual reconnect.
-- Reverse SSH forward for the **local model credential proxy**; the real API key never goes to the
-  remote host.
+- Default direct key mode: the resolved local key is copied into the remote service environment.
+- Optional reverse SSH forward and **local model credential proxy** for key-local deployments.
 - **Native session mirror**: remote workspaces/sessions become local workspaces and Sessions in the
   ordinary sidebar. A small custom Agent façade routes prompts and cancellation to the remote agent
   while the normal Conversation UI renders the mirrored events.
@@ -63,5 +63,6 @@ See [`cordis.patch.yml`](cordis.patch.yml) and
 ## Security
 
 The token stays local and is never returned to the browser. The browser uses DSH's authenticated
-`/api` route. The model key is injected by the local proxy; the remote DSH receives only a placeholder
-key. See the [root README](../../README.md#security).
+`/api` route. By default the model key is written to the remote service environment; set
+`credentialProxy: true` to keep it local and inject it through the reverse-tunnel proxy. See the
+[root README](../../README.md#security).

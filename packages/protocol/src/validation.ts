@@ -60,6 +60,8 @@ function isHostInfo(value: unknown): value is HostInfo {
     && Array.isArray(value.capabilities)
     && value.capabilities.every(isString)
     && typeof value.workspaceCount === 'number'
+    && (value.modelBaseUrl === undefined || value.modelBaseUrl === null || isString(value.modelBaseUrl))
+    && (value.modelKeyConfigured === undefined || typeof value.modelKeyConfigured === 'boolean')
 }
 
 function isApprovalRequest(value: unknown): value is RemoteApprovalRequest {

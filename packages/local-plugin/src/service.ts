@@ -76,6 +76,9 @@ export class RemoteHostsService {
   readonly #resolveModelKey: (() => Promise<string | undefined>) | undefined
   #proxy: ModelCredentialProxy | undefined
   #proxyAddress: CredentialProxyAddress | undefined
+  #directModel: { readonly baseUrl: string; readonly apiKey: string } | undefined
+  #directModelAttempted = false
+  readonly #modelReconciled = new Set<string>()
   readonly #records = new Map<string, HostRecord>()
   readonly #runtime = new Map<string, HostRuntime>()
   readonly #tunnels = new Map<string, Tunnel>()
@@ -261,18 +264,17 @@ export class RemoteHostsService {
     this.#clearReconnect(id)
     await this.#stopTransport(id)
     const proxy = await this.#ensureModelProxy()
+    const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
     this.#setRuntime(id, {
       ...idleRuntime(),
       phase: 'installing',
       modelProxy: proxy !== undefined,
+      modelDirect: direct !== undefined,
       detail: '正在重新安装远端 agent…',
     })
     try {
       await this.#provisioner.ensureInstalled(target, {
-        ...proxy === undefined ? {} : {
-          modelBaseUrl: `http://127.0.0.1:${this.config.credentialProxyRemotePort}`,
-          modelApiKey: 'dsh-remote-proxy',
-        },
+        ...this.#modelEnvironment(proxy, direct),
         onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
       })
     } catch (error) {
@@ -421,6 +423,8 @@ export class RemoteHostsService {
     await this.#proxy?.stop()
     this.#proxy = undefined
     this.#proxyAddress = undefined
+    this.#directModel = undefined
+    this.#directModelAttempted = false
     this.#records.clear()
     this.#runtime.clear()
     this.#connectPromises.clear()
@@ -441,7 +445,12 @@ export class RemoteHostsService {
 
     const target = parseSshTarget(record.sshTarget)
     const proxy = await this.#ensureModelProxy()
-    this.#setRuntime(id, { ...this.#runtimeFor(id), modelProxy: proxy !== undefined })
+    const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+    this.#setRuntime(id, {
+      ...this.#runtimeFor(id),
+      modelProxy: proxy !== undefined,
+      modelDirect: direct !== undefined,
+    })
     const reverseForward = proxy === undefined
       ? undefined
       : { remotePort: this.config.credentialProxyRemotePort, localPort: proxy.port }
@@ -466,10 +475,7 @@ export class RemoteHostsService {
         })
         try {
           await this.#provisioner.ensureInstalled(target, {
-            ...proxy === undefined ? {} : {
-              modelBaseUrl: `http://127.0.0.1:${this.config.credentialProxyRemotePort}`,
-              modelApiKey: 'dsh-remote-proxy',
-            },
+            ...this.#modelEnvironment(proxy, direct),
             onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
           })
           const discovery = await this.#discover(target)
@@ -528,6 +534,9 @@ export class RemoteHostsService {
         hostId: id,
       })
       const health = await client.health()
+      if (await this.#reconcileModelEnvironment(id, target, health, proxy, direct, tunnel)) {
+        return this.#doConnect(id)
+      }
       this.#tunnels.set(id, tunnel)
       this.#clients.set(id, client)
       this.#setConnected(id, health)
@@ -540,6 +549,87 @@ export class RemoteHostsService {
       this.#scheduleReconnect(id)
       throw failure
     }
+  }
+
+  async #reconcileModelEnvironment(
+    id: string,
+    target: ParsedSshTarget,
+    health: { readonly modelBaseUrl?: string | null; readonly modelKeyConfigured?: boolean },
+    proxy: CredentialProxyAddress | undefined,
+    direct: { readonly baseUrl: string; readonly apiKey: string } | undefined,
+    tunnel: Tunnel,
+  ): Promise<boolean> {
+    const desired = proxy === undefined
+      ? direct?.baseUrl
+      : `http://127.0.0.1:${this.config.credentialProxyRemotePort}`
+    if (desired === undefined) return false
+    const current = health.modelBaseUrl?.replace(/\/+$/u, '') ?? null
+    const matches = current === desired.replace(/\/+$/u, '')
+      && (proxy === undefined ? health.modelKeyConfigured === true : health.modelKeyConfigured !== false)
+    if (matches) {
+      this.#modelReconciled.delete(id)
+      return false
+    }
+    if (this.#modelReconciled.has(id) || !this.config.autoProvision) {
+      this.ctx.logger.warn(
+        'dsh-remote: model environment for %s still differs from this profile (%s vs %s)',
+        id,
+        current ?? 'unset',
+        desired,
+      )
+      return false
+    }
+    this.#modelReconciled.add(id)
+    this.ctx.logger.warn(
+      'dsh-remote: remote model environment for %s is %s, expected %s; reinstalling',
+      id,
+      current ?? 'unset',
+      desired,
+    )
+    await tunnel.stop()
+    try {
+      await this.#provisioner.ensureInstalled(target, {
+        ...this.#modelEnvironment(proxy, direct),
+        onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
+      })
+    } catch (error) {
+      this.#modelReconciled.delete(id)
+      throw error
+    }
+    return true
+  }
+
+  async #ensureDirectModel(): Promise<{ readonly baseUrl: string; readonly apiKey: string } | undefined> {
+    if (this.config.credentialProxy || !this.config.copyModelKey) return undefined
+    if (this.#directModelAttempted) return this.#directModel
+    this.#directModelAttempted = true
+    let key: string | undefined
+    try {
+      key = await this.#resolveModelKey?.()
+    } catch (error) {
+      this.ctx.logger.warn('dsh-remote: could not resolve local model credential: %s', String(error))
+      return undefined
+    }
+    if (key === undefined || key.trim() === '') {
+      this.ctx.logger.warn('dsh-remote: no local DEEPSEEK_API_KEY; remote host must use its own credentials')
+      return undefined
+    }
+    this.#directModel = { baseUrl: this.config.remoteModelBaseUrl, apiKey: key }
+    return this.#directModel
+  }
+
+  #modelEnvironment(
+    proxy: CredentialProxyAddress | undefined,
+    direct: { readonly baseUrl: string; readonly apiKey: string } | undefined,
+  ): { modelBaseUrl?: string; modelApiKey?: string } {
+    if (proxy !== undefined) {
+      return {
+        modelBaseUrl: `http://127.0.0.1:${this.config.credentialProxyRemotePort}`,
+        modelApiKey: 'dsh-remote-proxy',
+      }
+    }
+    if (direct !== undefined) return { modelBaseUrl: direct.baseUrl, modelApiKey: direct.apiKey }
+    return {}
   }
 
   async #ensureModelProxy(): Promise<CredentialProxyAddress | undefined> {
@@ -710,7 +800,9 @@ export class RemoteHostsService {
       connectedAt: this.#runtimeFor(id).connectedAt ?? new Date().toISOString(),
       detail: this.#runtimeFor(id).modelProxy
         ? '已连接；模型请求经本地凭据代理转发'
-        : '已连接',
+        : this.#runtimeFor(id).modelDirect
+          ? '已连接；模型请求由远端直连 DeepSeek'
+          : '已连接；远端使用自身凭据或未配置模型 key',
     })
   }
 

@@ -21,7 +21,11 @@
     remoteStart: systemd
     provisionTimeoutMs: 600000
 
-    credentialProxy: true
+    credentialProxy: false
+    copyModelKey: true
+    remoteModelBaseUrl: https://api.deepseek.com/anthropic
+
+    # Optional proxy mode:
     credentialProxyUpstream: https://api.deepseek.com/anthropic
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY

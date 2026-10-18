@@ -51,6 +51,8 @@ export interface HostRuntime {
   readonly detail: string | null
   /** Whether the local model credential proxy is active for this host. */
   readonly modelProxy: boolean
+  /** Whether the resolved local model key was copied into the remote environment. */
+  readonly modelDirect: boolean
 }
 
 /** Browser/tool-safe host projection. */
@@ -76,6 +78,8 @@ export interface HostView {
   readonly detail: string | null
   /** Whether the local model credential proxy is active for this host. */
   readonly modelProxy: boolean
+  /** Whether the resolved local model key was copied into the remote environment. */
+  readonly modelDirect: boolean
 }
 
 /** Input accepted by `host/add`. */
@@ -100,6 +104,7 @@ export function idleRuntime(): HostRuntime {
     connectedAt: null,
     detail: null,
     modelProxy: false,
+    modelDirect: false,
   }
 }
 
@@ -125,5 +130,6 @@ export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
     connectedAt: runtime.connectedAt,
     detail: runtime.detail,
     modelProxy: runtime.modelProxy,
+    modelDirect: runtime.modelDirect,
   }
 }

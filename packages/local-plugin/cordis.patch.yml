@@ -28,9 +28,12 @@
         remoteStart: systemd
         provisionTimeoutMs: 600000
 
-        # Keep the model key local; forward provider traffic through a reverse
-        # SSH tunnel to a loopback proxy.
-        credentialProxy: true
+        # Default: copy the locally resolved key into the remote service env.
+        credentialProxy: false
+        copyModelKey: true
+        remoteModelBaseUrl: https://api.deepseek.com/anthropic
+
+        # Optional: keep the key local and proxy through a reverse SSH tunnel.
         credentialProxyUpstream: https://api.deepseek.com/anthropic
         credentialProxyRemotePort: 47821
         modelCredentialRef: DEEPSEEK_API_KEY

@@ -52,6 +52,10 @@ export interface HostInfo {
   readonly capabilities: readonly AgentCapability[]
   /** Number of registered remote workspaces at the instant of the call. */
   readonly workspaceCount: number
+  /** Provider base URL configured for the remote DSH, without the key. */
+  readonly modelBaseUrl?: string | null
+  /** Whether a model API key is present in the remote process environment. */
+  readonly modelKeyConfigured?: boolean
 }
 
 /** Closed approval outcomes understood by the remote and local approval seams. */

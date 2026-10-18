@@ -155,6 +155,8 @@ export class RemoteAgentService {
         'web.url',
       ],
       workspaceCount: this.ctx.workspaceRegistry.list().length,
+      modelBaseUrl: process.env.DEEPSEEK_BASE_URL ?? null,
+      modelKeyConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
     }
   }
 

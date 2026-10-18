@@ -32,8 +32,12 @@ export interface Config {
   /** `systemd`, `nohup`, or `none`. */
   readonly remoteStart?: string
   readonly provisionTimeoutMs?: number
-  /** Keep the model key local and proxy it through a reverse SSH tunnel. */
+  /** Keep the model key local and proxy it through a reverse SSH tunnel. Default false. */
   readonly credentialProxy?: boolean
+  /** Copy the resolved local model key into the remote service environment. */
+  readonly copyModelKey?: boolean
+  /** Provider base URL used when the key is copied to the remote host. */
+  readonly remoteModelBaseUrl?: string
   readonly credentialProxyUpstream?: string
   /** Remote loopback port that receives the reverse-forwarded proxy. */
   readonly credentialProxyRemotePort?: number
@@ -65,7 +69,9 @@ export const Config: z<Config> = z.object({
   remotePnpmVersion: z.string().default('11.21.0'),
   remoteStart: z.string().default('systemd'),
   provisionTimeoutMs: z.number().min(60_000).max(1_800_000).default(600_000),
-  credentialProxy: z.boolean().default(true),
+  credentialProxy: z.boolean().default(false),
+  copyModelKey: z.boolean().default(true),
+  remoteModelBaseUrl: z.string().default('https://api.deepseek.com/anthropic'),
   credentialProxyUpstream: z.string().default('https://api.deepseek.com/anthropic'),
   credentialProxyRemotePort: z.number().min(1).max(65_535).default(47_821),
   modelCredentialRef: z.string().default('DEEPSEEK_API_KEY'),
@@ -96,6 +102,8 @@ export interface ResolvedConfig {
   readonly remoteStart: RemoteStartMode
   readonly provisionTimeoutMs: number
   readonly credentialProxy: boolean
+  readonly copyModelKey: boolean
+  readonly remoteModelBaseUrl: string
   readonly credentialProxyUpstream: string
   readonly credentialProxyRemotePort: number
   readonly modelCredentialRef: string
@@ -158,7 +166,9 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
     remotePnpmVersion: config.remotePnpmVersion ?? '11.21.0',
     remoteStart,
     provisionTimeoutMs: config.provisionTimeoutMs ?? 600_000,
-    credentialProxy: config.credentialProxy ?? true,
+    credentialProxy: config.credentialProxy ?? false,
+    copyModelKey: config.copyModelKey ?? true,
+    remoteModelBaseUrl: config.remoteModelBaseUrl ?? 'https://api.deepseek.com/anthropic',
     credentialProxyUpstream: config.credentialProxyUpstream ?? 'https://api.deepseek.com/anthropic',
     credentialProxyRemotePort: config.credentialProxyRemotePort ?? 47_821,
     modelCredentialRef: config.modelCredentialRef ?? 'DEEPSEEK_API_KEY',

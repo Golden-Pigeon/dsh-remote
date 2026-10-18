@@ -296,7 +296,7 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
                 <div><dt>工作区</dt><dd>{host.workspaceCount ?? '—'}</dd></div>
                 <div><dt>Agent</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
                 <div><dt>Token</dt><dd>{host.hasToken ? '已保存' : '未保存'}</dd></div>
-                <div><dt>模型代理</dt><dd>{host.modelProxy ? '本地代理' : '远端'}</dd></div>
+                <div><dt>模型代理</dt><dd>{host.modelProxy ? '本地代理' : host.modelDirect ? '远端直连' : '远端默认'}</dd></div>
               </dl>
 
               {host.detail !== null && <p className="dshr-detail">{host.detail}</p>}

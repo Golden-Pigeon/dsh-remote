@@ -75,15 +75,24 @@ iframe.
 
 ## Model credentials
 
-Preferred path:
+Default direct mode:
 
-- the local plugin resolves `DEEPSEEK_API_KEY` from the local DSH credential store;
+- local plugin resolves `DEEPSEEK_API_KEY` from the local DSH credential store;
+- provisioning writes `DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic` and the real key into the
+  remote `dsh web` systemd/nohup environment;
+- the remote DSH calls DeepSeek directly; the key is present on the remote host.
+
+Use direct mode on a trusted remote account. It is the default (`credentialProxy: false`,
+`copyModelKey: true`).
+
+Optional proxy mode:
+
 - remote DSH starts with `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
 - the tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
-The key never reaches the remote filesystem. If no local key resolves, the plugin still provisions and
-connects; configure remote credentials.
+Set `credentialProxy: true` to use it. If no local key resolves, configure remote credentials or copy
+a key into the remote environment manually.
 
 ## Native mirror rules
 
@@ -125,7 +134,11 @@ Local plugin profile override:
     remoteStart: systemd            # systemd | nohup | none
     provisionTimeoutMs: 600000
 
-    credentialProxy: true
+    credentialProxy: false
+    copyModelKey: true
+    remoteModelBaseUrl: https://api.deepseek.com/anthropic
+
+    # Optional proxy mode:
     credentialProxyUpstream: https://api.deepseek.com/anthropic
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY
@@ -174,7 +187,7 @@ The normal plugin flow calls the same provisioning library.
 | `remote agent state file was not found` | Auto-provision disabled or remote start failed | Click **重新安装**; inspect `$DSH_HOME/remote-agent/web.log` |
 | `does not accept POST` | Remote agent older than local plugin | Click **重新安装** |
 | Remote workspace not in sidebar | Not added yet or sync pending | Add it in **工作区**; wait a few seconds |
-| Native session has no reply | Local proxy has no key and remote has no credentials | Check **模型代理**; configure remote credentials |
+| Native session has no reply | No local key copied and remote has no credentials | Check **模型代理**; configure remote credentials |
 | `DeepSeek Messages request failed (404)` | Proxy upstream points at the wrong provider root/path | Set `credentialProxyUpstream: https://api.deepseek.com/anthropic`; the fixed proxy preserves the `/anthropic` prefix and tolerates it already being on the request path; reinstall the local plugin |
 | Approval appears locally but remote tool still fails | The decision was delivered but the tool failed remotely | Inspect the remote tool result |
 | Duplicate native session after restart | Old mirror archive failed | Archive the old session in the sidebar; new mirrors use fresh IDs |
