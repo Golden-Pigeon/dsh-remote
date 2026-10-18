@@ -1,0 +1,20 @@
+# Example: local plugin profile patch
+
+Apply this as a layer after the local plugin bundle:
+
+```yaml
+- id: dsh-remote-local
+  config:
+    stateDir: ~/.dsh/remote
+    remoteStateFile: ~/.dsh/remote-agent/agent.json
+    sshBinary: ssh
+    probeTimeoutMs: 10000
+    connectTimeoutMs: 15000
+    healthIntervalMs: 15000
+    reconnect: true
+    maxReconnectDelayMs: 30000
+    strictHostKeyChecking: accept-new
+```
+
+If the remote `DSH_HOME` is not `~/.dsh`, `remoteStateFile` must name the absolute remote path, for
+example `/srv/dsh/remote-agent/agent.json`.

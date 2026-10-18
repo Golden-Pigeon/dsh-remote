@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "hosts": [
+    {
+      "id": "example-host-gpu-a51146d3",
+      "label": "Example GPU",
+      "sshTarget": "user@host",
+      "sshPort": null,
+      "remoteAgentPort": 34817,
+      "token": "REPLACE_WITH_THE_REMOTE_AGENT_TOKEN",
+      "autoConnect": true,
+      "createdAt": "2026-10-18T08:23:48.232Z",
+      "updatedAt": "2026-10-18T08:23:48.507Z"
+    }
+  ]
+}
+```
+
+This file is normally created by the plugin at `$DSH_HOME/remote/hosts.json` with mode `0600`.
+Never commit a real token.
