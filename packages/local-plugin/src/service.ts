@@ -276,7 +276,7 @@ export class RemoteHostsService {
       phase: 'installing',
       modelProxy: proxy !== undefined,
       modelDirect: direct !== undefined,
-      detail: '正在重新安装远端 agent…',
+      detail: '正在准备远端安装环境…',
     })
     try {
       await this.#provisioner.ensureInstalled(target, {
@@ -478,13 +478,14 @@ export class RemoteHostsService {
         this.#setRuntime(id, {
           ...this.#runtimeFor(id),
           phase: 'installing',
-          detail: '正在远端安装 DSH 与 dsh-remote-agent，首次约 1–3 分钟…',
+          detail: '正在准备远端安装环境…',
         })
         try {
           await this.#provisioner.ensureInstalled(target, {
             ...this.#modelEnvironment(proxy, proxyToken, direct),
             onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
           })
+          this.#setRuntime(id, { ...this.#runtimeFor(id), detail: '正在读取远端 agent 状态…' })
           const discovery = await this.#discover(target)
           remotePort = discovery.state.port
           token = discovery.state.token
@@ -524,6 +525,7 @@ export class RemoteHostsService {
       detail: '正在建立 SSH 隧道并校验远端 agent…',
     })
 
+    this.#setRuntime(id, { ...this.#runtimeFor(id), phase: 'connecting', detail: '正在建立 SSH 隧道…' })
     let tunnel: Tunnel | undefined
     try {
       tunnel = await Tunnel.start({
@@ -540,6 +542,7 @@ export class RemoteHostsService {
         token,
         hostId: id,
       })
+      this.#setRuntime(id, { ...this.#runtimeFor(id), detail: '正在校验远端 agent…' })
       const health = await client.health()
       if (await this.#reconcileModelEnvironment(id, target, health, proxy, proxyToken, direct, tunnel)) {
         return this.#doConnect(id)
@@ -590,6 +593,7 @@ export class RemoteHostsService {
       return false
     }
     this.#modelReconciled.add(id)
+    this.#setRuntime(id, { ...this.#runtimeFor(id), detail: '正在同步远端模型环境…' })
     this.ctx.logger.warn(
       'dsh-remote: remote model environment for %s is %s, expected %s; reinstalling',
       id,

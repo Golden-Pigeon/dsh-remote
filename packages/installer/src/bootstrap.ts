@@ -213,6 +213,7 @@ WAIT_FOR_STATE=${options.start === 'none' ? 0 : 1}
 
 export DSH_HOME
 mkdir -p "$INSTALL_DIR" "$DSH_HOME/remote-agent"
+echo "dsh-remote: preparing remote install"
 
 ${nodePathPrelude()}
 
@@ -236,6 +237,7 @@ if ! command -v npm >/dev/null 2>&1; then
   echo "dsh-remote: npm is required; install a Node.js distribution that includes npm" >&2
   exit 23
 fi
+echo "dsh-remote: node ready"
 
 export PATH="$INSTALL_DIR/node_modules/.bin:$PATH"
 if ! command -v pnpm >/dev/null 2>&1; then
@@ -256,9 +258,11 @@ fi
 echo "dsh-remote: adding plugin to profile $PROFILE"
 "$DSH_BIN" plugin --profile "$PROFILE" add "$AGENT_TARBALL"
 
+echo "dsh-remote: starting dsh web"
 ${startBlock}
 
 if [ "$WAIT_FOR_STATE" -eq 1 ]; then
+  echo "dsh-remote: waiting for agent state"
   i=0
   while [ "$i" -lt 60 ]; do
     if [ -s "$STATE_FILE" ]; then break; fi
@@ -270,6 +274,7 @@ fi
 echo "dsh-remote: installed"
 echo "dsh-remote: state file $STATE_FILE"
 if [ "$WAIT_FOR_STATE" -eq 1 ] && [ -s "$STATE_FILE" ]; then
+  echo "dsh-remote: agent ready"
   PORT_VALUE=$(sed -n 's/.*"port": *\\([0-9][0-9]*\\).*/\\1/p' "$STATE_FILE" | head -1)
   echo "dsh-remote: remote agent port \${PORT_VALUE:-unknown}"
 else
@@ -293,6 +298,7 @@ cat > "$UNIT_DIR/dsh-remote-agent.service" <<DSH_REMOTE_UNIT
 ${unit}DSH_REMOTE_UNIT
 chmod 600 "$UNIT_DIR/dsh-remote-agent.service"
 
+echo "dsh-remote: restarting systemd user unit"
 if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
   if systemctl --user enable dsh-remote-agent.service >/dev/null 2>&1 \
     && systemctl --user restart dsh-remote-agent.service; then
@@ -314,6 +320,7 @@ function renderNohup(options: BootstrapOptions): string {
   return `if [ -f "$DSH_HOME/remote-agent/web.pid" ]; then
   kill "$(cat "$DSH_HOME/remote-agent/web.pid")" 2>/dev/null || true
 fi
+echo "dsh-remote: starting dsh web under nohup"
 ${modelEnv}nohup "$DSH_BIN" web --host 127.0.0.1 --port "$PORT" --no-open > "$DSH_HOME/remote-agent/web.log" 2>&1 &
 echo $! > "$DSH_HOME/remote-agent/web.pid"
 echo "dsh-remote: started dsh web under nohup (pid $(cat "$DSH_HOME/remote-agent/web.pid"))"`

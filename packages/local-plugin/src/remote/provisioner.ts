@@ -45,7 +45,7 @@ export class RemoteProvisioner {
     } = {},
   ): Promise<void> {
     const tarball = findAgentTarball()
-    options.onProgress?.('正在远端安装 DSH 与 dsh-remote-agent（首次约 1–3 分钟）…')
+    options.onProgress?.('正在准备远端安装环境…')
     try {
       await provisionRemoteAgent({
         target: target.canonical,
@@ -64,6 +64,10 @@ export class RemoteProvisioner {
         ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },
         ...options.modelApiKey === undefined ? {} : { modelApiKey: options.modelApiKey },
         verbose: false,
+        onProgress: line => {
+          const message = progressForLine(line)
+          if (message !== undefined) options.onProgress?.(message)
+        },
       })
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
@@ -74,7 +78,7 @@ export class RemoteProvisioner {
       })
     }
 
-    options.onProgress?.('远端安装完成，等待 DSH web 启动…')
+    options.onProgress?.('远端安装完成，正在等待 DSH web 启动…')
     await this.#waitForAgent(target, options.onProgress, options.signal)
   }
 
@@ -85,6 +89,7 @@ export class RemoteProvisioner {
   ): Promise<void> {
     const deadline = Date.now() + 120_000
     let lastError: unknown
+    onProgress?.('正在等待远端 agent 状态…')
     while (Date.now() < deadline) {
       if (signal?.aborted === true) throw new LocalError('internal', '远端安装已取消')
       try {
@@ -94,10 +99,13 @@ export class RemoteProvisioner {
           strictHostKeyChecking: this.#config.strictHostKeyChecking,
           remoteStateFile: this.#config.remoteStateFile,
         })
-        if (isAgentLive(discovered.state)) return
+        if (isAgentLive(discovered.state)) {
+          onProgress?.('远端 agent 已就绪，正在建立连接…')
+          return
+        }
       } catch (error) {
         lastError = error
-        onProgress?.('等待远端 dsh web 就绪…')
+        onProgress?.('仍在等待远端 dsh web 就绪…')
       }
       await new Promise(resolve => setTimeout(resolve, 2_000))
     }
@@ -106,6 +114,32 @@ export class RemoteProvisioner {
       retryable: true,
     })
   }
+}
+
+const PROVISION_PROGRESS: readonly (readonly [string, string])[] = [
+  ['uploading agent package', '正在上传远端 agent 安装包…'],
+  ['agent package uploaded', '安装包上传完成，开始远端安装…'],
+  ['preparing remote install', '正在准备远端安装环境…'],
+  ['downloading node.js', '正在下载 Node.js…'],
+  ['installed node.js', 'Node.js 安装完成，继续安装 pnpm/DSH…'],
+  ['node ready', 'Node.js 已就绪，准备安装 pnpm/DSH…'],
+  ['installing pnpm@', '正在安装 pnpm…'],
+  ['installing @deepseek-ai/dsh@', '正在安装远端 DSH（下载依赖可能需要几分钟）…'],
+  ['adding plugin to profile', '正在安装远端 agent…'],
+  ['restarting systemd user unit', '正在启动远端 DSH Web 服务…'],
+  ['starting dsh web under nohup', '正在启动远端 DSH Web…'],
+  ['starting dsh web', '正在启动远端 DSH Web 服务…'],
+  ['waiting for agent state', '正在等待远端 agent 状态文件…'],
+  ['agent ready', '远端 agent 已就绪，正在建立连接…'],
+  ['installed', '远端安装完成…'],
+]
+
+function progressForLine(line: string): string | undefined {
+  const normalized = line.toLowerCase()
+  for (const [needle, message] of PROVISION_PROGRESS) {
+    if (normalized.includes(needle)) return message
+  }
+  return undefined
 }
 
 /** Locate the packed agent shipped in this plugin's assets directory. */

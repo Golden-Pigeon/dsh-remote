@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Show staged remote-install progress in the host card: upload, Node.js, pnpm, DSH, agent,
+  service start, state-file wait, tunnel, and health checks.
+- Stream installer output into the local progress callback without exposing raw logs.
+
 ## 0.8.0
 
 - Publish one installable `dsh-remote-local-plugin` package.

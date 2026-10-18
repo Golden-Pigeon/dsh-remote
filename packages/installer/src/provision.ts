@@ -37,6 +37,8 @@ export interface ProvisionRemoteOptions {
   readonly modelApiKey?: string
   readonly timeoutMs?: number
   readonly verbose?: boolean
+  /** Human-readable bootstrap lines, used by the Settings progress card. */
+  readonly onProgress?: (line: string) => void
 }
 
 /** Result of a provisioning run. */
@@ -53,7 +55,9 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
   const remoteTarball = `/tmp/dsh-remote-agent-${Date.now()}-${process.pid}.tgz`
   const timeoutMs = Math.max(options.timeoutMs ?? 600_000, 600_000)
 
+  options.onProgress?.('dsh-remote: uploading agent package')
   await uploadFile(options.agentTarballPath, remoteTarball, target, options)
+  options.onProgress?.('dsh-remote: agent package uploaded')
   const script = renderBootstrapScript({
     profile: options.profile,
     port: 0,
@@ -69,11 +73,35 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     ...options.modelApiKey === undefined ? {} : { modelApiKey: options.modelApiKey },
   })
 
+  let stdoutBuffer = ''
+  let stderrBuffer = ''
+  const emitLines = (stream: 'stdout' | 'stderr', chunk: string): void => {
+    const key = stream === 'stdout' ? 'stdout' : 'stderr'
+    let buffer = key === 'stdout' ? stdoutBuffer : stderrBuffer
+    buffer += chunk
+    let newline = buffer.indexOf('\n')
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim()
+      buffer = buffer.slice(newline + 1)
+      if (line !== '') {
+        try {
+          options.onProgress?.(line)
+        } catch {
+          // Progress reporting must never break the installer.
+        }
+      }
+      newline = buffer.indexOf('\n')
+    }
+    if (buffer.length > 8192) buffer = buffer.slice(-8192)
+    if (key === 'stdout') stdoutBuffer = buffer
+    else stderrBuffer = buffer
+  }
   const result = await runRemoteScript(target, script, {
     binary: options.sshBinary,
     strictHostKeyChecking: options.strictHostKeyChecking,
     timeoutMs,
     verbose: options.verbose ?? false,
+    onOutput: emitLines,
   })
   return { stdout: result.stdout, stderr: result.stderr, remoteTarball }
 }

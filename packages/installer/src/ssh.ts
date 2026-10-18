@@ -91,6 +91,8 @@ export interface SshOptions {
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
   readonly timeoutMs: number
   readonly verbose: boolean
+  /** Optional streaming callback for the bootstrap script; never used as UI text directly. */
+  readonly onOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void
 }
 
 /** Result of a remote command. */
@@ -188,7 +190,7 @@ export function runRemoteScript(
     }, options.timeoutMs)
     timer.unref?.()
 
-    const append = (target: Buffer[], chunk: Buffer): void => {
+    const append = (target: Buffer[], stream: 'stdout' | 'stderr', chunk: Buffer): void => {
       bytes += chunk.length
       if (bytes > 4 * 1024 * 1024) {
         child.kill('SIGKILL')
@@ -196,9 +198,14 @@ export function runRemoteScript(
       }
       target.push(chunk)
       if (options.verbose) process.stderr.write(chunk)
+      try {
+        options.onOutput?.(stream, chunk.toString('utf8'))
+      } catch {
+        // Progress reporting must never break the installer.
+      }
     }
-    child.stdout.on('data', (chunk: Buffer) => append(stdout, chunk))
-    child.stderr.on('data', (chunk: Buffer) => append(stderr, chunk))
+    child.stdout.on('data', (chunk: Buffer) => append(stdout, 'stdout', chunk))
+    child.stderr.on('data', (chunk: Buffer) => append(stderr, 'stderr', chunk))
     child.stdin.on('error', error => {
       if (settled) return
       settled = true

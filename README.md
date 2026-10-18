@@ -30,7 +30,7 @@ DSH version is:
 | Component | Tested version |
 |---|---|
 | [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
-| Plugin | [**0.8.0**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| Plugin | [**0.8.1**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
