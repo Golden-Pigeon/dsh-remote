@@ -7,7 +7,7 @@
  * body into our own loader artifact and replaces only the apply function with
  * the Session-routing construction.
  */
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +30,10 @@ const applyPattern = /function apply\(ctx\) \{\n\s*new ClientTerminals\(ctx, ctx
 if (!applyPattern.test(body)) throw new Error('stock ClientTerminals apply function not found')
 const replaced = body.replace(applyPattern, `function apply(ctx) {\n\t\t\tapplyRouted(ctx);\n\t\t}\n${routing}`)
 
+await mkdir(join(here, '..', 'lib'), { recursive: true })
 const output = `window.__ModuleLoader__.load({\n\tid: "dsh-remote-terminal-controller",\n\tfactory: (require) => {${replaced}\n\t}\n});\n`
 await writeFile(join(here, '..', 'lib', 'client.js'), output)
+await writeFile(join(here, '..', 'lib', 'index.js'), `// Host half: keep the stock TerminalController implementation unchanged. The
+// client half is what routes local versus mirrored Sessions.
+export { TerminalController as default, TerminalController } from '@deepseek-ai/dsh-api-terminal-controller'\n`)
 process.stdout.write('built dsh-remote-terminal-controller client\n')
