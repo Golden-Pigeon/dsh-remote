@@ -90,6 +90,10 @@ export function toWireEvent(event: {
   readonly time: number
   readonly data: unknown
 }): RemoteSessionEvent {
+  const surface = event as unknown as {
+    readonly surfaceOp?: RemoteSessionEvent['surfaceOp']
+    readonly sourceEventSeqs?: readonly number[]
+  }
   return {
     seq: event.seq,
     type: event.type,
@@ -97,5 +101,7 @@ export function toWireEvent(event: {
     // DSH commits lossless-JSON event bodies; the wire contract preserves them
     // verbatim rather than reshaping event-specific payloads.
     data: event.data as RemoteSessionEvent['data'],
+    ...surface.surfaceOp === undefined ? {} : { surfaceOp: surface.surfaceOp },
+    ...surface.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surface.sourceEventSeqs },
   }
 }

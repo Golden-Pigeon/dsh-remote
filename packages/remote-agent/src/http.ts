@@ -335,7 +335,18 @@ function asPromptRequest(value: unknown): { text: string; mode?: 'queue' | 'stee
   if (body.mode !== undefined && body.mode !== 'queue' && body.mode !== 'steer') {
     throw new RemoteProtocolError({ code: 'request/invalid', message: 'mode must be queue or steer' })
   }
-  return { text: body.text, ...body.mode === undefined ? {} : { mode: body.mode } }
+  for (const key of ['provider', 'model', 'reasoningEffort'] as const) {
+    if (body[key] !== undefined && typeof body[key] !== 'string') {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: `${key} must be a string` })
+    }
+  }
+  return {
+    text: body.text,
+    ...body.mode === undefined ? {} : { mode: body.mode },
+    ...typeof body.provider === 'string' ? { provider: body.provider } : {},
+    ...typeof body.model === 'string' ? { model: body.model } : {},
+    ...typeof body.reasoningEffort === 'string' ? { reasoningEffort: body.reasoningEffort } : {},
+  }
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

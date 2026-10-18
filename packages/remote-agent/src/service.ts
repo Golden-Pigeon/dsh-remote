@@ -237,6 +237,16 @@ export class RemoteAgentService {
     if (text === '') {
       throw new RemoteProtocolError({ code: 'request/invalid', message: 'prompt text must not be empty' })
     }
+    if (request.provider !== undefined && request.model !== undefined) {
+      await this.ctx.sessionController.selectModel({
+        sessionId: sessionId as SessionId,
+        provider: request.provider,
+        model: request.model,
+        ...request.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: request.reasoningEffort as never },
+      })
+    }
     await this.ctx.sessionController.prompt({
       requestId: randomUUID() as never,
       sessionId: sessionId as SessionId,

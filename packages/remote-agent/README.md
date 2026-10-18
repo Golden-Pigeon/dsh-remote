@@ -7,8 +7,8 @@ A remote DSH plugin that exposes the remote host's workspaces and sessions to th
 - Registers `/dsh-remote-agent/api/v1` on the remote DSH web server.
 - Generates and stores a bearer token in `$DSH_HOME/remote-agent/agent.json` (mode `0600`).
 - Projects host identity, workspaces, sessions, and session snapshots.
-- Streams committed session events over SSE.
-- Creates workspaces, creates sessions, submits text prompts, and cancels active turns.
+- Streams committed session events over SSE, including surface placement metadata for native replay.
+- Creates workspaces, creates sessions, submits text prompts with optional model selection, and cancels active turns.
 - Writes its live port into the state file so the local plugin can discover it over SSH.
 
 It does not expose arbitrary shell execution, file contents, terminal input, or approvals. The full

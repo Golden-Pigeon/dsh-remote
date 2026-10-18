@@ -81,6 +81,14 @@ export interface RemoteSessionEvent {
   readonly type: string
   readonly time: number
   readonly data: JsonValue
+  /** Surface placement, copied from the Host event for native transcript replay. */
+  readonly surfaceOp?: 'append' | {
+    readonly op: 'replace'
+    readonly startSeq: number
+    readonly endSeq: number
+  }
+  /** Earlier surface events cited by this message. */
+  readonly sourceEventSeqs?: readonly number[]
 }
 
 /** Snapshot returned before a live event stream is opened. */
@@ -205,6 +213,10 @@ export type PromptDeliveryMode = 'queue' | 'steer'
 export interface PromptSessionRequest {
   readonly text: string
   readonly mode?: PromptDeliveryMode
+  /** Optional model selection to install on the remote session before prompting. */
+  readonly provider?: string
+  readonly model?: string
+  readonly reasoningEffort?: string
 }
 
 /** Accepted prompt/cancel receipt. */
