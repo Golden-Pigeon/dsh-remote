@@ -403,44 +403,91 @@ async function openDirectoryBrowser(
 
   let current = initialPath
   let parent = initialPath
-  let busy = false
-  const load = async (path: string): Promise<void> => {
-    if (busy) return
-    busy = true
+  let currentEntries: readonly { readonly name: string; readonly path: string }[] = []
+  let requestSeq = 0
+  let filterTimer: number | undefined
+
+  const fetchListing = async (path: string): Promise<DirectoryListing | undefined> => {
+    const sequence = ++requestSeq
     status.textContent = flow.t('dialog.reading')
-    list.replaceChildren()
+    status.classList.remove(`${DIALOG_CLASS}-error-text`)
     try {
       const listing: DirectoryListing = destination.kind === 'local'
         ? await flow.api.listLocalDirectories(path)
         : await flow.api.listDirectories(destination.host.id, path)
-      current = listing.path
-      parent = listing.parent
-      pathInput.value = listing.path
-      status.textContent = flow.t('dialog.selectFolder')
-      for (const entry of listing.entries) {
-        const item = document.createElement('button')
-        item.type = 'button'
-        item.className = `${DIALOG_CLASS}-browser-entry`
-        const icon = document.createElement('span')
-        icon.textContent = '📁'
-        const label = document.createElement('span')
-        label.textContent = entry.name
-        item.append(icon, label)
-        item.addEventListener('click', () => { void load(entry.path) })
-        list.append(item)
-      }
-      if (listing.entries.length === 0) {
-        const empty = document.createElement('p')
-        empty.className = `${DIALOG_CLASS}-browser-empty`
-        empty.textContent = flow.t('dialog.emptyFolder')
-        list.append(empty)
-      }
+      if (sequence !== requestSeq) return undefined
+      return listing
     } catch (failure) {
-      status.textContent = messageOf(failure, flow.t('dialog.readFailed'))
-    } finally {
-      busy = false
+      if (sequence === requestSeq) {
+        status.textContent = messageOf(failure, flow.t('dialog.readFailed'))
+        status.classList.add(`${DIALOG_CLASS}-error-text`)
+      }
+      return undefined
     }
   }
+
+  const render = (entries: readonly { readonly name: string; readonly path: string }[]): void => {
+    list.replaceChildren()
+    if (entries.length === 0) {
+      const empty = document.createElement('p')
+      empty.className = `${DIALOG_CLASS}-browser-empty`
+      empty.textContent = flow.t('dialog.emptyFolder')
+      list.append(empty)
+      return
+    }
+    for (const entry of entries) {
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = `${DIALOG_CLASS}-browser-entry`
+      const icon = document.createElement('span')
+      icon.textContent = '📁'
+      const label = document.createElement('span')
+      label.textContent = entry.name
+      item.append(icon, label)
+      item.addEventListener('click', () => { void load(entry.path) })
+      list.append(item)
+    }
+  }
+
+  const load = async (path: string): Promise<void> => {
+    const listing = await fetchListing(path)
+    if (listing === undefined) return
+    current = listing.path
+    parent = listing.parent
+    currentEntries = listing.entries
+    pathInput.value = listing.path
+    status.textContent = flow.t('dialog.selectFolder')
+    render(listing.entries)
+  }
+
+  const applyInputFilter = async (raw: string): Promise<void> => {
+    if (raw === '') return
+    const slash = raw.lastIndexOf('/')
+    const dir = slash < 0 ? current : (raw.slice(0, slash + 1) || '/')
+    const query = slash < 0 ? raw : raw.slice(slash + 1)
+    if (query === '') {
+      // A trailing slash is an explicit directory navigation.
+      await load(raw)
+      return
+    }
+    const normalizedCurrent = current.replace(/\/+$/u, '') || '/'
+    const normalizedDir = dir.replace(/\/+$/u, '') || '/'
+    if (normalizedDir === normalizedCurrent) {
+      const needle = query.toLocaleLowerCase()
+      render(currentEntries.filter(entry => entry.name.toLocaleLowerCase().startsWith(needle)))
+      status.textContent = flow.t('dialog.selectFolder')
+      return
+    }
+    const listing = await fetchListing(dir)
+    if (listing === undefined) return
+    current = listing.path
+    parent = listing.parent
+    currentEntries = listing.entries
+    const needle = query.toLocaleLowerCase()
+    render(listing.entries.filter(entry => entry.name.toLocaleLowerCase().startsWith(needle)))
+    status.textContent = flow.t('dialog.selectFolder')
+  }
+
   const close = (): void => {
     overlay.remove()
     window.removeEventListener('keydown', keyHandler, true)
@@ -465,11 +512,16 @@ async function openDirectoryBrowser(
   up.addEventListener('click', () => {
     if (parent !== '' && parent !== current) void load(parent)
   })
+  pathInput.addEventListener('input', () => {
+    if (filterTimer !== undefined) window.clearTimeout(filterTimer)
+    const value = pathInput.value
+    filterTimer = window.setTimeout(() => { void applyInputFilter(value) }, 140)
+  })
   pathInput.addEventListener('keydown', event => {
     if (event.key !== 'Enter') return
     event.preventDefault()
     const value = pathInput.value.trim()
-    if (value !== '') void load(value)
+    if (value !== '') void applyInputFilter(value)
   })
   void load(initialPath)
 }
@@ -575,6 +627,7 @@ function ensureStyles(): void {
     .${DIALOG_CLASS}-browser-path-row { display: flex; align-items: center; gap: 8px; }
     .${DIALOG_CLASS}-up { flex: none; width: 34px; height: 34px; border: 0; background: transparent; color: rgba(255,255,255,.65); font-size: 22px; cursor: pointer; }
     .${DIALOG_CLASS}-browser-path { flex: 1; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: transparent; color: #fff; font: inherit; font-size: 16px; padding: 12px 14px; outline: none; }
+    .${DIALOG_CLASS}-browser-path:focus { border-color: #4f8cff; }
     .${DIALOG_CLASS}-browser-status { margin: 14px 0 8px; color: rgba(255,255,255,.55); font-size: 13px; }
     .${DIALOG_CLASS}-browser-list { flex: 1; min-height: 220px; max-height: 420px; overflow: auto; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 6px; }
     .${DIALOG_CLASS}-browser-entry { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 11px 12px; border: 0; border-radius: 8px; background: transparent; color: #fff; font: inherit; font-size: 16px; text-align: left; cursor: pointer; }
