@@ -6,7 +6,8 @@ side itself.
 
 ## 1. Install the local plugin
 
-Quit DSH Desktop completely (including the tray process), then:
+Run the installer; it can install while DSH Desktop is open. Restart the app afterwards to load the new
+host and client bundles:
 
 ```sh
 cd /path/to/dsh-remote/dsh-remote
@@ -21,8 +22,8 @@ For a DSH Web profile:
 ```
 
 The script installs dependencies, builds all packages, packs the remote agent into the local plugin,
-packs the terminal-controller fork, and adds both to the chosen profile. It refuses to touch the
-desktop profile while the desktop app is running.
+packs the terminal-controller fork, and adds both to the chosen profile. The desktop app may stay
+running during installation; restart it afterwards to load the new bundles.
 
 ## 2. Add a host
 
