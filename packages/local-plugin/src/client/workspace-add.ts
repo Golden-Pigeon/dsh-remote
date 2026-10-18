@@ -11,6 +11,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostView } from '../hosts/types.ts'
 import type { HostsApi } from './api.ts'
+import type { Translate } from './locale.ts'
 
 const ADD_LABELS = new Set(['Add workspace', '添加工作区'])
 const NATIVE_CLICK_FLAG = 'dshrNativeClick'
@@ -22,6 +23,7 @@ let closeMenu: (() => void) | undefined
 interface WorkspaceFlowContext {
   readonly ctx: Context
   readonly api: HostsApi
+  readonly t: Translate
 }
 
 type Destination = { readonly kind: 'local' } | { readonly kind: 'remote'; readonly host: HostView }
@@ -34,7 +36,7 @@ interface DirectoryListing {
 }
 
 /** Install the sidebar add-workspace dialog once per client mount. */
-export function installWorkspaceAddMenu(ctx: Context, api: HostsApi): void {
+export function installWorkspaceAddMenu(ctx: Context, api: HostsApi, t: Translate): void {
   if (typeof document === 'undefined') return
   ensureStyles()
 
@@ -53,7 +55,7 @@ export function installWorkspaceAddMenu(ctx: Context, api: HostsApi): void {
       }
       event.preventDefault()
       event.stopImmediatePropagation()
-      void openCreateDialog({ ctx, api }, button)
+      void openCreateDialog({ ctx, api, t }, button)
     }
     document.addEventListener('click', onClick, true)
     return () => {
@@ -72,24 +74,24 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   dialog.className = DIALOG_CLASS
   dialog.setAttribute('role', 'dialog')
   dialog.setAttribute('aria-modal', 'true')
-  dialog.setAttribute('aria-label', '新建工作区')
+  dialog.setAttribute('aria-label', flow.t('dialog.title'))
 
   const title = document.createElement('h2')
   title.className = `${DIALOG_CLASS}-title`
-  title.textContent = '新建工作区'
+  title.textContent = flow.t('dialog.title')
   const header = document.createElement('div')
   header.className = `${DIALOG_CLASS}-header`
   const closeButton = document.createElement('button')
   closeButton.type = 'button'
   closeButton.className = `${DIALOG_CLASS}-close`
-  closeButton.setAttribute('aria-label', '关闭')
+  closeButton.setAttribute('aria-label', flow.t('dialog.close'))
   closeButton.textContent = '×'
   header.append(title, closeButton)
 
   const nameLabel = document.createElement('label')
   nameLabel.className = `${DIALOG_CLASS}-field`
   const nameText = document.createElement('span')
-  nameText.textContent = '工作区名称'
+  nameText.textContent = flow.t('dialog.name')
   const nameRow = document.createElement('div')
   nameRow.className = `${DIALOG_CLASS}-input-row`
   const nameIcon = document.createElement('span')
@@ -97,14 +99,14 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   setFolderIcon(nameIcon)
   const nameInput = document.createElement('input')
   nameInput.className = `${DIALOG_CLASS}-input`
-  nameInput.placeholder = '工作区名称（可选）'
+  nameInput.placeholder = flow.t('dialog.namePlaceholder')
   nameInput.autocomplete = 'off'
   nameRow.append(nameIcon, nameInput)
   nameLabel.append(nameText, nameRow)
 
   const sourceTitle = document.createElement('h3')
   sourceTitle.className = `${DIALOG_CLASS}-section-title`
-  sourceTitle.textContent = '源目录'
+  sourceTitle.textContent = flow.t('dialog.source')
   const sourceHeader = document.createElement('div')
   sourceHeader.className = `${DIALOG_CLASS}-source-header`
   const hostIndicator = document.createElement('span')
@@ -133,7 +135,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   const addFolderIcon = document.createElement('span')
   addFolderIcon.className = `${DIALOG_CLASS}-add-folder-icon`
   const addFolderText = document.createElement('span')
-  addFolderText.textContent = '添加'
+  addFolderText.textContent = flow.t('dialog.add')
   addFolder.append(addFolderIcon, addFolderText)
   sourceCenter.append(sourceTrigger, addFolder)
   const selectedFolder = document.createElement('div')
@@ -145,7 +147,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   const removeFolder = document.createElement('button')
   removeFolder.type = 'button'
   removeFolder.className = `${DIALOG_CLASS}-remove-folder`
-  removeFolder.setAttribute('aria-label', '移除目录')
+  removeFolder.setAttribute('aria-label', flow.t('dialog.removeFolder'))
   removeFolder.textContent = '×'
   selectedFolder.append(selectedIcon, selectedName, removeFolder)
   sourceBox.append(sourceCenter, selectedFolder)
@@ -159,11 +161,11 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   const cancel = document.createElement('button')
   cancel.type = 'button'
   cancel.className = `${DIALOG_CLASS}-button`
-  cancel.textContent = '取消'
+  cancel.textContent = flow.t('dialog.cancel')
   const create = document.createElement('button')
   create.type = 'button'
   create.className = `${DIALOG_CLASS}-button ${DIALOG_CLASS}-primary`
-  create.textContent = '创建工作区'
+  create.textContent = flow.t('dialog.create')
   actions.append(cancel, create)
 
   dialog.append(header, nameLabel, sourceHeader, sourceBox, error, actions)
@@ -174,8 +176,8 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   let destination: Destination = { kind: 'local' }
   let selectedPath = ''
   const update = (): void => {
-    const label = destination.kind === 'local' ? '本机' : destination.host.label
-    sourceTriggerText.textContent = `将目录添加到 ${label}`
+    const label = destination.kind === 'local' ? flow.t('dialog.local') : destination.host.label
+    sourceTriggerText.textContent = `${flow.t('dialog.addToPrefix')}${label}${flow.t('dialog.addToSuffix')}`
     hostLabelText.textContent = label
     addFolderIcon.textContent = '+ '
     const hasFolder = selectedPath !== ''
@@ -207,7 +209,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   closeButton.addEventListener('click', close)
 
   sourceTrigger.addEventListener('click', () => {
-    openDestinationMenu(sourceTrigger, hosts, destination, next => {
+    openDestinationMenu(sourceTrigger, hosts, destination, flow.t, next => {
       destination = next
       selectedPath = ''
       update()
@@ -240,7 +242,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
     const title = nameInput.value.trim() || folderName(selectedPath)
     create.disabled = true
     cancel.disabled = true
-    create.textContent = '创建中…'
+    create.textContent = flow.t('dialog.creating')
     void (async () => {
       try {
         if (destination.kind === 'local') {
@@ -262,14 +264,14 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
           return
         }
         const localId = await waitForLocalWorkspace(flow.api, destination.host.id, workspace.workspaceId)
-        if (localId === undefined) throw new Error('远端 workspace 已创建，但本地镜像还没有同步完成')
+        if (localId === undefined) throw new Error(flow.t('dialog.selectedFallback'))
         close()
         flow.ctx.uiWorkspace.startSession(localId as never)
       } catch (failure) {
-        error.textContent = messageOf(failure, '新建工作区失败')
+        error.textContent = messageOf(failure, flow.t('dialog.createFailed'))
         create.disabled = false
         cancel.disabled = false
-        create.textContent = '创建工作区'
+        create.textContent = flow.t('dialog.create')
       }
     })()
   })
@@ -281,6 +283,7 @@ function openDestinationMenu(
   anchor: HTMLElement,
   hosts: readonly HostView[],
   current: Destination,
+  t: Translate,
   onPick: (destination: Destination) => void,
 ): void {
   closeMenu?.()
@@ -304,22 +307,22 @@ function openDestinationMenu(
     })
     menu.append(item)
   }
-  add('本机', { kind: 'local' })
+  add(t('dialog.local'), { kind: 'local' })
   if (hosts.length > 0) {
     const section = document.createElement('div')
     section.className = `${DIALOG_CLASS}-destination-section`
-    section.textContent = '远端设备'
+    section.textContent = t('dialog.remoteDevices')
     menu.append(section)
     for (const host of hosts) add(host.label, { kind: 'remote', host })
   }
   const addRemote = document.createElement('button')
   addRemote.type = 'button'
   addRemote.className = `${DIALOG_CLASS}-destination-item ${DIALOG_CLASS}-destination-add`
-  addRemote.textContent = '+ 添加远端…'
+  addRemote.textContent = t('dialog.addRemote')
   addRemote.addEventListener('click', () => {
     close()
     const error = document.querySelector(`.${DIALOG_CLASS}-error`)
-    if (error !== null) error.textContent = '请先在 Settings → 远程开发 添加并连接远端主机。'
+    if (error !== null) error.textContent = t('dialog.addRemoteHint')
   })
   menu.append(addRemote)
   document.body.append(menu)
@@ -353,17 +356,17 @@ async function openDirectoryBrowser(
   dialog.className = `${DIALOG_CLASS} ${DIALOG_CLASS}-browser`
   dialog.setAttribute('role', 'dialog')
   dialog.setAttribute('aria-modal', 'true')
-  dialog.setAttribute('aria-label', '选择源目录')
+  dialog.setAttribute('aria-label', flow.t('dialog.folderTitle'))
 
   const title = document.createElement('h2')
   title.className = `${DIALOG_CLASS}-browser-title`
-  title.textContent = '选择源目录'
+  title.textContent = flow.t('dialog.folderTitle')
   const browserHeader = document.createElement('div')
   browserHeader.className = `${DIALOG_CLASS}-browser-header`
   const browserClose = document.createElement('button')
   browserClose.type = 'button'
   browserClose.className = `${DIALOG_CLASS}-close`
-  browserClose.setAttribute('aria-label', '关闭')
+  browserClose.setAttribute('aria-label', flow.t('dialog.close'))
   browserClose.textContent = '×'
   browserHeader.append(title, browserClose)
   const pathRow = document.createElement('div')
@@ -372,7 +375,7 @@ async function openDirectoryBrowser(
   up.type = 'button'
   up.className = `${DIALOG_CLASS}-up`
   up.textContent = '↑'
-  up.setAttribute('aria-label', '上一级')
+  up.setAttribute('aria-label', flow.t('dialog.up'))
   const pathInput = document.createElement('input')
   pathInput.className = `${DIALOG_CLASS}-browser-path`
   pathInput.value = initialPath
@@ -380,7 +383,7 @@ async function openDirectoryBrowser(
   pathRow.append(up, pathInput)
   const status = document.createElement('p')
   status.className = `${DIALOG_CLASS}-browser-status`
-  status.textContent = '选择当前目录'
+  status.textContent = flow.t('dialog.selectFolder')
   const list = document.createElement('div')
   list.className = `${DIALOG_CLASS}-browser-list`
   const actions = document.createElement('div')
@@ -388,11 +391,11 @@ async function openDirectoryBrowser(
   const cancel = document.createElement('button')
   cancel.type = 'button'
   cancel.className = `${DIALOG_CLASS}-button`
-  cancel.textContent = '取消'
+  cancel.textContent = flow.t('dialog.cancel')
   const use = document.createElement('button')
   use.type = 'button'
   use.className = `${DIALOG_CLASS}-button ${DIALOG_CLASS}-primary`
-  use.textContent = '使用此目录'
+  use.textContent = flow.t('dialog.useFolder')
   actions.append(cancel, use)
   dialog.append(browserHeader, pathRow, status, list, actions)
   overlay.append(dialog)
@@ -404,7 +407,7 @@ async function openDirectoryBrowser(
   const load = async (path: string): Promise<void> => {
     if (busy) return
     busy = true
-    status.textContent = '正在读取目录…'
+    status.textContent = flow.t('dialog.reading')
     list.replaceChildren()
     try {
       const listing: DirectoryListing = destination.kind === 'local'
@@ -413,7 +416,7 @@ async function openDirectoryBrowser(
       current = listing.path
       parent = listing.parent
       pathInput.value = listing.path
-      status.textContent = '选择当前目录'
+      status.textContent = flow.t('dialog.selectFolder')
       for (const entry of listing.entries) {
         const item = document.createElement('button')
         item.type = 'button'
@@ -429,11 +432,11 @@ async function openDirectoryBrowser(
       if (listing.entries.length === 0) {
         const empty = document.createElement('p')
         empty.className = `${DIALOG_CLASS}-browser-empty`
-        empty.textContent = '此目录没有子目录'
+        empty.textContent = flow.t('dialog.emptyFolder')
         list.append(empty)
       }
     } catch (failure) {
-      status.textContent = messageOf(failure, '读取目录失败')
+      status.textContent = messageOf(failure, flow.t('dialog.readFailed'))
     } finally {
       busy = false
     }

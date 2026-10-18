@@ -27,6 +27,7 @@ Local DSH                                         Remote host
 | Remote workspaces appear as normal local workspaces | Available |
 | Remote sessions appear in the normal sidebar | Available |
 | Remote sessions open in the normal Conversation UI | Available |
+| Localized UI follows the DSH language (zh / en) | Available |
 | Prompts, stop, transcripts, tool cards, usage | Available |
 | Direct remote key (default) or optional local key proxy | Available |
 | Remote file tree and file previews | Available (SSH-backed) |

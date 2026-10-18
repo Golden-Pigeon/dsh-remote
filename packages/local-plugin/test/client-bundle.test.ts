@@ -37,12 +37,17 @@ describe('client bundle artifact', () => {
       if (specifier === 'react/jsx-runtime') return jsxRuntime
       throw new Error(`unexpected external: ${specifier}`)
     })
-    assert.deepEqual(Array.from(exports.inject as string[]), ['slots', 'uiWorkspace'])
+    assert.deepEqual(Array.from(exports.inject as string[]), ['slots', 'uiWorkspace', 'locale'])
     assert.equal(typeof exports.apply, 'function')
 
-    let registration: { name: string; id: string; label: string; order: number; inject: () => { api: unknown } } | undefined
+    let registration: { name: string; id: string; label: () => string; order: number; locale: string; inject: () => { api: unknown } } | undefined
     let component: unknown
     const ctx = {
+      effect: (callback: () => unknown) => callback(),
+      locale: {
+        register: () => () => undefined,
+        bind: () => (key: string) => key,
+      },
       inject: (_keys: string[], callback: (ctx: unknown) => void) => callback(ctx),
       slots: {
         inject: (_key: string, callback: () => () => void) => callback(),
@@ -57,7 +62,8 @@ describe('client bundle artifact', () => {
     assert.ok(registration)
     assert.equal(registration.name, 'settings.section')
     assert.equal(registration.id, 'remote-development')
-    assert.equal(registration.label, '远程开发')
+    assert.equal(registration.label(), 'settings.title')
+    assert.equal(registration.locale, 'dshRemote')
     assert.equal(registration.order, 76)
     assert.equal(typeof component, 'function')
 

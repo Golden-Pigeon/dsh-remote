@@ -18,6 +18,7 @@ Remote development that appears as ordinary local sessions.
   `uiWorkspace.openSession` — not a popup.
 - Sidebar **+** menu to create a workspace locally (native flow) or on a connected remote host.
 - SSH-backed remote workspace file listing/preview.
+- Chinese / English client copy follows the DSH locale service.
 - Remote SSH PTY terminals for mirror Sessions; local Sessions keep the local terminal.
 - Remote approval questions bridged into the normal local approval UI.
 - Model tools for every operation.
