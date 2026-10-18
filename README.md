@@ -121,6 +121,7 @@ credentials. The host card shows **模型代理：本地代理 / 远端直连 / 
 | `remote_host_provision` | Force reinstall/restart and reconnect |
 | `remote_workspace_add` | Register a remote directory; pass `hidden: true` for test-only isolation |
 | `remote_workspace_hide` | Test/debug: hide or restore a remote workspace in local sidebar surfaces |
+| `remote_workspace_forget` | Test/debug: forget a stale local mirror workspace |
 | `remote_workspaces_list` | List remote workspaces |
 | `remote_session_create` | Create a remote session |
 | `remote_sessions_list` | List remote sessions |

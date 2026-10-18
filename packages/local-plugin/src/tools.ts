@@ -203,6 +203,33 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService, m
   }))
 
   ctx.tools.register(defineTool({
+    name: 'remote_workspace_forget',
+    description: 'Test/debug only: forget a local mirror workspace, archiving its local Sessions. Use when a test workspace was already removed remotely and its local row must be cleaned.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
+      remoteWorkspaceId: { type: 'string', description: 'Remote workspace id, when it still exists.' },
+      localWorkspaceId: { type: 'string', description: 'Local mirror workspace id, for stale records.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          forgotten: { type: 'boolean', required: true },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      if (mirrors === undefined) throw new Error('session mirroring is disabled')
+      if (args.remoteWorkspaceId === undefined && args.localWorkspaceId === undefined) {
+        throw new Error('provide remoteWorkspaceId or localWorkspaceId')
+      }
+      return { forgotten: await mirrors.forgetWorkspace(args.hostId, args.remoteWorkspaceId, args.localWorkspaceId) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'remote_sessions_list',
     description: 'List sessions on a connected remote DSH host, optionally scoped to one workspace. Includes live/persisted state and event counts when available.',
     parameters: {

@@ -309,6 +309,35 @@ export class RemoteMirrorService {
     await this.#save()
   }
 
+  /**
+   * Debug/test cleanup: forget one local mirror workspace even when its remote
+   * workspace no longer exists. Local Sessions are archived; remote data is untouched.
+   */
+  async forgetWorkspace(hostId: string, remoteWorkspaceId?: string, localWorkspaceId?: string): Promise<boolean> {
+    const entry = Object.entries(this.#state.workspaces).find(([, record]) =>
+      record.hostId === hostId && (
+        remoteWorkspaceId === undefined
+          ? record.localWorkspaceId === localWorkspaceId
+          : record.remoteWorkspaceId === remoteWorkspaceId
+      ),
+    )
+    if (entry === undefined) return false
+    const [ref, record] = entry
+    for (const session of Object.values(this.#state.sessions)) {
+      if (session.hostId !== hostId) continue
+      if (record.remoteWorkspaceId !== null && session.remoteWorkspaceId !== record.remoteWorkspaceId) continue
+      await this.#archive(session.localSessionId as SessionId)
+    }
+    try {
+      await this.#workspaceRegistry.delete(record.localWorkspaceId as WorkspaceId)
+    } catch (error) {
+      this.#ctx.logger.warn('dsh-remote-local: could not forget workspace %s: %s', ref, String(error))
+    }
+    delete this.#state.workspaces[ref]
+    await this.#save()
+    return true
+  }
+
   /** Find the local mirror workspace for one remote workspace. */
   localWorkspaceId(hostId: string, remoteWorkspaceId: string): string | undefined {
     return this.#state.workspaces[key(hostId, remoteWorkspaceId)]?.localWorkspaceId

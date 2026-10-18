@@ -123,39 +123,20 @@ async function dispatch(
       const hostId = requireStringField(payload, 'hostId')
       const workspaces = await service.workspaces(hostId)
       return {
-        workspaces: workspaces.map(workspace => {
-          const localWorkspaceId = mirrors?.localWorkspaceId(hostId, workspace.workspaceId)
-          return {
-            ...workspace,
-            ...localWorkspaceId === undefined ? {} : { localWorkspaceId },
-            hidden: mirrors?.isWorkspaceHidden(hostId, workspace.workspaceId) ?? false,
-          }
-        }),
+        workspaces: workspaces
+          .filter(workspace => mirrors?.isWorkspaceHidden(hostId, workspace.workspaceId) !== true)
+          .map(workspace => {
+            const localWorkspaceId = mirrors?.localWorkspaceId(hostId, workspace.workspaceId)
+            return localWorkspaceId === undefined ? workspace : { ...workspace, localWorkspaceId }
+          }),
       }
     }
     case 'host/workspace/create': {
       const body = requireRecord(payload)
-      const hostId = requireStringField(body, 'hostId')
-      const workspace = await service.createWorkspace(hostId, {
+      return service.createWorkspace(requireStringField(body, 'hostId'), {
         path: requireStringField(body, 'path'),
         ...optionalStringField(body, 'title') === undefined ? {} : { title: optionalStringField(body, 'title') },
       })
-      if (optionalBooleanField(body, 'hidden') === true && mirrors !== undefined) {
-        await mirrors.setWorkspaceHidden(hostId, workspace.workspaceId, workspace.path, workspace.title, true)
-      }
-      return workspace
-    }
-    case 'host/workspace/hide': {
-      const body = requireRecord(payload)
-      if (mirrors === undefined) throw new LocalError('mirror/unavailable', 'session mirroring is disabled')
-      const hostId = requireStringField(body, 'hostId')
-      const workspaceId = requireStringField(body, 'workspaceId')
-      const hidden = optionalBooleanField(body, 'hidden') ?? true
-      const workspaces = await service.workspaces(hostId)
-      const workspace = workspaces.find(item => item.workspaceId === workspaceId)
-      if (workspace === undefined) throw new LocalError('workspace/not-found', `unknown remote workspace ${workspaceId}`)
-      await mirrors.setWorkspaceHidden(hostId, workspaceId, workspace.path, workspace.title, hidden)
-      return { hidden }
     }
     case 'host/sessions': {
       const body = requireRecord(payload)
