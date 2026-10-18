@@ -5,7 +5,9 @@
  * @module dsh-remote-local/client/api
  */
 
-import type { AcceptedResult, CreateSessionResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
+import type { Context } from '@deepseek-ai/cordis'
+import type { AcceptedResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
+import type { HostCreateSessionResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -46,13 +48,14 @@ export interface HostsApi {
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
-  readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<CreateSessionResult>
-  readonly prompt: (hostId: string, sessionId: string, text: string, mode?: PromptDeliveryMode) => Promise<AcceptedResult>
+  readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
+  readonly openSession: (sessionId: string) => void
+  readonly prompt: (hostId: string, sessionId: string, text: string, mode?: PromptDeliveryMode, selection?: { provider: string; model: string; reasoningEffort?: string }) => Promise<AcceptedResult>
   readonly cancel: (hostId: string, sessionId: string) => Promise<AcceptedResult>
 }
 
 /** Build the API closure once per plugin mount. */
-export function createHostsApi(_ctx: unknown): HostsApi {
+export function createHostsApi(ctx: Context): HostsApi {
   return {
     state: () => call('state', undefined),
     validateTarget: sshTarget => call('target/validate', { sshTarget }),
@@ -75,11 +78,13 @@ export function createHostsApi(_ctx: unknown): HostsApi {
       ...limit === undefined ? {} : { limit },
     }),
     createSession: (hostId, input) => call('host/session/create', { hostId, ...input }),
-    prompt: (hostId, sessionId, text, mode) => call('host/session/prompt', {
+    openSession: sessionId => { ctx.uiWorkspace.openSession(sessionId as never) },
+    prompt: (hostId, sessionId, text, mode, selection) => call('host/session/prompt', {
       hostId,
       sessionId,
       text,
       ...mode === undefined ? {} : { mode },
+      ...selection === undefined ? {} : selection,
     }),
     cancel: (hostId, sessionId) => call('host/session/cancel', { hostId, sessionId }),
   }

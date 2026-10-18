@@ -10,11 +10,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { createHostsApi } from './api.ts'
 import { RemoteDevelopmentPanel } from './RemoteDevelopmentPanel.tsx'
 
 /** The Settings shell's slot registry and the authenticated connection. */
-export const inject = ['slots']
+export const inject = ['slots', 'uiWorkspace']
 
 /** Register the 远程开发 page. */
 export function apply(ctx: Context): void {

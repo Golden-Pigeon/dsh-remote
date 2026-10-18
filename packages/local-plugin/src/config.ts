@@ -39,6 +39,12 @@ export interface Config {
   readonly credentialProxyRemotePort?: number
   /** Credential reference resolved in the local DSH process. */
   readonly modelCredentialRef?: string
+  /** Mirror remote sessions into the local conversation UI. */
+  readonly mirrorSessions?: boolean
+  /** Poll interval for mirrored remote event logs. */
+  readonly mirrorPollMs?: number
+  /** Maximum remote events replayed when a mirror is created. */
+  readonly mirrorMaxEvents?: number
 }
 
 /** Loader-validated schema. */
@@ -63,6 +69,9 @@ export const Config: z<Config> = z.object({
   credentialProxyUpstream: z.string().default('https://api.deepseek.com'),
   credentialProxyRemotePort: z.number().min(1).max(65_535).default(47_821),
   modelCredentialRef: z.string().default('DEEPSEEK_API_KEY'),
+  mirrorSessions: z.boolean().default(true),
+  mirrorPollMs: z.number().min(500).max(30_000).default(1_500),
+  mirrorMaxEvents: z.number().min(100).max(10_000).default(2_000),
 })
 
 /** How the remote DSH web host is supervised after provisioning. */
@@ -90,6 +99,9 @@ export interface ResolvedConfig {
   readonly credentialProxyUpstream: string
   readonly credentialProxyRemotePort: number
   readonly modelCredentialRef: string
+  readonly mirrorSessions: boolean
+  readonly mirrorPollMs: number
+  readonly mirrorMaxEvents: number
 }
 
 /** DSH home. */
@@ -150,5 +162,8 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
     credentialProxyUpstream: config.credentialProxyUpstream ?? 'https://api.deepseek.com',
     credentialProxyRemotePort: config.credentialProxyRemotePort ?? 47_821,
     modelCredentialRef: config.modelCredentialRef ?? 'DEEPSEEK_API_KEY',
+    mirrorSessions: config.mirrorSessions ?? true,
+    mirrorPollMs: config.mirrorPollMs ?? 1_500,
+    mirrorMaxEvents: config.mirrorMaxEvents ?? 2_000,
   }
 }

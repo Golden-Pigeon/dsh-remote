@@ -12,6 +12,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { Config, resolveConfig, type Config as LocalConfig } from './config.ts'
 import { registerHostApi } from './host-api/handler.ts'
+import { RemoteMirrorService } from './mirror/service.ts'
 import { RemoteHostsService } from './service.ts'
 import { registerRemoteTools } from './tools.ts'
 
@@ -40,10 +41,12 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
     },
   })
   await service.start()
+  const mirrors = new RemoteMirrorService(ctx, service, resolved)
+  await mirrors.start()
 
   ctx.effect(
     () => {
-      const dispose = registerHostApi(ctx, service)
+      const dispose = registerHostApi(ctx, service, mirrors)
       return () => { void dispose() }
     },
     'dsh-remote-local: authenticated host API',
@@ -54,8 +57,11 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   })
 
   ctx.effect(
-    () => () => { void service.dispose() },
-    'dsh-remote-local: tunnel lifecycle',
+    () => () => {
+      void mirrors.dispose()
+      void service.dispose()
+    },
+    'dsh-remote-local: tunnel and mirror lifecycle',
   )
 
   ctx.logger.info(

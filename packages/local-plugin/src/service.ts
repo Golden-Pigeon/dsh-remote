@@ -342,10 +342,15 @@ export class RemoteHostsService {
     sessionId: string,
     text: string,
     mode?: PromptDeliveryMode,
+    selection?: { provider: string; model: string; reasoningEffort?: string },
   ): Promise<AcceptedResult> {
     const client = this.#requireClient(id)
     try {
-      await client.promptSession(sessionId, { text, ...mode === undefined ? {} : { mode } })
+      await client.promptSession(sessionId, {
+        text,
+        ...mode === undefined ? {} : { mode },
+        ...selection === undefined ? {} : selection,
+      })
       return { accepted: true }
     } catch (error) {
       throw this.#remoteFailure(id, error)

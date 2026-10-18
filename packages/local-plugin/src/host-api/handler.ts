@@ -13,6 +13,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { LocalError, asLocalError } from '../errors.ts'
 import type { RemoteHostsService } from '../service.ts'
+import type { RemoteMirrorService } from '../mirror/service.ts'
 import {
   HOST_API_PATH,
   type HostApiEndpoint,
@@ -23,16 +24,24 @@ import {
 } from './contract.ts'
 
 /** Register the route; returns its asynchronous disposer. */
-export function registerHostApi(ctx: Context, service: RemoteHostsService): () => Promise<void> {
+export function registerHostApi(
+  ctx: Context,
+  service: RemoteHostsService,
+  mirrors?: RemoteMirrorService,
+): () => Promise<void> {
   return ctx.connection.fetch.register({
     path: HOST_API_PATH,
     methods: ['POST'],
     requestBody: 'buffered',
-    fetch: request => handleHostApi(service, request),
+    fetch: request => handleHostApi(service, mirrors, request),
   })
 }
 
-async function handleHostApi(service: RemoteHostsService, request: Request): Promise<Response> {
+async function handleHostApi(
+  service: RemoteHostsService,
+  mirrors: RemoteMirrorService | undefined,
+  request: Request,
+): Promise<Response> {
   let body: HostApiRequest
   try {
     body = await request.json() as HostApiRequest
@@ -55,7 +64,7 @@ async function handleHostApi(service: RemoteHostsService, request: Request): Pro
   }
 
   try {
-    const value = await dispatch(service, body.endpoint, body.payload)
+    const value = await dispatch(service, mirrors, body.endpoint, body.payload)
     return jsonResult({ ok: true, value })
   } catch (error) {
     const failure = asLocalError(error)
@@ -72,6 +81,7 @@ async function handleHostApi(service: RemoteHostsService, request: Request): Pro
 
 async function dispatch(
   service: RemoteHostsService,
+  mirrors: RemoteMirrorService | undefined,
   endpoint: string,
   payload: unknown,
 ): Promise<HostApiValues[HostApiEndpoint]> {
@@ -133,7 +143,8 @@ async function dispatch(
     }
     case 'host/session/create': {
       const body = requireRecord(payload)
-      return service.createSession(requireStringField(body, 'hostId'), {
+      const hostId = requireStringField(body, 'hostId')
+      const created = await service.createSession(hostId, {
         ...optionalStringField(body, 'workspaceId') === undefined
           ? {}
           : { workspaceId: optionalStringField(body, 'workspaceId') },
@@ -142,6 +153,8 @@ async function dispatch(
           ? {}
           : { agentPreset: optionalStringField(body, 'agentPreset') },
       })
+      const localSessionId = await mirrors?.ensureRemoteSession(hostId, created.sessionId)
+      return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
     }
     case 'host/session/prompt': {
       const body = requireRecord(payload)
@@ -149,11 +162,17 @@ async function dispatch(
       if (mode !== undefined && mode !== 'queue' && mode !== 'steer') {
         throw new LocalError('request/invalid', 'mode must be queue or steer')
       }
+      const provider = optionalStringField(body, 'provider')
+      const model = optionalStringField(body, 'model')
+      const reasoningEffort = optionalStringField(body, 'reasoningEffort')
       return service.promptSession(
         requireStringField(body, 'hostId'),
         requireStringField(body, 'sessionId'),
         requireStringField(body, 'text'),
         mode,
+        provider === undefined || model === undefined
+          ? undefined
+          : { provider, model, ...reasoningEffort === undefined ? {} : { reasoningEffort } },
       )
     }
     case 'host/session/cancel': {

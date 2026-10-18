@@ -65,6 +65,11 @@ export interface SessionsResult {
   readonly sessions: readonly RemoteSessionSummary[]
 }
 
+export interface HostCreateSessionResult extends CreateSessionResult {
+  /** Local mirror session that opens in the ordinary Conversation UI. */
+  readonly localSessionId?: string
+}
+
 /** Result of resolving the remote Web UI. */
 export interface WebUrlResult {
   readonly url: string
@@ -109,7 +114,15 @@ export interface HostApiPayloads {
   'host/sessions': { hostId: string; workspaceId?: string }
   'host/session': { hostId: string; sessionId: string; limit?: number }
   'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
-  'host/session/prompt': { hostId: string; sessionId: string; text: string; mode?: PromptDeliveryMode }
+  'host/session/prompt': {
+    hostId: string
+    sessionId: string
+    text: string
+    mode?: PromptDeliveryMode
+    provider?: string
+    model?: string
+    reasoningEffort?: string
+  }
   'host/session/cancel': { hostId: string; sessionId: string }
   'host/web-url': { hostId: string }
 }
@@ -128,7 +141,7 @@ export interface HostApiValues {
   'host/workspace/create': RemoteWorkspace
   'host/sessions': SessionsResult
   'host/session': SessionSnapshot
-  'host/session/create': CreateSessionResult
+  'host/session/create': HostCreateSessionResult
   'host/session/prompt': AcceptedResult
   'host/session/cancel': AcceptedResult
   'host/web-url': WebUrlResult

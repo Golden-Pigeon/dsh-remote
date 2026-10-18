@@ -13,7 +13,6 @@ import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
 import type { HostsApi } from './api.ts'
-import { RemoteChatPanel } from './RemoteChatPanel.tsx'
 import panelCss from './panel.css'
 
 /** Props injected by the Settings page. */
@@ -43,7 +42,6 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
   const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
-  const [chat, setChat] = useState<{ hostId: string; sessionId: string; label: string } | null>(null)
   const [workspaceDraft, setWorkspaceDraft] = useState('')
   const [form, setForm] = useState({
     sshTarget: '',
@@ -177,9 +175,7 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
     }
   }
 
-  async function openChat(host: HostView, sessionId: string): Promise<void> {
-    setChat({ hostId: host.id, sessionId, label: host.label })
-  }
+
 
   async function newSession(host: HostView, workspaceId: string): Promise<void> {
     setBusy(`create:${host.id}:${workspaceId}`)
@@ -188,7 +184,15 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
       const created = await api.createSession(host.id, { workspaceId })
       const key = `${host.id}:${workspaceId}`
       setOpenWorkspace(current => ({ ...current, [key]: true }))
-      setChat({ hostId: host.id, sessionId: created.sessionId, label: host.label })
+      if (created.localSessionId !== undefined) {
+        api.openSession(created.localSessionId)
+        setNotice('远端会话已创建，正在普通会话界面打开…')
+        window.setTimeout(() => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        }, 80)
+      } else {
+        setNotice('远端会话已创建，正在同步到侧边栏…')
+      }
       const result = await api.sessions(host.id, workspaceId)
       setSessions(current => ({ ...current, [key]: [...result.sessions] }))
       const refreshed = await api.workspaces(host.id)
@@ -224,8 +228,8 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
         <div>
           <h2>远程开发</h2>
           <p className="dshr-subtitle">
-            只需填写 SSH 目标。插件会自动通过 SSH 安装并启动远端 <code>dsh-remote-agent</code> 与
-            <code>dsh web</code>，建立隧道；本地模型凭据经反向隧道代理，不写入远端磁盘。
+            只需填写 SSH 目标。插件会自动安装并启动远端 agent，建立隧道。
+            连接后远端工作区和会话会同步到左侧，像本地会话一样打开；模型凭据经隧道代理，不写入远端磁盘。
           </p>
         </div>
         <button
@@ -443,17 +447,12 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
                                   : sessions[workspaceKey]?.length === 0
                                     ? <p className="dshr-empty">该工作区暂无会话。点“+ 新会话”开始。</p>
                                     : sessions[workspaceKey]?.map(session => (
-                                      <button
-                                        key={session.sessionId}
-                                        type="button"
-                                        className="dshr-session dshr-session-button"
-                                        onClick={() => { void openChat(host, session.sessionId) }}
-                                      >
+                                      <div key={session.sessionId} className="dshr-session">
                                         <span className={session.live ? 'dshr-live' : 'dshr-idle'} />
                                         <code>{session.sessionId}</code>
                                         <span>{session.cwd ?? '—'}</span>
-                                        <span className="dshr-count">{session.eventCount ?? '—'} 事件 · 对话 →</span>
-                                      </button>
+                                        <span className="dshr-count">{session.eventCount ?? '—'} 事件</span>
+                                      </div>
                                     ))}
                               </div>
                             )}
@@ -467,16 +466,6 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
         </div>
       </section>
 
-      {chat !== null && (
-        <RemoteChatPanel
-          api={api}
-          hostId={chat.hostId}
-          hostLabel={chat.label}
-          sessionId={chat.sessionId}
-          onClose={() => setChat(null)}
-          onOpenRemote={() => { void openWeb(chat.hostId) }}
-        />
-      )}
     </div>
   )
 }

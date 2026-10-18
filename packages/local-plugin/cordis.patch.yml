@@ -34,3 +34,8 @@
         credentialProxyUpstream: https://api.deepseek.com
         credentialProxyRemotePort: 47821
         modelCredentialRef: DEEPSEEK_API_KEY
+
+        # Mirror remote workspaces/sessions into the ordinary local UI.
+        mirrorSessions: true
+        mirrorPollMs: 1500
+        mirrorMaxEvents: 2000

@@ -37,7 +37,7 @@ describe('client bundle artifact', () => {
       if (specifier === 'react/jsx-runtime') return jsxRuntime
       throw new Error(`unexpected external: ${specifier}`)
     })
-    assert.deepEqual(Array.from(exports.inject as string[]), ['slots'])
+    assert.deepEqual(Array.from(exports.inject as string[]), ['slots', 'uiWorkspace'])
     assert.equal(typeof exports.apply, 'function')
 
     let registration: { name: string; id: string; label: string; order: number; inject: () => { api: unknown } } | undefined
