@@ -28,6 +28,7 @@ import type {
   RemoteAssistantFrame,
   RemoteSessionEvent,
   RemoteSessionSummary,
+  SessionSnapshot,
   RemoteWorkspace,
   PromptDeliveryMode,
 } from '@dsh-remote/protocol'
@@ -585,6 +586,7 @@ export class RemoteMirrorService {
   ): Promise<MirrorRecord | undefined> {
     const ref = key(host.id, remote.sessionId)
     const existing = this.#state.sessions[ref]
+    let reuse: Session | undefined
     if (existing !== undefined) {
       const live = this.#sessions.get(existing.localSessionId as SessionId)
       const runtime = this.#runtimes.get(existing.localSessionId)
@@ -609,12 +611,7 @@ export class RemoteMirrorService {
         registration()
         this.#registrations.delete(existing.localSessionId)
       }
-      if (live !== undefined) {
-        // A previous process left a persisted mirror; hide it before replacing.
-        await this.#archive(existing.localSessionId as SessionId)
-      } else if (existing.localSessionId !== '') {
-        await this.#archive(existing.localSessionId as SessionId)
-      }
+      if (live !== undefined) reuse = live
     }
 
     const snapshot = await this.#hosts.snapshot(host.id, remote.sessionId, this.#config.mirrorMaxEvents)
@@ -628,19 +625,40 @@ export class RemoteMirrorService {
     }
     const anchor = this.#anchorFor(workspace)
     await mkdir(anchor, { recursive: true })
-    const localId = `session-${randomUUID()}`
-    let session: Session
-    const remoteToLocalSeq = new Map<number, number>()
+    const filtered = snapshot.events.filter(event => !isMirrorNoise(event.type))
+    const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
     let latestTurn = 0
-    try {
-      const filtered = snapshot.events.filter(event => !isMirrorNoise(event.type))
-      for (const event of filtered) {
-        if (event.type !== 'turn/start') continue
-        const turn = (event.data as { turn?: unknown }).turn
-        if (typeof turn === 'number') latestTurn = Math.max(latestTurn, turn)
+    for (const event of filtered) {
+      if (event.type !== 'turn/start') continue
+      const turn = (event.data as { turn?: unknown }).turn
+      if (typeof turn === 'number') latestTurn = Math.max(latestTurn, turn)
+    }
+    const remoteToLocalSeq = new Map<number, number>()
+    for (const [index, event] of filtered.entries()) remoteToLocalSeq.set(event.seq, index)
+
+    if (reuse !== undefined) {
+      const localEvents = reuse.snapshotEvents()
+      for (let index = 0; index < Math.min(localEvents.length, filtered.length); index += 1) {
+        const localEvent = localEvents[index]
+        const remoteEvent = filtered[index]
+        if (localEvent !== undefined && remoteEvent !== undefined) {
+          remoteToLocalSeq.set(remoteEvent.seq, localEvent.seq)
+        }
       }
-      for (const [index, event] of filtered.entries()) remoteToLocalSeq.set(event.seq, index)
-      const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
+      const record = existing as MirrorRecord
+      await this.#attach(workspace, reuse.id)
+      await this.#mountRuntime(record, reuse, snapshot, remoteToLocalSeq, latestTurn, remote.live)
+      this.#ctx.logger.info(
+        'dsh-remote-local: reattached remote session %s to local %s',
+        remote.sessionId,
+        reuse.id,
+      )
+      return record
+    }
+
+    const localId = existing?.localSessionId ?? `session-${randomUUID()}`
+    let session: Session
+    try {
       const seed = filtered.map((event, index) => toSeedEvent(event, index, seqMap))
       session = this.#sessions.create(localId as SessionId, {
         ...seed.length === 0 ? {} : { seed },
@@ -657,17 +675,41 @@ export class RemoteMirrorService {
       this.#ctx.logger.debug('dsh-remote-local: mirror flush failed: %s', String(error))
     }
 
-    const record: MirrorRecord = {
-      hostId: host.id,
-      remoteSessionId: remote.sessionId,
-      localSessionId: localId,
-      remoteWorkspaceId: remote.workspaceId,
-      anchor,
-      lastSeq: snapshot.cursor,
-      updatedAt: new Date().toISOString(),
-    }
+    const record: MirrorRecord = existing === undefined
+      ? {
+          hostId: host.id,
+          remoteSessionId: remote.sessionId,
+          localSessionId: localId,
+          remoteWorkspaceId: remote.workspaceId,
+          anchor,
+          lastSeq: snapshot.cursor,
+          updatedAt: new Date().toISOString(),
+        }
+      : {
+          ...existing,
+          remoteWorkspaceId: remote.workspaceId,
+          anchor,
+          lastSeq: snapshot.cursor,
+          updatedAt: new Date().toISOString(),
+        }
     this.#state.sessions[ref] = record
+    await this.#mountRuntime(record, session, snapshot, remoteToLocalSeq, latestTurn, remote.live)
+    this.#ctx.logger.info(
+      'dsh-remote-local: mirrored remote session %s as local %s',
+      remote.sessionId,
+      localId,
+    )
+    return record
+  }
 
+  async #mountRuntime(
+    record: MirrorRecord,
+    session: Session,
+    snapshot: SessionSnapshot,
+    remoteToLocalSeq: Map<number, number>,
+    latestTurn: number,
+    live: boolean,
+  ): Promise<void> {
     const runtime = {
       record,
       agent: null as unknown as MirrorAgent,
@@ -687,25 +729,17 @@ export class RemoteMirrorService {
       pendingUsers: [],
       waiters: [],
     } satisfies MirrorRuntime
-    // A freshly mirrored Session starts from the local UI's current selection.
-    // Later per-session selections are forwarded by #onLocalSessionEvent.
     const options = this.#defaultSelection() ?? modelOptions(snapshot.events)
     const agent = new RemoteMirrorAgent(this, runtime, this.#ctx, options)
     runtime.agent = agent
-    this.#runtimes.set(localId, runtime)
-    this.#registrations.set(localId, this.#agents.enter(agent as never, undefined))
+    this.#runtimes.set(record.localSessionId, runtime)
+    this.#registrations.set(record.localSessionId, this.#agents.enter(agent as never, undefined))
     await this.#save()
     this.#schedule(runtime)
-    if (remote.live) {
+    if (live) {
       this.#startStream(runtime)
       this.#startAssistantStream(runtime)
     }
-    this.#ctx.logger.info(
-      'dsh-remote-local: mirrored remote session %s as local %s',
-      remote.sessionId,
-      localId,
-    )
-    return record
   }
 
   #schedule(runtime: MirrorRuntime): void {
