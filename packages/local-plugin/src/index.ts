@@ -8,6 +8,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { Config, resolveConfig, type Config as LocalConfig } from './config.ts'
 import { registerHostApi } from './host-api/handler.ts'
@@ -16,8 +17,8 @@ import { registerRemoteTools } from './tools.ts'
 
 export const name = 'dsh-remote-local'
 
-/** Connection owns the authenticated `/api` carrier. */
-export const inject = ['connection']
+/** Connection owns the authenticated `/api` carrier; credentials stay local. */
+export const inject = ['connection', 'credentials']
 
 export { Config }
 export type { LocalConfig }
@@ -27,7 +28,17 @@ export { HOST_API_PATH } from './host-api/contract.ts'
 /** Mount the host registry and its extension points. */
 export async function apply(ctx: Context, config: LocalConfig = {}): Promise<void> {
   const resolved = resolveConfig(config)
-  const service = new RemoteHostsService(ctx, resolved)
+  const service = new RemoteHostsService(ctx, resolved, {
+    resolveModelKey: async () => {
+      try {
+        const resolvedKey = await ctx.credentials.resolve(credentialRef(resolved.modelCredentialRef))
+        return resolvedKey?.value
+      } catch (error) {
+        ctx.logger.warn('dsh-remote-local: could not resolve %s: %s', resolved.modelCredentialRef, String(error))
+        return undefined
+      }
+    },
+  })
   await service.start()
 
   ctx.effect(

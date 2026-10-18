@@ -386,3 +386,230 @@
     transition: none;
   }
 }
+
+.dshr-detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dshr-warning);
+}
+
+.dshr-workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+}
+
+.dshr-workspace-row .dshr-workspace-head {
+  flex: 1;
+}
+
+.dshr-button-small {
+  flex: none;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.dshr-session-button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshr-session-button:hover {
+  background: var(--dshr-soft);
+}
+
+.dshr-chat {
+  position: fixed;
+  z-index: 60;
+  top: 24px;
+  right: 24px;
+  bottom: 24px;
+  width: min(620px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: #18191d;
+  color: #f3f3f5;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.dshr-chat-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dshr-chat-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.dshr-chat-title code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dshr-chat-head-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.dshr-chat .dshr-button {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  color: inherit;
+}
+
+.dshr-chat .dshr-button-primary {
+  border-color: transparent;
+  background: var(--dshr-accent);
+  color: #fff;
+}
+
+.dshr-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 2px;
+}
+
+.dshr-chat-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 92%;
+}
+
+.dshr-chat-line pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.dshr-chat-user {
+  align-self: flex-end;
+}
+
+.dshr-chat-user pre {
+  background: #2f4f9e;
+  color: #fff;
+}
+
+.dshr-chat-assistant pre {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dshr-chat-tool pre {
+  background: rgba(201, 132, 23, 0.14);
+  border: 1px solid rgba(201, 132, 23, 0.35);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.dshr-chat-status pre {
+  background: transparent;
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.dshr-chat-role {
+  font-size: 10px;
+  opacity: 0.5;
+  padding: 0 4px;
+}
+
+.dshr-chat-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dshr-chat-compose textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 64px;
+  max-height: 220px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.dshr-chat-compose textarea:focus {
+  border-color: var(--dshr-accent);
+}
+
+.dshr-chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dshr-chat .dshr-banner-info {
+  border-color: rgba(79, 124, 255, 0.35);
+  background: rgba(79, 124, 255, 0.12);
+  color: #dfe7ff;
+}
+
+@media (max-width: 760px) {
+  .dshr-chat {
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+  }
+}
+
+.dshr-workspace-add {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0 6px;
+}
+
+.dshr-workspace-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dshr-border);
+  border-radius: 7px;
+  background: var(--dshr-soft);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.dshr-workspace-add input:focus {
+  border-color: var(--dshr-accent);
+}

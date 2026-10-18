@@ -21,6 +21,8 @@ export interface TunnelOptions {
   readonly remotePort: number
   readonly connectTimeoutMs: number
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
+  /** Reverse forward used by the local model credential proxy. */
+  readonly reverseForward?: { readonly remotePort: number; readonly localPort: number }
   /** Called once when an unexpected exit happens. */
   readonly onExit?: (info: { code: number | null; signal: NodeJS.Signals | null; stderr: string }) => void
 }
@@ -38,6 +40,9 @@ export function tunnelArgs(options: TunnelOptions, localPort: number): string[] 
     '-N',
     '-o', 'ExitOnForwardFailure=yes',
     '-L', `127.0.0.1:${localPort}:127.0.0.1:${options.remotePort}`,
+    ...options.reverseForward === undefined ? [] : [
+      '-R', `127.0.0.1:${options.reverseForward.remotePort}:127.0.0.1:${options.reverseForward.localPort}`,
+    ],
     options.target.destination,
   ]
 }

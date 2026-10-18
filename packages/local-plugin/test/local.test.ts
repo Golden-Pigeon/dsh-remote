@@ -66,8 +66,8 @@ describe('SSH target', () => {
 describe('discovery command', () => {
   it('quotes literal paths and expands HOME for tilde paths', () => {
     assert.equal(shellQuote(`a'b`), `'a'\\''b'`)
-    assert.equal(discoveryCommand('~/.dsh/remote-agent/agent.json'), 'cat -- "$HOME/.dsh/remote-agent/agent.json"')
-    assert.equal(discoveryCommand('/srv/agent.json'), `cat -- '/srv/agent.json'`)
+    assert.equal(discoveryCommand('~/.dsh/remote-agent/agent.json'), 'cat -- "$HOME/.dsh/remote-agent/agent.json" 2>/dev/null || true')
+    assert.equal(discoveryCommand('/srv/agent.json'), `cat -- '/srv/agent.json' 2>/dev/null || true`)
   })
 })
 

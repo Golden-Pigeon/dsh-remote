@@ -1,7 +1,8 @@
 # dsh-remote-local-plugin host bundle.
 #
-# One row owns the host registry, SSH tunnels, and the authenticated
-# Connection RPC channel. Its browser half registers the Settings page.
+# One row owns the host registry, SSH tunnels, plugin-owned remote
+# provisioning, the local model credential proxy, and the authenticated host
+# API. Its browser half registers the Settings page and remote chat drawer.
 - insert:
     - id: dsh-remote-local
       name: dsh-remote-local-plugin
@@ -9,12 +10,27 @@
         # Empty means $DSH_HOME/remote.
         stateDir: ''
         sshBinary: ssh
-        # Remote discovery document written by dsh-remote-agent.
-        remoteStateFile: ~/.dsh/remote-agent/agent.json
+        # Empty means <remoteDshHome>/remote-agent/agent.json.
+        remoteStateFile: ''
         probeTimeoutMs: 10000
         connectTimeoutMs: 15000
         healthIntervalMs: 15000
         reconnect: true
         maxReconnectDelayMs: 30000
-        # TOFU by default; set to "yes" for a pre-populated known_hosts.
         strictHostKeyChecking: accept-new
+
+        # One-click remote provisioning.
+        autoProvision: true
+        remoteDshHome: ~/.dsh
+        remoteInstallDir: ~/.local/share/dsh-remote
+        remoteDshVersion: 0.2.1-rc.2
+        remotePnpmVersion: 11.21.0
+        remoteStart: systemd
+        provisionTimeoutMs: 600000
+
+        # Keep the model key local; forward provider traffic through a reverse
+        # SSH tunnel to a loopback proxy.
+        credentialProxy: true
+        credentialProxyUpstream: https://api.deepseek.com
+        credentialProxyRemotePort: 47821
+        modelCredentialRef: DEEPSEEK_API_KEY

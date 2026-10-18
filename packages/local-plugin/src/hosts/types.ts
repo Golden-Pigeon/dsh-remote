@@ -14,6 +14,7 @@ import type { HostInfo } from '@dsh-remote/protocol'
 export type HostPhase =
   | 'idle'
   | 'discovering'
+  | 'installing'
   | 'connecting'
   | 'connected'
   | 'disconnected'
@@ -46,6 +47,10 @@ export interface HostRuntime {
   readonly error: string | null
   readonly errorCode: string | null
   readonly connectedAt: string | null
+  /** Human-readable progress detail for discovery/provisioning. */
+  readonly detail: string | null
+  /** Whether the local model credential proxy is active for this host. */
+  readonly modelProxy: boolean
 }
 
 /** Browser/tool-safe host projection. */
@@ -67,6 +72,10 @@ export interface HostView {
   readonly error: string | null
   readonly errorCode: string | null
   readonly connectedAt: string | null
+  /** Human-readable progress detail for discovery/provisioning. */
+  readonly detail: string | null
+  /** Whether the local model credential proxy is active for this host. */
+  readonly modelProxy: boolean
 }
 
 /** Input accepted by `host/add`. */
@@ -89,6 +98,8 @@ export function idleRuntime(): HostRuntime {
     error: null,
     errorCode: null,
     connectedAt: null,
+    detail: null,
+    modelProxy: false,
   }
 }
 
@@ -112,5 +123,7 @@ export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
     error: runtime.error,
     errorCode: runtime.errorCode,
     connectedAt: runtime.connectedAt,
+    detail: runtime.detail,
+    modelProxy: runtime.modelProxy,
   }
 }

@@ -14,7 +14,7 @@ export interface Config {
   readonly stateDir?: string
   /** SSH executable. */
   readonly sshBinary?: string
-  /** Remote discovery document path. */
+  /** Remote discovery document path; empty derives from `remoteDshHome`. */
   readonly remoteStateFile?: string
   readonly probeTimeoutMs?: number
   readonly connectTimeoutMs?: number
@@ -23,20 +23,50 @@ export interface Config {
   readonly maxReconnectDelayMs?: number
   /** `yes`, `no`, `ask`, or `accept-new`. */
   readonly strictHostKeyChecking?: string
+  /** Provision DSH + dsh-remote-agent when discovery finds no agent. */
+  readonly autoProvision?: boolean
+  readonly remoteDshHome?: string
+  readonly remoteInstallDir?: string
+  readonly remoteDshVersion?: string
+  readonly remotePnpmVersion?: string
+  /** `systemd`, `nohup`, or `none`. */
+  readonly remoteStart?: string
+  readonly provisionTimeoutMs?: number
+  /** Keep the model key local and proxy it through a reverse SSH tunnel. */
+  readonly credentialProxy?: boolean
+  readonly credentialProxyUpstream?: string
+  /** Remote loopback port that receives the reverse-forwarded proxy. */
+  readonly credentialProxyRemotePort?: number
+  /** Credential reference resolved in the local DSH process. */
+  readonly modelCredentialRef?: string
 }
 
 /** Loader-validated schema. */
 export const Config: z<Config> = z.object({
   stateDir: z.string().default(''),
   sshBinary: z.string().default('ssh'),
-  remoteStateFile: z.string().default('~/.dsh/remote-agent/agent.json'),
+  remoteStateFile: z.string().default(''),
   probeTimeoutMs: z.number().min(1_000).max(120_000).default(10_000),
   connectTimeoutMs: z.number().min(1_000).max(120_000).default(15_000),
   healthIntervalMs: z.number().min(2_000).max(600_000).default(15_000),
   reconnect: z.boolean().default(true),
   maxReconnectDelayMs: z.number().min(1_000).max(600_000).default(30_000),
   strictHostKeyChecking: z.string().default('accept-new'),
+  autoProvision: z.boolean().default(true),
+  remoteDshHome: z.string().default('~/.dsh'),
+  remoteInstallDir: z.string().default('~/.local/share/dsh-remote'),
+  remoteDshVersion: z.string().default('0.2.1-rc.2'),
+  remotePnpmVersion: z.string().default('11.21.0'),
+  remoteStart: z.string().default('systemd'),
+  provisionTimeoutMs: z.number().min(60_000).max(1_800_000).default(600_000),
+  credentialProxy: z.boolean().default(true),
+  credentialProxyUpstream: z.string().default('https://api.deepseek.com'),
+  credentialProxyRemotePort: z.number().min(1).max(65_535).default(47_821),
+  modelCredentialRef: z.string().default('DEEPSEEK_API_KEY'),
 })
+
+/** How the remote DSH web host is supervised after provisioning. */
+export type RemoteStartMode = 'systemd' | 'nohup' | 'none'
 
 /** Resolved config. */
 export interface ResolvedConfig {
@@ -49,6 +79,17 @@ export interface ResolvedConfig {
   readonly reconnect: boolean
   readonly maxReconnectDelayMs: number
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
+  readonly autoProvision: boolean
+  readonly remoteDshHome: string
+  readonly remoteInstallDir: string
+  readonly remoteDshVersion: string
+  readonly remotePnpmVersion: string
+  readonly remoteStart: RemoteStartMode
+  readonly provisionTimeoutMs: number
+  readonly credentialProxy: boolean
+  readonly credentialProxyUpstream: string
+  readonly credentialProxyRemotePort: number
+  readonly modelCredentialRef: string
 }
 
 /** DSH home. */
@@ -67,21 +108,47 @@ export function resolveLocalPath(path: string, home = resolveDshHome()): string 
   return isAbsolute(trimmed) ? trimmed : resolve(home, trimmed)
 }
 
+/** Join a remote path expression without resolving it locally. */
+export function joinRemotePath(base: string, suffix: string): string {
+  const trimmed = base.trim()
+  if (trimmed === '' || trimmed === '~') return `~/${suffix}`
+  return `${trimmed.replace(/\/+$/u, '')}/${suffix}`
+}
+
 /** Materialize defaults. */
 export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = process.env): ResolvedConfig {
   const strict = config.strictHostKeyChecking ?? 'accept-new'
   if (strict !== 'yes' && strict !== 'no' && strict !== 'ask' && strict !== 'accept-new') {
     throw new Error(`invalid strictHostKeyChecking: ${JSON.stringify(strict)}`)
   }
+  const remoteStart = config.remoteStart ?? 'systemd'
+  if (remoteStart !== 'systemd' && remoteStart !== 'nohup' && remoteStart !== 'none') {
+    throw new Error(`invalid remoteStart: ${JSON.stringify(remoteStart)}`)
+  }
+  const remoteDshHome = config.remoteDshHome ?? '~/.dsh'
+  const configuredStateFile = (config.remoteStateFile ?? '').trim()
   return {
     stateDir: resolveLocalPath(config.stateDir ?? '', resolveDshHome(env)),
     sshBinary: (config.sshBinary ?? 'ssh').trim() || 'ssh',
-    remoteStateFile: (config.remoteStateFile ?? '~/.dsh/remote-agent/agent.json').trim(),
+    remoteStateFile: configuredStateFile === ''
+      ? joinRemotePath(remoteDshHome, 'remote-agent/agent.json')
+      : configuredStateFile,
     probeTimeoutMs: config.probeTimeoutMs ?? 10_000,
     connectTimeoutMs: config.connectTimeoutMs ?? 15_000,
     healthIntervalMs: config.healthIntervalMs ?? 15_000,
     reconnect: config.reconnect ?? true,
     maxReconnectDelayMs: config.maxReconnectDelayMs ?? 30_000,
     strictHostKeyChecking: strict,
+    autoProvision: config.autoProvision ?? true,
+    remoteDshHome,
+    remoteInstallDir: config.remoteInstallDir ?? '~/.local/share/dsh-remote',
+    remoteDshVersion: config.remoteDshVersion ?? '0.2.1-rc.2',
+    remotePnpmVersion: config.remotePnpmVersion ?? '11.21.0',
+    remoteStart,
+    provisionTimeoutMs: config.provisionTimeoutMs ?? 600_000,
+    credentialProxy: config.credentialProxy ?? true,
+    credentialProxyUpstream: config.credentialProxyUpstream ?? 'https://api.deepseek.com',
+    credentialProxyRemotePort: config.credentialProxyRemotePort ?? 47_821,
+    modelCredentialRef: config.modelCredentialRef ?? 'DEEPSEEK_API_KEY',
   }
 }

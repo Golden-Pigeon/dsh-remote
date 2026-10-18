@@ -45,14 +45,14 @@ export function discoveryCommand(remoteStateFile: string): string {
   if (/[\u0000-\u001f]/u.test(path)) {
     throw new LocalError('host/invalid', 'remote state file must not contain control characters')
   }
-  if (path === '~') return 'cat -- "$HOME"'
+  if (path === '~') return 'cat -- "$HOME" 2>/dev/null || true'
   if (path.startsWith('~/')) {
     const rest = path.slice(2)
     // Inside double quotes only these characters need escaping. The path comes
     // from plugin config, but quote it correctly instead of trusting that.
-    return `cat -- "$HOME/${rest.replace(/([\\"$`])/gu, '\\$1')}"`
+    return `cat -- "$HOME/${rest.replace(/([\\"$`])/gu, '\\$1')}" 2>/dev/null || true`
   }
-  return `cat -- ${shellQuote(path)}`
+  return `cat -- ${shellQuote(path)} 2>/dev/null || true`
 }
 
 /** SSH argv shared by discovery and tunnel startup. */

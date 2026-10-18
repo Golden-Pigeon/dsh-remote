@@ -13,6 +13,7 @@ import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
 import type { HostsApi } from './api.ts'
+import { RemoteChatPanel } from './RemoteChatPanel.tsx'
 import panelCss from './panel.css'
 
 /** Props injected by the Settings page. */
@@ -23,6 +24,7 @@ interface PanelProps {
 const PHASE_LABEL: Record<HostView['phase'], string> = {
   idle: '未连接',
   discovering: '发现中',
+  installing: '安装中',
   connecting: '连接中',
   connected: '已连接',
   disconnected: '已断开',
@@ -41,12 +43,11 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
   const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
+  const [chat, setChat] = useState<{ hostId: string; sessionId: string; label: string } | null>(null)
+  const [workspaceDraft, setWorkspaceDraft] = useState('')
   const [form, setForm] = useState({
     sshTarget: '',
     label: '',
-    token: '',
-    remoteAgentPort: '',
-    autoConnect: true,
   })
 
   useInjectedStyle(panelCss)
@@ -77,6 +78,13 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
     }
   }, [api])
 
+  useEffect(() => {
+    const host = hosts.find(item => item.id === expandedHost)
+    if (host?.phase === 'connected' && workspaces[host.id] === undefined) {
+      void loadWorkspaces(host.id)
+    }
+  }, [hosts, expandedHost, workspaces])
+
   async function refresh(): Promise<void> {
     setState(await api.state())
   }
@@ -103,19 +111,14 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
     }
     await run('add', async () => {
       await api.validateTarget(sshTarget)
-      const portText = form.remoteAgentPort.trim()
-      const remoteAgentPort = portText === '' ? undefined : Number(portText)
       const host = await api.addHost({
         sshTarget,
         ...form.label.trim() === '' ? {} : { label: form.label.trim() },
-        ...form.token.trim() === '' ? {} : { token: form.token.trim() },
-        ...remoteAgentPort === undefined ? {} : { remoteAgentPort },
-        autoConnect: form.autoConnect,
+        autoConnect: true,
       })
-      setForm({ sshTarget: '', label: '', token: '', remoteAgentPort: '', autoConnect: true })
+      setForm({ sshTarget: '', label: '' })
       setExpandedHost(host.id)
-      void loadWorkspaces(host.id)
-      setNotice('主机已保存；连接状态会自动刷新')
+      setNotice('主机已保存。插件会自动安装并启动远端 agent；安装进度会显示在主机卡片上。')
     })
   }
 
@@ -154,6 +157,49 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
     }
   }
 
+  async function addWorkspace(host: HostView): Promise<void> {
+    const path = workspaceDraft.trim()
+    if (path === '') {
+      setError('请填写远端目录的绝对路径，例如 /home/user/project')
+      return
+    }
+    setBusy(`workspace:${host.id}`)
+    setError(null)
+    try {
+      await api.createWorkspace(host.id, { path })
+      setWorkspaceDraft('')
+      await loadWorkspaces(host.id)
+      setExpandedHost(host.id)
+    } catch (failure) {
+      setError(messageOf(failure, '添加远端工作区失败'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function openChat(host: HostView, sessionId: string): Promise<void> {
+    setChat({ hostId: host.id, sessionId, label: host.label })
+  }
+
+  async function newSession(host: HostView, workspaceId: string): Promise<void> {
+    setBusy(`create:${host.id}:${workspaceId}`)
+    setError(null)
+    try {
+      const created = await api.createSession(host.id, { workspaceId })
+      const key = `${host.id}:${workspaceId}`
+      setOpenWorkspace(current => ({ ...current, [key]: true }))
+      setChat({ hostId: host.id, sessionId: created.sessionId, label: host.label })
+      const result = await api.sessions(host.id, workspaceId)
+      setSessions(current => ({ ...current, [key]: [...result.sessions] }))
+      const refreshed = await api.workspaces(host.id)
+      setWorkspaces(current => ({ ...current, [host.id]: [...refreshed.workspaces] }))
+    } catch (failure) {
+      setError(messageOf(failure, '创建远端会话失败'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function openWeb(hostId: string): Promise<void> {
     await run(`web:${hostId}`, async () => {
       const { url } = await api.webUrl(hostId)
@@ -178,8 +224,8 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
         <div>
           <h2>远程开发</h2>
           <p className="dshr-subtitle">
-            Session 仍运行在本地；文件、shell、搜索与远端终端通过 SSH 隧道指向远端。
-            远程主机需已安装 <code>dsh-remote-agent</code> 并运行 <code>dsh web</code>。
+            只需填写 SSH 目标。插件会自动通过 SSH 安装并启动远端 <code>dsh-remote-agent</code> 与
+            <code>dsh web</code>，建立隧道；本地模型凭据经反向隧道代理，不写入远端磁盘。
           </p>
         </div>
         <button
@@ -215,45 +261,18 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
             />
           </label>
           <label className="dshr-field">
-            <span>显示名称</span>
+            <span>显示名称（可选）</span>
             <input
               value={form.label}
               onChange={event => setForm(current => ({ ...current, label: event.target.value }))}
               placeholder="Example GPU"
             />
           </label>
-          <label className="dshr-field">
-            <span>Agent token（可选）</span>
-            <input
-              value={form.token}
-              onChange={event => setForm(current => ({ ...current, token: event.target.value }))}
-              placeholder="留空则通过 SSH 自动发现"
-              type="password"
-              autoComplete="off"
-            />
-          </label>
-          <label className="dshr-field">
-            <span>Agent 端口（可选）</span>
-            <input
-              value={form.remoteAgentPort}
-              onChange={event => setForm(current => ({ ...current, remoteAgentPort: event.target.value.replace(/[^\d]/gu, '') }))}
-              placeholder="自动发现"
-              inputMode="numeric"
-            />
-          </label>
-          <label className="dshr-check">
-            <input
-              type="checkbox"
-              checked={form.autoConnect}
-              onChange={event => setForm(current => ({ ...current, autoConnect: event.target.checked }))}
-            />
-            <span>保存后自动连接</span>
-          </label>
           <div className="dshr-form-actions">
             <button type="submit" className="dshr-button dshr-button-primary" disabled={busy !== null}>
-              {busy === 'add' ? '保存中…' : '保存主机'}
+              {busy === 'add' ? '添加中…' : '保存并连接'}
             </button>
-            <span className="dshr-hint">隧道使用密钥或 ssh-agent 非交互登录；密码登录无法后台保活。</span>
+            <span className="dshr-hint">需要密钥或 ssh-agent 免交互登录；首次自动安装约 1–3 分钟。</span>
           </div>
         </form>
       </section>
@@ -281,55 +300,77 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
                 <div><dt>工作区</dt><dd>{host.workspaceCount ?? '—'}</dd></div>
                 <div><dt>Agent</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
                 <div><dt>Token</dt><dd>{host.hasToken ? '已保存' : '未保存'}</dd></div>
+                <div><dt>模型代理</dt><dd>{host.modelProxy ? '本地代理' : '远端'}</dd></div>
               </dl>
 
+              {host.detail !== null && <p className="dshr-detail">{host.detail}</p>}
               {host.error !== null && <p className="dshr-host-error" role="alert">{host.error}</p>}
 
               <div className="dshr-actions">
                 {host.phase === 'connected'
                   ? (
-                    <button
-                      type="button"
-                      className="dshr-button"
-                      disabled={busy !== null}
-                      onClick={() => { void run(`disconnect:${host.id}`, async () => { await api.disconnect(host.id) }) }}
-                    >
-                      断开
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="dshr-button dshr-button-primary"
+                        disabled={busy !== null}
+                        onClick={() => { void openWeb(host.id) }}
+                      >
+                        开始使用
+                      </button>
+                      <button
+                        type="button"
+                        className="dshr-button"
+                        disabled={busy !== null}
+                        onClick={() => { void toggleHost(host) }}
+                      >
+                        {expandedHost === host.id ? '收起工作区' : '工作区'}
+                      </button>
+                      <button
+                        type="button"
+                        className="dshr-button"
+                        disabled={busy !== null}
+                        onClick={() => { void run(`refresh:${host.id}`, async () => { await api.refresh(host.id) }) }}
+                      >
+                        重新发现
+                      </button>
+                      <button
+                        type="button"
+                        className="dshr-button"
+                        disabled={busy !== null}
+                        onClick={() => { void run(`disconnect:${host.id}`, async () => { await api.disconnect(host.id) }) }}
+                      >
+                        断开
+                      </button>
+                    </>
                   )
                   : (
-                    <button
-                      type="button"
-                      className="dshr-button dshr-button-primary"
-                      disabled={busy !== null}
-                      onClick={() => { void run(`connect:${host.id}`, async () => { await api.connect(host.id) }) }}
-                    >
-                      连接
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="dshr-button dshr-button-primary"
+                        disabled={busy !== null || host.phase === 'installing' || host.phase === 'discovering' || host.phase === 'connecting'}
+                        onClick={() => { void run(`connect:${host.id}`, async () => { await api.connect(host.id) }) }}
+                      >
+                        {host.phase === 'installing' ? '正在安装…' : host.phase === 'connecting' ? '正在连接…' : '连接'}
+                      </button>
+                      <button
+                        type="button"
+                        className="dshr-button"
+                        disabled={busy !== null}
+                        onClick={() => { void run(`refresh:${host.id}`, async () => { await api.refresh(host.id) }) }}
+                      >
+                        重新发现
+                      </button>
+                    </>
                   )}
                 <button
                   type="button"
                   className="dshr-button"
-                  disabled={busy !== null}
-                  onClick={() => { void run(`refresh:${host.id}`, async () => { await api.refresh(host.id) }) }}
+                  disabled={busy !== null || host.phase === 'installing'}
+                  onClick={() => { void run(`provision:${host.id}`, async () => { await api.provision(host.id) }) }}
                 >
-                  重新发现
-                </button>
-                <button
-                  type="button"
-                  className="dshr-button"
-                  disabled={busy !== null || host.phase !== 'connected'}
-                  onClick={() => { void toggleHost(host) }}
-                >
-                  {expandedHost === host.id ? '收起工作区' : '工作区'}
-                </button>
-                <button
-                  type="button"
-                  className="dshr-button"
-                  disabled={busy !== null || host.phase !== 'connected'}
-                  onClick={() => { void openWeb(host.id) }}
-                >
-                  打开远端界面
+                  重新安装
                 </button>
                 <button
                   type="button"
@@ -343,39 +384,76 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
 
               {expandedHost === host.id && (
                 <div className="dshr-workspaces">
+                  <div className="dshr-workspace-add">
+                    <input
+                      value={workspaceDraft}
+                      onChange={event => setWorkspaceDraft(event.target.value)}
+                      placeholder="远端目录绝对路径，例如 /home/user/project"
+                      spellCheck={false}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          void addWorkspace(host)
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="dshr-button dshr-button-small"
+                      disabled={busy !== null}
+                      onClick={() => { void addWorkspace(host) }}
+                    >
+                      {busy === `workspace:${host.id}` ? '添加中…' : '添加工作区'}
+                    </button>
+                  </div>
                   {workspaces[host.id] === undefined
                     ? <p className="dshr-empty">正在读取工作区…</p>
                     : workspaces[host.id]?.length === 0
-                      ? <p className="dshr-empty">远端还没有注册工作区。</p>
+                      ? <p className="dshr-empty">远端还没有注册工作区。可在远端 DSH 里添加目录后刷新。</p>
                       : workspaces[host.id]?.map(workspace => {
                         const workspaceKey = `${host.id}:${workspace.workspaceId}`
                         const open = openWorkspace[workspaceKey] ?? false
                         return (
                           <div key={workspace.workspaceId} className="dshr-workspace">
-                            <button
-                              type="button"
-                              className="dshr-workspace-head"
-                              aria-expanded={open}
-                              onClick={() => { void toggleWorkspace(host.id, workspace.workspaceId) }}
-                            >
-                              <span className="dshr-caret">{open ? '▾' : '▸'}</span>
-                              <span>{workspace.title}</span>
-                              <code>{workspace.path}</code>
-                              <span className="dshr-count">{workspace.sessionIds.length} 个会话</span>
-                            </button>
+                            <div className="dshr-workspace-row">
+                              <button
+                                type="button"
+                                className="dshr-workspace-head"
+                                aria-expanded={open}
+                                onClick={() => { void toggleWorkspace(host.id, workspace.workspaceId) }}
+                              >
+                                <span className="dshr-caret">{open ? '▾' : '▸'}</span>
+                                <span>{workspace.title}</span>
+                                <code>{workspace.path}</code>
+                                <span className="dshr-count">{workspace.sessionIds.length} 个会话</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="dshr-button dshr-button-small"
+                                disabled={busy !== null}
+                                onClick={() => { void newSession(host, workspace.workspaceId) }}
+                              >
+                                {busy === `create:${host.id}:${workspace.workspaceId}` ? '创建中…' : '+ 新会话'}
+                              </button>
+                            </div>
                             {open && (
                               <div className="dshr-sessions">
                                 {sessions[workspaceKey] === undefined
                                   ? <p className="dshr-empty">正在读取会话…</p>
                                   : sessions[workspaceKey]?.length === 0
-                                    ? <p className="dshr-empty">该工作区暂无会话。</p>
+                                    ? <p className="dshr-empty">该工作区暂无会话。点“+ 新会话”开始。</p>
                                     : sessions[workspaceKey]?.map(session => (
-                                      <div key={session.sessionId} className="dshr-session">
+                                      <button
+                                        key={session.sessionId}
+                                        type="button"
+                                        className="dshr-session dshr-session-button"
+                                        onClick={() => { void openChat(host, session.sessionId) }}
+                                      >
                                         <span className={session.live ? 'dshr-live' : 'dshr-idle'} />
                                         <code>{session.sessionId}</code>
                                         <span>{session.cwd ?? '—'}</span>
-                                        <span className="dshr-count">{session.eventCount ?? '—'} 事件</span>
-                                      </div>
+                                        <span className="dshr-count">{session.eventCount ?? '—'} 事件 · 对话 →</span>
+                                      </button>
                                     ))}
                               </div>
                             )}
@@ -388,6 +466,17 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
           ))}
         </div>
       </section>
+
+      {chat !== null && (
+        <RemoteChatPanel
+          api={api}
+          hostId={chat.hostId}
+          hostLabel={chat.label}
+          sessionId={chat.sessionId}
+          onClose={() => setChat(null)}
+          onOpenRemote={() => { void openWeb(chat.hostId) }}
+        />
+      )}
     </div>
   )
 }

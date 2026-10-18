@@ -9,7 +9,15 @@
  */
 
 import type { HostView } from '../hosts/types.ts'
-import type { HostInfo, RemoteSessionSummary, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
+import type {
+  AcceptedResult,
+  CreateSessionResult,
+  HostInfo,
+  PromptDeliveryMode,
+  RemoteSessionSummary,
+  RemoteWorkspace,
+  SessionSnapshot,
+} from '@dsh-remote/protocol'
 
 /** Exact authenticated Fetch route owned by the local plugin. */
 export const HOST_API_PATH = '/api/dsh-remote'
@@ -23,9 +31,14 @@ export type HostApiEndpoint =
   | 'host/connect'
   | 'host/disconnect'
   | 'host/refresh'
+  | 'host/provision'
   | 'host/workspaces'
+  | 'host/workspace/create'
   | 'host/sessions'
   | 'host/session'
+  | 'host/session/create'
+  | 'host/session/prompt'
+  | 'host/session/cancel'
   | 'host/web-url'
 
 /** Browser-safe state snapshot. */
@@ -90,9 +103,14 @@ export interface HostApiPayloads {
   'host/connect': { hostId: string }
   'host/disconnect': { hostId: string }
   'host/refresh': { hostId: string }
+  'host/provision': { hostId: string }
   'host/workspaces': { hostId: string }
+  'host/workspace/create': { hostId: string; path: string; title?: string }
   'host/sessions': { hostId: string; workspaceId?: string }
   'host/session': { hostId: string; sessionId: string; limit?: number }
+  'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
+  'host/session/prompt': { hostId: string; sessionId: string; text: string; mode?: PromptDeliveryMode }
+  'host/session/cancel': { hostId: string; sessionId: string }
   'host/web-url': { hostId: string }
 }
 
@@ -105,9 +123,14 @@ export interface HostApiValues {
   'host/connect': HostView
   'host/disconnect': HostView
   'host/refresh': HostView
+  'host/provision': HostView
   'host/workspaces': WorkspacesResult
+  'host/workspace/create': RemoteWorkspace
   'host/sessions': SessionsResult
   'host/session': SessionSnapshot
+  'host/session/create': CreateSessionResult
+  'host/session/prompt': AcceptedResult
+  'host/session/cancel': AcceptedResult
   'host/web-url': WebUrlResult
 }
 

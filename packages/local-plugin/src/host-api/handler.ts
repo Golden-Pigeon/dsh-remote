@@ -105,8 +105,17 @@ async function dispatch(
       return service.disconnect(requireStringField(payload, 'hostId'))
     case 'host/refresh':
       return service.refresh(requireStringField(payload, 'hostId'))
+    case 'host/provision':
+      return service.provision(requireStringField(payload, 'hostId'))
     case 'host/workspaces':
       return { workspaces: await service.workspaces(requireStringField(payload, 'hostId')) }
+    case 'host/workspace/create': {
+      const body = requireRecord(payload)
+      return service.createWorkspace(requireStringField(body, 'hostId'), {
+        path: requireStringField(body, 'path'),
+        ...optionalStringField(body, 'title') === undefined ? {} : { title: optionalStringField(body, 'title') },
+      })
+    }
     case 'host/sessions': {
       const body = requireRecord(payload)
       return service.sessions(
@@ -120,6 +129,38 @@ async function dispatch(
         requireStringField(body, 'hostId'),
         requireStringField(body, 'sessionId'),
         optionalNumberField(body, 'limit'),
+      )
+    }
+    case 'host/session/create': {
+      const body = requireRecord(payload)
+      return service.createSession(requireStringField(body, 'hostId'), {
+        ...optionalStringField(body, 'workspaceId') === undefined
+          ? {}
+          : { workspaceId: optionalStringField(body, 'workspaceId') },
+        ...optionalStringField(body, 'cwd') === undefined ? {} : { cwd: optionalStringField(body, 'cwd') },
+        ...optionalStringField(body, 'agentPreset') === undefined
+          ? {}
+          : { agentPreset: optionalStringField(body, 'agentPreset') },
+      })
+    }
+    case 'host/session/prompt': {
+      const body = requireRecord(payload)
+      const mode = optionalStringField(body, 'mode')
+      if (mode !== undefined && mode !== 'queue' && mode !== 'steer') {
+        throw new LocalError('request/invalid', 'mode must be queue or steer')
+      }
+      return service.promptSession(
+        requireStringField(body, 'hostId'),
+        requireStringField(body, 'sessionId'),
+        requireStringField(body, 'text'),
+        mode,
+      )
+    }
+    case 'host/session/cancel': {
+      const body = requireRecord(payload)
+      return service.cancelSession(
+        requireStringField(body, 'hostId'),
+        requireStringField(body, 'sessionId'),
       )
     }
     case 'host/web-url':

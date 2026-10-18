@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-local-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH remote-development local plugin: host registry, SSH tunnels, remote workspace/session discovery, an authenticated Connection RPC surface, agent tools, and a Settings page.",
   "keywords": [
     "dsh",
@@ -26,6 +26,7 @@
   },
   "files": [
     "lib",
+    "assets",
     "cordis.patch.yml",
     "README.md"
   ],
@@ -47,7 +48,10 @@
     }
   },
   "devDependencies": {
-    "@dsh-remote/protocol": "workspace:*"
+    "@dsh-remote/installer": "workspace:*",
+    "@dsh-remote/protocol": "workspace:*",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
+    "dsh-remote-agent": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
@@ -58,7 +62,8 @@
     "@deepseek-ai/dsh-tools": ">=0.2.1-rc.1 <0.3.0-0",
     "@deepseek-ai/schemastery": ">=3.18.0 <4.0.0",
     "react": ">=18.2.0 <19",
-    "react-dom": ">=18.2.0 <19"
+    "react-dom": ">=18.2.0 <19",
+    "@deepseek-ai/dsh-credentials": ">=0.2.1-rc.1 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -87,10 +92,13 @@
     },
     "react-dom": {
       "optional": true
+    },
+    "@deepseek-ai/dsh-credentials": {
+      "optional": true
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node ../../scripts/build-host.mjs && node ../../scripts/build-client.mjs",
+    "build": "tsc -p tsconfig.build.json && node ../../scripts/package-agent.mjs && node ../../scripts/build-host.mjs && node ../../scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "test": "node ../../scripts/build-client.mjs && node --import tsx --test test/*.test.ts"
   }

@@ -98,6 +98,25 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
   }))
 
   ctx.tools.register(defineTool({
+    name: 'remote_host_provision',
+    description: 'Force a fresh remote installation/restart of dsh-remote-agent and dsh web, then reconnect. Use this to repair a broken host or update an old agent.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Registered host id.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { host: { type: 'object', additionalProperties: true, required: true } },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      return { host: toJsonObject(await service.provision(args.hostId)) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'remote_workspaces_list',
     description: 'List workspaces registered on a connected remote DSH host. Use the returned workspaceId with remote_sessions_list.',
     parameters: {
@@ -115,6 +134,32 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
     },
     async execute(args) {
       return { workspaces: (await service.workspaces(args.hostId)).map(toJsonObject) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remote_workspace_add',
+    description: 'Register an existing remote directory as a workspace on a connected remote DSH host. Then create a session in it with remote_session_create.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
+      path: { type: 'string', required: true, description: 'Absolute remote directory path.' },
+      title: { type: 'string', description: 'Optional display title.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          workspace: { type: 'object', additionalProperties: true, required: true },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      return { workspace: toJsonObject(await service.createWorkspace(args.hostId, {
+        path: args.path,
+        ...args.title === undefined ? {} : { title: args.title },
+      })) }
     },
   }))
 
@@ -161,6 +206,77 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
     },
     async execute(args) {
       return { snapshot: toJsonObject(await service.snapshot(args.hostId, args.sessionId, args.limit)) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remote_session_create',
+    description: 'Create a session on a connected remote DSH host, either in an existing workspace or an explicit remote directory. This is a write operation on the remote host.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
+      workspaceId: { type: 'string', description: 'Existing remote workspace id.' },
+      cwd: { type: 'string', description: 'Remote directory for an ungrouped session; exclusive with workspaceId.' },
+      agentPreset: { type: 'string', description: 'Optional remote agent preset.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          sessionId: { type: 'string', required: true },
+          agentPreset: { type: 'string' },
+        },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      return service.createSession(args.hostId, {
+        ...args.workspaceId === undefined ? {} : { workspaceId: args.workspaceId },
+        ...args.cwd === undefined ? {} : { cwd: args.cwd },
+        ...args.agentPreset === undefined ? {} : { agentPreset: args.agentPreset },
+      })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remote_session_prompt',
+    description: 'Send a user prompt to a remote DSH session. The remote model runs on the remote host; the local model key can be proxied through the local credential proxy. This is a write operation.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
+      sessionId: { type: 'string', required: true, description: 'Remote session id.' },
+      text: { type: 'string', required: true, description: 'Prompt text.' },
+      mode: { type: 'string', enum: ['queue', 'steer'], description: 'Delivery mode (default queue).' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { accepted: { type: 'boolean', required: true } },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      return service.promptSession(args.hostId, args.sessionId, args.text, args.mode)
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remote_session_cancel',
+    description: 'Cancel the active turn of a remote DSH session.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
+      sessionId: { type: 'string', required: true, description: 'Remote session id.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { accepted: { type: 'boolean', required: true } },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      return service.cancelSession(args.hostId, args.sessionId)
     },
   }))
 

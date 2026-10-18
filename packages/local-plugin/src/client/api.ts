@@ -5,6 +5,7 @@
  * @module dsh-remote-local/client/api
  */
 
+import type { AcceptedResult, CreateSessionResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -39,9 +40,15 @@ export interface HostsApi {
   readonly connect: (hostId: string) => Promise<HostView>
   readonly disconnect: (hostId: string) => Promise<HostView>
   readonly refresh: (hostId: string) => Promise<HostView>
+  readonly provision: (hostId: string) => Promise<HostView>
   readonly workspaces: (hostId: string) => Promise<WorkspacesResult>
+  readonly createWorkspace: (hostId: string, input: { path: string; title?: string }) => Promise<RemoteWorkspace>
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
+  readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
+  readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<CreateSessionResult>
+  readonly prompt: (hostId: string, sessionId: string, text: string, mode?: PromptDeliveryMode) => Promise<AcceptedResult>
+  readonly cancel: (hostId: string, sessionId: string) => Promise<AcceptedResult>
 }
 
 /** Build the API closure once per plugin mount. */
@@ -54,12 +61,27 @@ export function createHostsApi(_ctx: unknown): HostsApi {
     connect: hostId => call('host/connect', { hostId }),
     disconnect: hostId => call('host/disconnect', { hostId }),
     refresh: hostId => call('host/refresh', { hostId }),
+    provision: hostId => call('host/provision', { hostId }),
     workspaces: hostId => call('host/workspaces', { hostId }),
+    createWorkspace: (hostId, input) => call('host/workspace/create', { hostId, ...input }),
     sessions: (hostId, workspaceId) => call('host/sessions', {
       hostId,
       ...workspaceId === undefined ? {} : { workspaceId },
     }),
     webUrl: hostId => call('host/web-url', { hostId }),
+    snapshot: (hostId, sessionId, limit) => call('host/session', {
+      hostId,
+      sessionId,
+      ...limit === undefined ? {} : { limit },
+    }),
+    createSession: (hostId, input) => call('host/session/create', { hostId, ...input }),
+    prompt: (hostId, sessionId, text, mode) => call('host/session/prompt', {
+      hostId,
+      sessionId,
+      text,
+      ...mode === undefined ? {} : { mode },
+    }),
+    cancel: (hostId, sessionId) => call('host/session/cancel', { hostId, sessionId }),
   }
 }
 

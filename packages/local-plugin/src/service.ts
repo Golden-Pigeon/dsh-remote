@@ -14,14 +14,20 @@ import {
   PROTOCOL_VERSION,
   RemoteAgentClient,
   RemoteProtocolError,
+  type AcceptedResult,
+  type CreateSessionRequest,
+  type CreateSessionResult,
+  type CreateWorkspaceRequest,
   type HostInfo,
   type ListSessionsResult,
   type ListWorkspacesResult,
+  type PromptDeliveryMode,
   type RemoteWorkspace,
   type SessionSnapshot,
   type WebUrlResult,
 } from '@dsh-remote/protocol'
 import type { ResolvedConfig } from './config.ts'
+import { ModelCredentialProxy, type CredentialProxyAddress } from './credentials/proxy.ts'
 import { LocalError, asLocalError } from './errors.ts'
 import { hostIdFor } from './hosts/id.ts'
 import { HostStore } from './hosts/store.ts'
@@ -33,6 +39,7 @@ import {
   type HostRuntime,
   type HostView,
 } from './hosts/types.ts'
+import { RemoteProvisioner } from './remote/provisioner.ts'
 import { discoverAgent } from './ssh/probe.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
 import { Tunnel } from './ssh/tunnel.ts'
@@ -51,12 +58,22 @@ interface Connected {
   readonly client: RemoteAgentClient
 }
 
+/** Constructor inputs beyond config. */
+export interface RemoteHostsServiceOptions {
+  /** Resolve the local provider key at connect time; never cached in the view. */
+  readonly resolveModelKey?: () => Promise<string | undefined>
+}
+
 /** One host registry service. */
 export class RemoteHostsService {
   readonly ctx: Context
   readonly config: ResolvedConfig
 
   readonly #store: HostStore
+  readonly #provisioner: RemoteProvisioner
+  readonly #resolveModelKey: (() => Promise<string | undefined>) | undefined
+  #proxy: ModelCredentialProxy | undefined
+  #proxyAddress: CredentialProxyAddress | undefined
   readonly #records = new Map<string, HostRecord>()
   readonly #runtime = new Map<string, HostRuntime>()
   readonly #tunnels = new Map<string, Tunnel>()
@@ -69,10 +86,12 @@ export class RemoteHostsService {
   readonly #manualDisconnect = new Set<string>()
   #disposed = false
 
-  constructor(ctx: Context, config: ResolvedConfig) {
+  constructor(ctx: Context, config: ResolvedConfig, options: RemoteHostsServiceOptions = {}) {
     this.ctx = ctx
     this.config = config
     this.#store = new HostStore(`${config.stateDir}/hosts.json`)
+    this.#provisioner = new RemoteProvisioner(config)
+    this.#resolveModelKey = options.resolveModelKey
   }
 
   /** Load the registry and auto-connect opted-in hosts. */
@@ -231,6 +250,37 @@ export class RemoteHostsService {
     return this.view(id)
   }
 
+  /** Force a fresh remote install/restart, then reconnect. */
+  async provision(id: string): Promise<HostView> {
+    this.#assertAlive()
+    const record = this.#requireRecord(id)
+    const target = parseSshTarget(record.sshTarget)
+    this.#manualDisconnect.delete(id)
+    this.#clearReconnect(id)
+    await this.#stopTransport(id)
+    const proxy = await this.#ensureModelProxy()
+    this.#setRuntime(id, {
+      ...idleRuntime(),
+      phase: 'installing',
+      modelProxy: proxy !== undefined,
+      detail: '正在重新安装远端 agent…',
+    })
+    try {
+      await this.#provisioner.ensureInstalled(target, {
+        ...proxy === undefined ? {} : {
+          modelBaseUrl: `http://127.0.0.1:${this.config.credentialProxyRemotePort}`,
+          modelApiKey: 'dsh-remote-proxy',
+        },
+        onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
+      })
+    } catch (error) {
+      const failure = this.#markError(id, error, 'agent/unavailable')
+      this.#scheduleReconnect(id)
+      throw failure
+    }
+    return this.connect(id)
+  }
+
   /** List remote workspaces. */
   async workspaces(id: string): Promise<readonly RemoteWorkspace[]> {
     const client = this.#requireClient(id)
@@ -264,6 +314,55 @@ export class RemoteHostsService {
     }
   }
 
+  /** Register a remote workspace. */
+  async createWorkspace(id: string, request: CreateWorkspaceRequest): Promise<RemoteWorkspace> {
+    const client = this.#requireClient(id)
+    try {
+      const workspace = await client.createWorkspace(request)
+      this.#setRuntime(id, { workspaceCount: (this.#runtimeFor(id).workspaceCount ?? 0) + 1 })
+      return workspace
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Create a remote session. */
+  async createSession(id: string, request: CreateSessionRequest): Promise<CreateSessionResult> {
+    const client = this.#requireClient(id)
+    try {
+      return await client.createSession(request)
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Send a prompt to a remote session. */
+  async promptSession(
+    id: string,
+    sessionId: string,
+    text: string,
+    mode?: PromptDeliveryMode,
+  ): Promise<AcceptedResult> {
+    const client = this.#requireClient(id)
+    try {
+      await client.promptSession(sessionId, { text, ...mode === undefined ? {} : { mode } })
+      return { accepted: true }
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Cancel a remote session's active turn. */
+  async cancelSession(id: string, sessionId: string): Promise<AcceptedResult> {
+    const client = this.#requireClient(id)
+    try {
+      await client.cancelSession(sessionId)
+      return { accepted: true }
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
   /** Resolve the remote Web UI behind this host's tunnel. */
   async webUrl(id: string): Promise<{ url: string }> {
     const client = this.#requireClient(id)
@@ -285,6 +384,9 @@ export class RemoteHostsService {
     for (const id of [...this.#healthTimers.keys()]) this.#clearHealth(id)
     for (const id of [...this.#reconnectTimers.keys()]) this.#clearReconnect(id)
     await Promise.all([...this.#tunnels.keys()].map(id => this.#stopTransport(id)))
+    await this.#proxy?.stop()
+    this.#proxy = undefined
+    this.#proxyAddress = undefined
     this.#records.clear()
     this.#runtime.clear()
     this.#connectPromises.clear()
@@ -300,9 +402,16 @@ export class RemoteHostsService {
     this.#setRuntime(id, {
       ...idleRuntime(),
       phase: 'discovering',
+      detail: '正在通过 SSH 发现远端 agent…',
     })
 
     const target = parseSshTarget(record.sshTarget)
+    const proxy = await this.#ensureModelProxy()
+    this.#setRuntime(id, { ...this.#runtimeFor(id), modelProxy: proxy !== undefined })
+    const reverseForward = proxy === undefined
+      ? undefined
+      : { remotePort: this.config.credentialProxyRemotePort, localPort: proxy.port }
+
     let remotePort = record.remoteAgentPort
     let token = record.token
     try {
@@ -314,30 +423,59 @@ export class RemoteHostsService {
       }
       await this.#saveRecord(id, { remoteAgentPort: remotePort, token })
     } catch (error) {
-      if (token === null || remotePort === null) {
-        const failure = this.#markError(id, error, 'ssh/probe-failed')
+      const failure = asLocalError(error, 'ssh/probe-failed')
+      if (this.config.autoProvision && failure.code === 'agent/unavailable') {
+        this.#setRuntime(id, {
+          ...this.#runtimeFor(id),
+          phase: 'installing',
+          detail: '正在远端安装 DSH 与 dsh-remote-agent，首次约 1–3 分钟…',
+        })
+        try {
+          await this.#provisioner.ensureInstalled(target, {
+            ...proxy === undefined ? {} : {
+              modelBaseUrl: `http://127.0.0.1:${this.config.credentialProxyRemotePort}`,
+              modelApiKey: 'dsh-remote-proxy',
+            },
+            onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
+          })
+          const discovery = await this.#discover(target)
+          remotePort = discovery.state.port
+          token = discovery.state.token
+          await this.#saveRecord(id, { remoteAgentPort: remotePort, token })
+        } catch (provisionError) {
+          const provisionFailure = this.#markError(id, provisionError, 'agent/unavailable')
+          this.#scheduleReconnect(id)
+          throw provisionFailure
+        }
+      } else if (token !== null && remotePort !== null) {
+        this.ctx.logger.warn(
+          'dsh-remote: discovery for %s failed; using cached port %s: %s',
+          id,
+          String(remotePort),
+          String(error),
+        )
+      } else {
+        const marked = this.#markError(id, error, failure.code)
         this.#scheduleReconnect(id)
-        throw failure
+        throw marked
       }
-      this.ctx.logger.warn(
-        'dsh-remote: discovery for %s failed; using cached port %s: %s',
-        id,
-        String(remotePort),
-        String(error),
-      )
     }
 
     if (remotePort === null || token === null) {
       const failure = this.#markError(
         id,
-        new LocalError('agent/unavailable', 'no remote agent token or port is available; run discovery or paste them manually'),
+        new LocalError('agent/unavailable', 'no remote agent token or port is available'),
         'agent/unavailable',
       )
       this.#scheduleReconnect(id)
       throw failure
     }
 
-    this.#setRuntime(id, { ...this.#runtimeFor(id), phase: 'connecting' })
+    this.#setRuntime(id, {
+      ...this.#runtimeFor(id),
+      phase: 'connecting',
+      detail: '正在建立 SSH 隧道并校验远端 agent…',
+    })
 
     let tunnel: Tunnel | undefined
     try {
@@ -347,6 +485,7 @@ export class RemoteHostsService {
         remotePort,
         connectTimeoutMs: this.config.connectTimeoutMs,
         strictHostKeyChecking: this.config.strictHostKeyChecking,
+        ...reverseForward === undefined ? {} : { reverseForward },
         onExit: info => this.#onTunnelExit(id, info),
       })
       const client = new RemoteAgentClient({
@@ -366,6 +505,35 @@ export class RemoteHostsService {
       const failure = this.#markError(id, error, 'host/connect-failed')
       this.#scheduleReconnect(id)
       throw failure
+    }
+  }
+
+  async #ensureModelProxy(): Promise<CredentialProxyAddress | undefined> {
+    if (!this.config.credentialProxy) return undefined
+    if (this.#proxyAddress !== undefined) return this.#proxyAddress
+    let key: string | undefined
+    try {
+      key = await this.#resolveModelKey?.()
+    } catch (error) {
+      this.ctx.logger.warn('dsh-remote: could not resolve local model credential: %s', String(error))
+      return undefined
+    }
+    if (key === undefined || key.trim() === '') {
+      this.ctx.logger.warn('dsh-remote: no local DEEPSEEK_API_KEY; remote host must use its own credentials')
+      return undefined
+    }
+    try {
+      const proxy = new ModelCredentialProxy({
+        apiKey: key,
+        upstreamBaseUrl: this.config.credentialProxyUpstream,
+      })
+      const address = await proxy.start()
+      this.#proxy = proxy
+      this.#proxyAddress = address
+      return address
+    } catch (error) {
+      this.ctx.logger.warn('dsh-remote: could not start credential proxy: %s', String(error))
+      return undefined
     }
   }
 
@@ -391,6 +559,7 @@ export class RemoteHostsService {
       localUrl: null,
       error: `SSH tunnel exited (code ${String(info.code)}, signal ${String(info.signal)})${detail}`,
       errorCode: 'ssh/tunnel-failed',
+      detail: 'SSH 隧道断开，等待重连…',
     })
     this.#scheduleReconnect(id)
   }
@@ -505,6 +674,9 @@ export class RemoteHostsService {
       error: null,
       errorCode: null,
       connectedAt: this.#runtimeFor(id).connectedAt ?? new Date().toISOString(),
+      detail: this.#runtimeFor(id).modelProxy
+        ? '已连接；模型请求经本地凭据代理转发'
+        : '已连接',
     })
   }
 
@@ -524,6 +696,7 @@ export class RemoteHostsService {
       localUrl: null,
       error: failure.message,
       errorCode: failure.code,
+      detail: failure.message,
     })
     return failure
   }
