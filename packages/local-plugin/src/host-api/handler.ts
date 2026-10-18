@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import { LocalError, asLocalError } from '../errors.ts'
 import type { RemoteHostsService } from '../service.ts'
 import type { RemoteMirrorService } from '../mirror/service.ts'
+import { listRemoteDirectories } from '../remote/directory.ts'
 import {
   HOST_API_PATH,
   type HostApiEndpoint,
@@ -137,6 +138,10 @@ async function dispatch(
         path: requireStringField(body, 'path'),
         ...optionalStringField(body, 'title') === undefined ? {} : { title: optionalStringField(body, 'title') },
       })
+    }
+    case 'host/directory/list': {
+      const body = requireRecord(payload)
+      return listRemoteDirectories(service, requireStringField(body, 'hostId'), optionalStringField(body, 'path') ?? '~')
     }
     case 'host/sessions': {
       const body = requireRecord(payload)

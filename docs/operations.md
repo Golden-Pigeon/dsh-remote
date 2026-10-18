@@ -66,7 +66,8 @@ The sidebar **Workspaces** header **+** opens a small chooser:
 
 - **本地新建工作区** replays the native click, so the shipped directory browser is unchanged;
 - **远程新建工作区…** asks for a connected host and an absolute remote path, creates the remote
-  workspace, creates its first remote Session, waits for the local mirror, and opens it.
+  workspace, creates its first remote Session, waits for the local mirror, and opens it. The
+  **选择目录…** browser lists remote directories over SSH; it does not write to the remote host.
 
 The **Workspace files** and **New terminal** panels are Session-scoped:
 

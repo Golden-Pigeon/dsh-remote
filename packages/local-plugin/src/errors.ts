@@ -19,6 +19,7 @@ export type LocalErrorCode =
   | 'ssh/tunnel-failed'
   | 'agent/unavailable'
   | 'agent/error'
+  | 'directory/unreadable'
   | 'internal'
 
 /** Error carrying a stable code and JSON-safe details. */

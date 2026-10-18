@@ -44,6 +44,7 @@ export interface HostsApi {
   readonly refresh: (hostId: string) => Promise<HostView>
   readonly provision: (hostId: string) => Promise<HostView>
   readonly workspaces: (hostId: string) => Promise<WorkspacesResult>
+  readonly listDirectories: (hostId: string, path?: string) => Promise<{ path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }>
   readonly createWorkspace: (hostId: string, input: { path: string; title?: string }) => Promise<RemoteWorkspace>
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
@@ -70,6 +71,7 @@ export function createHostsApi(ctx: Context): HostsApi {
     refresh: hostId => call('host/refresh', { hostId }),
     provision: hostId => call('host/provision', { hostId }),
     workspaces: hostId => call('host/workspaces', { hostId }),
+    listDirectories: (hostId, path) => call('host/directory/list', { hostId, ...path === undefined ? {} : { path } }),
     createWorkspace: (hostId, input) => call('host/workspace/create', { hostId, ...input }),
     sessions: (hostId, workspaceId) => call('host/sessions', {
       hostId,

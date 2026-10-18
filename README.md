@@ -61,8 +61,9 @@ Reopen DSH. **Settings → 远程开发** appears.
 2. On first use the plugin discovers or installs the remote agent, starts remote `dsh web`, opens the
    loopback tunnel, and copies the resolved model key into the remote environment. The card shows
    **安装中 → 已连接** and **模型代理：远端直连**.
-3. In the sidebar **Workspaces** header, click **+** and choose **远程新建工作区…**; pick the
-   connected host and enter an existing remote directory (for example `/tmp`), then **创建并打开**.
+3. In the sidebar **Workspaces** header, click **+** and choose **远程新建工作区…**. Pick the
+   connected host, optionally name the workspace, then **选择目录…** to browse the remote filesystem
+   in the dialog and choose a source folder.
    The remote workspace appears in the normal left sidebar as `my-host · tmp`. Choose
    **本地新建工作区** to keep the native local directory flow.
 4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
