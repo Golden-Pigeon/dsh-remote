@@ -960,6 +960,19 @@ export class RemoteMirrorService {
     if (!running) {
       for (const waiter of runtime.waiters.splice(0)) waiter()
     }
+    try {
+      const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
+      emit.call(this.#ctx, 'agent/status', {
+        agent: runtime.agent,
+        status: running ? 'running' : 'idle',
+      })
+    } catch (error) {
+      this.#ctx.logger.warn(
+        'dsh-remote-local: local agent status %s failed: %s',
+        runtime.record.remoteSessionId,
+        String(error),
+      )
+    }
   }
 
   async #attach(workspace: Workspace, sessionId: SessionId): Promise<void> {
