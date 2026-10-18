@@ -588,7 +588,7 @@ export class RemoteMirrorService {
     if (existing !== undefined) {
       const live = this.#sessions.get(existing.localSessionId as SessionId)
       const runtime = this.#runtimes.get(existing.localSessionId)
-      if (live !== undefined && runtime !== undefined && !runtime.stopped) {
+      if (live !== undefined && runtime !== undefined && (!runtime.stopped || !remote.live)) {
         await this.#attach(workspace, live.id)
         if (remote.live) {
           this.#startStream(runtime)
