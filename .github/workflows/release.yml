@@ -28,6 +28,11 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: node scripts/release-plugin.mjs
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="$(node -p "require('./packages/local-plugin/package.json').version")"
+          test "v${VERSION}" = "${GITHUB_REF_NAME}"
       - name: Verify npm token
         run: npm whoami
         env:
