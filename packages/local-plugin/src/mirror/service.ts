@@ -82,6 +82,8 @@ interface MirrorRuntime {
   assistant: AbortController | undefined
   remoteToLocalSeq: Map<number, number>
   pendingAssistantEnds: Map<number, RemoteAssistantFrame>
+  latestTurn: number
+  awaitingTurn: number | null
   running: boolean
   stopped: boolean
   lastError: string | null
@@ -301,6 +303,7 @@ export class RemoteMirrorService {
     const text = contentText(message)
     if (text === '') return
     runtime.pendingUsers.push(message)
+    if (!runtime.running) runtime.awaitingTurn = runtime.latestTurn + 1
     this.#setRunning(runtime, true)
     if (runtime.stopped || runtime.timer === undefined) {
       runtime.stopped = false
@@ -326,6 +329,7 @@ export class RemoteMirrorService {
   /** Route cancellation to the remote session only after the remote accepts it. */
   cancel(runtime: MirrorRuntime): void {
     void this.#hosts.cancelSession(runtime.record.hostId, runtime.record.remoteSessionId).then(() => {
+      runtime.awaitingTurn = null
       this.#setRunning(runtime, false)
     }).catch(error => {
       runtime.lastError = error instanceof Error ? error.message : String(error)
@@ -342,17 +346,21 @@ export class RemoteMirrorService {
     const state = projections?.stateOf?.(runtime.session, 'modelSelection') as
       | { pending?: unknown; lastUsed?: unknown }
       | undefined
-    for (const candidate of [state?.pending, state?.lastUsed]) {
-      if (typeof candidate !== 'object' || candidate === null) continue
+    const read = (candidate: unknown): { provider: string; model: string; reasoningEffort?: string } | undefined => {
+      if (typeof candidate !== 'object' || candidate === null) return undefined
       const record = candidate as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
-      if (typeof record.provider !== 'string' || typeof record.model !== 'string') continue
+      if (typeof record.provider !== 'string' || typeof record.model !== 'string') return undefined
       return {
         provider: record.provider,
         model: record.model,
         ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
       }
     }
-    return latestSelection(runtime.session)
+    return read(state?.pending)
+      ?? latestSelection(runtime.session)
+      ?? read(runtime.agent.options)
+      ?? read(state?.lastUsed)
+      ?? this.#defaultSelection()
   }
 
   async #syncHost(host: HostView): Promise<void> {
@@ -610,8 +618,14 @@ export class RemoteMirrorService {
     const localId = `session-${randomUUID()}`
     let session: Session
     const remoteToLocalSeq = new Map<number, number>()
+    let latestTurn = 0
     try {
       const filtered = snapshot.events.filter(event => !isMirrorNoise(event.type))
+      for (const event of filtered) {
+        if (event.type !== 'turn/start') continue
+        const turn = (event.data as { turn?: unknown }).turn
+        if (typeof turn === 'number') latestTurn = Math.max(latestTurn, turn)
+      }
       for (const [index, event] of filtered.entries()) remoteToLocalSeq.set(event.seq, index)
       const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
       const seed = filtered.map((event, index) => toSeedEvent(event, index, seqMap))
@@ -650,13 +664,15 @@ export class RemoteMirrorService {
       assistant: undefined,
       remoteToLocalSeq,
       pendingAssistantEnds: new Map(),
+      latestTurn,
+      awaitingTurn: null,
       running: false,
       stopped: false,
       lastError: null,
       pendingUsers: [],
       waiters: [],
     } satisfies MirrorRuntime
-    const options = modelOptions(snapshot.events)
+    const options = this.#defaultSelection() ?? modelOptions(snapshot.events)
     const agent = new RemoteMirrorAgent(this, runtime, this.#ctx, options)
     runtime.agent = agent
     this.#runtimes.set(localId, runtime)
@@ -702,7 +718,6 @@ export class RemoteMirrorService {
         runtime.assistant?.abort()
         return
       }
-      let sawEnd = false
       for (const event of snapshot.events) {
         if (event.seq < runtime.record.lastSeq) continue
         if (event.seq !== runtime.record.lastSeq) {
@@ -710,10 +725,8 @@ export class RemoteMirrorService {
         }
         this.#appendEvent(runtime, event)
         runtime.record.lastSeq = event.seq + 1
-        if (event.type === 'turn/end') sawEnd = true
       }
       runtime.record.updatedAt = new Date().toISOString()
-      if (sawEnd) this.#setRunning(runtime, false)
       if (!snapshot.live && runtime.record.lastSeq >= snapshot.cursor) {
         runtime.stopped = true
         runtime.stream?.abort()
@@ -764,7 +777,6 @@ export class RemoteMirrorService {
         this.#appendEvent(runtime, event)
         runtime.record.lastSeq = event.seq + 1
         runtime.record.updatedAt = new Date().toISOString()
-        if (event.type === 'turn/end') this.#setRunning(runtime, false)
         await this.#save()
       }
     } catch (error) {
@@ -785,6 +797,35 @@ export class RemoteMirrorService {
     if (after > before) {
       runtime.remoteToLocalSeq.set(event.seq, after - 1)
       this.#flushAssistantEnd(runtime, event.seq)
+    }
+    const turn = typeof event.data === 'object' && event.data !== null
+      ? (event.data as { turn?: unknown }).turn
+      : undefined
+    if (typeof turn !== 'number') return
+    if (event.type === 'turn/start') {
+      runtime.latestTurn = Math.max(runtime.latestTurn, turn)
+      return
+    }
+    if (event.type !== 'turn/end') return
+    runtime.latestTurn = Math.max(runtime.latestTurn, turn)
+    if (runtime.awaitingTurn === null || turn >= runtime.awaitingTurn) {
+      runtime.awaitingTurn = null
+      this.#setRunning(runtime, false)
+    }
+  }
+
+  #defaultSelection(): { provider: string; model: string; reasoningEffort?: string } | undefined {
+    const defaults = this.#ctx.get('agentDefaultModel') as unknown as {
+      currentSelection?: () => unknown
+    } | undefined
+    const candidate = defaults?.currentSelection?.()
+    if (typeof candidate !== 'object' || candidate === null) return undefined
+    const record = candidate as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+    if (typeof record.provider !== 'string' || typeof record.model !== 'string') return undefined
+    return {
+      provider: record.provider,
+      model: record.model,
+      ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
     }
   }
 
