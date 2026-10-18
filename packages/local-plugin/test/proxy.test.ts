@@ -23,7 +23,7 @@ describe('model credential proxy', () => {
     await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', () => resolve()))
     const address = upstream.address() as { port: number }
     upstreamUrl = `http://127.0.0.1:${address.port}`
-    proxy = new ModelCredentialProxy({ apiKey: KEY, upstreamBaseUrl: upstreamUrl })
+    proxy = new ModelCredentialProxy({ apiKey: KEY, upstreamBaseUrl: `${upstreamUrl}/anthropic` })
     proxyUrl = (await proxy.start()).baseUrl
   })
 
@@ -33,7 +33,7 @@ describe('model credential proxy', () => {
   })
 
   it('injects the real key and forwards the path', async () => {
-    const response = await fetch(`${proxyUrl}/anthropic/v1/messages?beta=true`, {
+    const response = await fetch(`${proxyUrl}/v1/messages?beta=true`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': 'placeholder' },
       body: JSON.stringify({ stream: false }),
@@ -44,6 +44,16 @@ describe('model credential proxy', () => {
     assert.equal(seen[0]?.url, '/anthropic/v1/messages?beta=true')
     assert.equal(seen[0]?.auth, `Bearer ${KEY}`)
     assert.equal(seen[0]?.apiKey, KEY)
+  })
+
+  it('does not double a provider prefix already present on the request path', async () => {
+    const response = await fetch(`${proxyUrl}/anthropic/v1/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ stream: false }),
+    })
+    assert.equal(response.status, 200)
+    assert.equal(seen.at(-1)?.url, '/anthropic/v1/messages')
   })
 })
 

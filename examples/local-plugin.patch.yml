@@ -22,7 +22,7 @@
     provisionTimeoutMs: 600000
 
     credentialProxy: true
-    credentialProxyUpstream: https://api.deepseek.com
+    credentialProxyUpstream: https://api.deepseek.com/anthropic
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY
 

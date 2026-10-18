@@ -31,7 +31,7 @@
         # Keep the model key local; forward provider traffic through a reverse
         # SSH tunnel to a loopback proxy.
         credentialProxy: true
-        credentialProxyUpstream: https://api.deepseek.com
+        credentialProxyUpstream: https://api.deepseek.com/anthropic
         credentialProxyRemotePort: 47821
         modelCredentialRef: DEEPSEEK_API_KEY
 

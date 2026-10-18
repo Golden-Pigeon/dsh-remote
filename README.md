@@ -148,7 +148,7 @@ and Bun. Windows remotes are not supported.
     remoteDshVersion: 0.2.1-rc.2
     remoteStart: systemd          # systemd | nohup | none
     credentialProxy: true
-    credentialProxyUpstream: https://api.deepseek.com
+    credentialProxyUpstream: https://api.deepseek.com/anthropic
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY
 
@@ -191,6 +191,7 @@ The remote agent config remains available for advanced deployments:
 | `does not accept POST` | Remote agent is old; click **重新安装** |
 | No remote workspace in sidebar | Click **工作区** and add one; wait for the sync message |
 | Native session has no reply | Check **模型代理**; configure remote credentials |
+| `DeepSeek Messages request failed (404)` | Proxy upstream must be `https://api.deepseek.com/anthropic`; the fixed proxy joins/preserves the provider prefix. Reinstall the local plugin and reconnect |
 | Approval appears locally but remote tool still fails | The local decision was sent; check the remote tool result |
 | Local terminal opens local shell | Expected for local Sessions; remote Sessions use `Remote · <dir>` terminals |
 | Remote terminal opens local zsh | The terminal-controller fork is not active; run `./scripts/install-local.sh` again |

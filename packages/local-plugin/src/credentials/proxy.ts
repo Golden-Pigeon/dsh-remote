@@ -79,16 +79,26 @@ export class ModelCredentialProxy {
   }
 
   #forward(req: IncomingMessage, res: ServerResponse): void {
-    let target: URL
+    let incoming: URL
     try {
-      target = new URL(req.url ?? '/', this.#upstream)
+      incoming = new URL(req.url ?? '/', 'http://credential-proxy.invalid')
     } catch {
       writeError(res, 400, 'invalid proxy request path')
       return
     }
-    // Do not allow a caller to redirect the upstream origin.
-    target.protocol = this.#upstream.protocol
-    target.host = this.#upstream.host
+    // Do not allow a caller to redirect the upstream origin. Join the base
+    // path (for example /anthropic) instead of dropping it when the request
+    // path starts with '/', which is what `new URL(path, base)` would do.
+    const target = new URL(this.#upstream.origin)
+    const basePath = this.#upstream.pathname.replace(/\/+$/u, '')
+    let incomingPath = incoming.pathname.startsWith('/') ? incoming.pathname : `/${incoming.pathname}`
+    // Tolerate a remote DSH whose base URL already includes the same provider
+    // prefix (for example /anthropic) as the proxy upstream.
+    if (basePath !== '' && (incomingPath === basePath || incomingPath.startsWith(`${basePath}/`))) {
+      incomingPath = incomingPath.slice(basePath.length) || '/'
+    }
+    target.pathname = `${basePath}${incomingPath}` || '/'
+    target.search = incoming.search
 
     const headers: Record<string, string | string[]> = {}
     for (const [name, value] of Object.entries(req.headers)) {

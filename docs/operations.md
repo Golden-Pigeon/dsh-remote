@@ -126,7 +126,7 @@ Local plugin profile override:
     provisionTimeoutMs: 600000
 
     credentialProxy: true
-    credentialProxyUpstream: https://api.deepseek.com
+    credentialProxyUpstream: https://api.deepseek.com/anthropic
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY
 
@@ -175,6 +175,7 @@ The normal plugin flow calls the same provisioning library.
 | `does not accept POST` | Remote agent older than local plugin | Click **重新安装** |
 | Remote workspace not in sidebar | Not added yet or sync pending | Add it in **工作区**; wait a few seconds |
 | Native session has no reply | Local proxy has no key and remote has no credentials | Check **模型代理**; configure remote credentials |
+| `DeepSeek Messages request failed (404)` | Proxy upstream points at the wrong provider root/path | Set `credentialProxyUpstream: https://api.deepseek.com/anthropic`; the fixed proxy preserves the `/anthropic` prefix and tolerates it already being on the request path; reinstall the local plugin |
 | Approval appears locally but remote tool still fails | The decision was delivered but the tool failed remotely | Inspect the remote tool result |
 | Duplicate native session after restart | Old mirror archive failed | Archive the old session in the sidebar; new mirrors use fresh IDs |
 | Tunnel drops after sleep | SSH reset | Plugin reconnects; or click **连接** / **重新发现** |
