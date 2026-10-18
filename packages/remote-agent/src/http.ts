@@ -115,6 +115,9 @@ async function handleAgentRequest(
         case 'sessions':
           sendJson(res, await service.createSession(asCreateRequest(body)))
           return
+        case 'session-model':
+          sendJson(res, await service.selectModel(route.sessionId, asSelectModelRequest(body)))
+          return
         case 'session-prompt':
           sendJson(res, await service.promptSession(route.sessionId, asPromptRequest(body)))
           return
@@ -385,6 +388,26 @@ function asCreateRequest(value: unknown): { workspaceId?: string; cwd?: string; 
     }
   }
   return result
+}
+
+function asSelectModelRequest(value: unknown): { provider: string; model: string; reasoningEffort?: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  for (const key of ['provider', 'model'] as const) {
+    if (typeof body[key] !== 'string' || body[key].trim() === '') {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: `${key} must be a non-empty string` })
+    }
+  }
+  if (body.reasoningEffort !== undefined && typeof body.reasoningEffort !== 'string') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'reasoningEffort must be a string' })
+  }
+  return {
+    provider: body.provider as string,
+    model: body.model as string,
+    ...typeof body.reasoningEffort === 'string' ? { reasoningEffort: body.reasoningEffort } : {},
+  }
 }
 
 function asPromptRequest(value: unknown): { text: string; mode?: 'queue' | 'steer' } {

@@ -84,6 +84,7 @@ interface MirrorRuntime {
   pendingAssistantEnds: Map<number, RemoteAssistantFrame>
   latestTurn: number
   awaitingTurn: number | null
+  applyingRemote: boolean
   running: boolean
   stopped: boolean
   lastError: string | null
@@ -192,6 +193,7 @@ export class RemoteMirrorService {
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
   #timer: NodeJS.Timeout | undefined
+  #selectionOff: (() => void) | undefined
   #disposed = false
 
   constructor(ctx: Context, hosts: RemoteHostsService, config: ResolvedConfig) {
@@ -203,6 +205,9 @@ export class RemoteMirrorService {
   /** Load mappings and begin periodic discovery. */
   async start(): Promise<void> {
     await this.#load()
+    this.#selectionOff = this.#ctx.on('session/event' as never, ((session: Session, event: SessionEvent) => {
+      this.#onLocalSessionEvent(session, event)
+    }) as never, { global: true } as never)
     if (!this.#config.mirrorSessions) return
     // Catalog reconciliation is much less urgent than event delivery.
     this.#timer = setInterval(() => { void this.sync() }, Math.max(5_000, this.#config.mirrorPollMs * 4))
@@ -213,6 +218,8 @@ export class RemoteMirrorService {
   async dispose(): Promise<void> {
     this.#disposed = true
     if (this.#timer !== undefined) clearInterval(this.#timer)
+    this.#selectionOff?.()
+    this.#selectionOff = undefined
     for (const runtime of this.#runtimes.values()) {
       runtime.stopped = true
       if (runtime.timer !== undefined) clearTimeout(runtime.timer)
@@ -360,7 +367,6 @@ export class RemoteMirrorService {
       ?? latestSelection(runtime.session)
       ?? read(runtime.agent.options)
       ?? read(state?.lastUsed)
-      ?? this.#defaultSelection()
   }
 
   async #syncHost(host: HostView): Promise<void> {
@@ -666,13 +672,14 @@ export class RemoteMirrorService {
       pendingAssistantEnds: new Map(),
       latestTurn,
       awaitingTurn: null,
+      applyingRemote: false,
       running: false,
       stopped: false,
       lastError: null,
       pendingUsers: [],
       waiters: [],
     } satisfies MirrorRuntime
-    const options = this.#defaultSelection() ?? modelOptions(snapshot.events)
+    const options = modelOptions(snapshot.events)
     const agent = new RemoteMirrorAgent(this, runtime, this.#ctx, options)
     runtime.agent = agent
     this.#runtimes.set(localId, runtime)
@@ -792,7 +799,12 @@ export class RemoteMirrorService {
 
   #appendEvent(runtime: MirrorRuntime, event: RemoteSessionEvent): void {
     const before = (runtime.session as unknown as { seq: number }).seq
-    if (!isMirrorNoise(event.type)) appendRemoteEvent(runtime.session, event, runtime)
+    runtime.applyingRemote = true
+    try {
+      if (!isMirrorNoise(event.type)) appendRemoteEvent(runtime.session, event, runtime)
+    } finally {
+      runtime.applyingRemote = false
+    }
     const after = (runtime.session as unknown as { seq: number }).seq
     if (after > before) {
       runtime.remoteToLocalSeq.set(event.seq, after - 1)
@@ -812,6 +824,25 @@ export class RemoteMirrorService {
       runtime.awaitingTurn = null
       this.#setRunning(runtime, false)
     }
+  }
+
+  #onLocalSessionEvent(session: Session, event: SessionEvent): void {
+    const candidate = event as unknown as { type?: string; data?: unknown }
+    if (candidate.type !== 'model/selection') return
+    const runtime = [...this.#runtimes.values()].find(item => item.session.id === session.id)
+    if (runtime === undefined || runtime.stopped || runtime.applyingRemote) return
+    const record = candidate.data as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+    if (typeof record.provider !== 'string' || typeof record.model !== 'string') return
+    const selection = {
+      provider: record.provider,
+      model: record.model,
+      ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
+    }
+    Object.assign(runtime.agent.options, selection)
+    void this.#hosts.selectModel(runtime.record.hostId, runtime.record.remoteSessionId, selection).catch(error => {
+      runtime.lastError = error instanceof Error ? error.message : String(error)
+      this.#ctx.logger.warn('dsh-remote-local: remote model selection failed: %s', runtime.lastError)
+    })
   }
 
   #defaultSelection(): { provider: string; model: string; reasoningEffort?: string } | undefined {

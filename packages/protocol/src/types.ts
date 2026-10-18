@@ -241,6 +241,13 @@ export interface CreateSessionResult {
 /** Delivery mode for a remote prompt. */
 export type PromptDeliveryMode = 'queue' | 'steer'
 
+/** Request to select the model/reasoning effort for one remote session. */
+export interface SelectModelRequest {
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string
+}
+
 /** Request to send a text prompt to a remote session. */
 export interface PromptSessionRequest {
   readonly text: string

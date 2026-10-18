@@ -15,6 +15,7 @@ import {
   sessionAssistantEventsPath,
   sessionCancelPath,
   sessionEventsPath,
+  sessionModelPath,
   sessionPath,
   sessionPromptPath,
   workspaceSessionsPath,
@@ -36,6 +37,7 @@ import type {
   RemoteSessionEvent,
   RemoteSessionSummary,
   PromptSessionRequest,
+  SelectModelRequest,
   RemoteWorkspace,
   SessionSnapshot,
   SessionSnapshotOptions,
@@ -171,6 +173,14 @@ export class RemoteAgentClient {
   /** Create a remote session in a workspace or directory. */
   createSession(request: CreateSessionRequest): Promise<CreateSessionResult> {
     return this.#request(AGENT_ROUTES.sessions, isCreateSessionResult, {
+      method: 'POST',
+      body: request,
+    })
+  }
+
+  /** Select the model and reasoning effort for one remote session. */
+  async selectModel(sessionId: string, request: SelectModelRequest): Promise<void> {
+    await this.#request(sessionModelPath(sessionId), isAcceptedResult, {
       method: 'POST',
       body: request,
     })

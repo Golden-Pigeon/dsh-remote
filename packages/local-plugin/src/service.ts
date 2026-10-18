@@ -379,6 +379,20 @@ export class RemoteHostsService {
     }
   }
 
+  /** Install a model/reasoning-effort selection on a remote session. */
+  async selectModel(
+    id: string,
+    sessionId: string,
+    selection: { provider: string; model: string; reasoningEffort?: string },
+  ): Promise<void> {
+    const client = this.#requireClient(id)
+    try {
+      await client.selectModel(sessionId, selection)
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
   /** Send a prompt to a remote session. */
   async promptSession(
     id: string,

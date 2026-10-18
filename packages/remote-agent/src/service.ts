@@ -29,6 +29,7 @@ import {
   type HostInfo,
   type ListSessionsResult,
   type PromptSessionRequest,
+  type SelectModelRequest,
   type ListWorkspacesResult,
   type RemoteSessionSummary,
   type RemoteWorkspace,
@@ -251,6 +252,17 @@ export class RemoteAgentService {
       sessionId: String(created.sessionId),
       ...created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset },
     }
+  }
+
+  /** Select and install the model/reasoning effort for one remote session. */
+  async selectModel(sessionId: string, request: SelectModelRequest): Promise<AcceptedResult> {
+    await this.ctx.sessionController.selectModel({
+      sessionId: sessionId as SessionId,
+      provider: request.provider,
+      model: request.model,
+      ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort as never },
+    })
+    return { accepted: true }
   }
 
   /** Send a text prompt to one remote session. */
