@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.4
+
+- Keep mirrored Session identity stable across plugin reloads and ended turns; reattach the runtime
+  instead of recreating the local Session, stopping sidebar flicker.
+- Stream remote Session events over SSE and forward dense Assistant start/chunk/end frames into the
+  local Agent stream for token-level reasoning and text output.
+- Suppress incomplete transient tool-call cards; durable tool results own the final card state.
+- Publish `agent/status` transitions so the Stop control reflects the mirrored Agent's running state.
+- Read the per-session model selection from the local projection/default and forward provider, model,
+  and reasoning effort to the remote Session.
+- Remap `sourceEventSeqs` and surface ranges from remote to local Session sequence numbers.
+- Normalize remote absolute file paths and abort cancelled remote file reads.
+- Propagate the remote proxy into the systemd/nohup runtime environment for model requests.
+
 ## 0.8.3
 
 - Detect the remote installer proxy through the account's actual login shell, including zsh, fish,

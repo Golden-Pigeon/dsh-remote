@@ -7,7 +7,7 @@
 import { createRequire } from 'node:module'
 
 /** Keep in sync with package.json; a unit test enforces it. */
-export const AGENT_VERSION = '0.2.1'
+export const AGENT_VERSION = '0.2.2'
 
 /** Plugin row name (also the bundle patch id). */
 export const AGENT_NAME = 'dsh-remote-agent'
