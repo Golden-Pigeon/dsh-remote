@@ -84,6 +84,7 @@ interface MirrorRuntime {
   pendingAssistantEnds: Map<number, RemoteAssistantFrame>
   latestTurn: number
   awaitingTurn: number | null
+  awaitingStarted: boolean
   applyingRemote: boolean
   running: boolean
   stopped: boolean
@@ -310,7 +311,12 @@ export class RemoteMirrorService {
     const text = contentText(message)
     if (text === '') return
     runtime.pendingUsers.push(message)
-    if (!runtime.running) runtime.awaitingTurn = runtime.latestTurn + 1
+    if (!runtime.running) {
+      runtime.awaitingTurn = runtime.latestTurn + 1
+      runtime.awaitingStarted = false
+    } else {
+      runtime.awaitingStarted = true
+    }
     this.#setRunning(runtime, true)
     if (runtime.stopped || runtime.timer === undefined) {
       runtime.stopped = false
@@ -337,6 +343,7 @@ export class RemoteMirrorService {
   cancel(runtime: MirrorRuntime): void {
     void this.#hosts.cancelSession(runtime.record.hostId, runtime.record.remoteSessionId).then(() => {
       runtime.awaitingTurn = null
+      runtime.awaitingStarted = false
       this.#setRunning(runtime, false)
     }).catch(error => {
       runtime.lastError = error instanceof Error ? error.message : String(error)
@@ -672,6 +679,7 @@ export class RemoteMirrorService {
       pendingAssistantEnds: new Map(),
       latestTurn,
       awaitingTurn: null,
+      awaitingStarted: false,
       applyingRemote: false,
       running: false,
       stopped: false,
@@ -679,7 +687,9 @@ export class RemoteMirrorService {
       pendingUsers: [],
       waiters: [],
     } satisfies MirrorRuntime
-    const options = modelOptions(snapshot.events)
+    // A freshly mirrored Session starts from the local UI's current selection.
+    // Later per-session selections are forwarded by #onLocalSessionEvent.
+    const options = this.#defaultSelection() ?? modelOptions(snapshot.events)
     const agent = new RemoteMirrorAgent(this, runtime, this.#ctx, options)
     runtime.agent = agent
     this.#runtimes.set(localId, runtime)
@@ -822,6 +832,7 @@ export class RemoteMirrorService {
     runtime.latestTurn = Math.max(runtime.latestTurn, turn)
     if (runtime.awaitingTurn === null || turn >= runtime.awaitingTurn) {
       runtime.awaitingTurn = null
+      runtime.awaitingStarted = false
       this.#setRunning(runtime, false)
     }
   }
@@ -907,6 +918,7 @@ export class RemoteMirrorService {
       )) {
         if (runtime.stopped || this.#disposed || signal.aborted) return
         if (frame.type === 'start') {
+          runtime.awaitingStarted = true
           this.#setRunning(runtime, true)
           const { startedAfterSeq: _startedAfterSeq, ...rest } = frame as RemoteAssistantFrame & { startedAfterSeq?: number }
           this.#emitAssistant(runtime, rest as RemoteAssistantFrame)
