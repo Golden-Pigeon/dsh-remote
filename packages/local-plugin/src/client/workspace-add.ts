@@ -35,6 +35,24 @@ interface HostDirectoryPicker {
   >
 }
 
+interface DesktopDirectoryPicker {
+  pick(): Promise<string | null>
+}
+
+async function pickLocalDirectory(ctx: Context): Promise<string | null> {
+  // DSH Desktop installs this bridge before the client mounts; the stock
+  // native directory-flow plugin uses exactly the same entry point.
+  const desktop = (globalThis as unknown as { __DSH_DIRECTORY_PICKER__?: DesktopDirectoryPicker }).__DSH_DIRECTORY_PICKER__
+  if (desktop !== undefined) return desktop.pick()
+  const uiWorkspace = (ctx as unknown as { uiWorkspace?: { pickDirectory?: () => Promise<string | null> } }).uiWorkspace
+  if (uiWorkspace?.pickDirectory !== undefined) return uiWorkspace.pickDirectory()
+  const remote = (ctx as unknown as { remote?: { directoryPicker?: HostDirectoryPicker } }).remote
+  if (remote?.directoryPicker === undefined) throw new Error('directory picker is unavailable')
+  const result = await remote.directoryPicker.pick()
+  if (!result.ok) throw new Error(result.error.message)
+  return result.value
+}
+
 interface DirectoryListing {
   readonly path: string
   readonly parent: string
@@ -224,17 +242,11 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   })
   addFolder.addEventListener('click', () => {
     if (destination.kind === 'local') {
-      const remote = (flow.ctx as unknown as { remote?: { directoryPicker?: HostDirectoryPicker } }).remote
-      if (remote?.directoryPicker === undefined) {
-        error.textContent = flow.t('dialog.nativePickerFailed')
-        return
-      }
       addFolder.disabled = true
-      void remote.directoryPicker.pick()
-        .then(result => {
-          if (!result.ok) throw new Error(result.error.message)
-          if (result.value !== null) {
-            selectedPath = result.value
+      void pickLocalDirectory(flow.ctx)
+        .then(path => {
+          if (path !== null) {
+            selectedPath = path
             update()
           }
         })
