@@ -67,7 +67,7 @@ async function handleHostApi(
   }
 
   try {
-    const value = await dispatch(ctx, service, mirrors, body.endpoint, body.payload)
+    const value = await dispatch(ctx, service, mirrors, body.endpoint, body.payload, request.signal)
     return jsonResult({ ok: true, value })
   } catch (error) {
     const failure = asLocalError(error)
@@ -88,6 +88,7 @@ async function dispatch(
   mirrors: RemoteMirrorService | undefined,
   endpoint: string,
   payload: unknown,
+  signal: AbortSignal,
 ): Promise<HostApiValues[HostApiEndpoint]> {
   switch (endpoint as HostApiEndpoint) {
     case 'state':
@@ -237,7 +238,6 @@ async function dispatch(
       } | undefined
       if (files === undefined) return { mirrored: false }
       const scope = { sessionId, workspaceRoot: root }
-      const signal = new AbortController().signal
       if (endpoint === 'host/files/list') return { mirrored: true, value: await files.list(scope, path, signal) }
       if (endpoint === 'host/files/stat') return { mirrored: true, value: await files.stat(scope, path, signal) }
       if (endpoint === 'host/files/bytes') return { mirrored: true, value: await files.readBytes(scope, path, {

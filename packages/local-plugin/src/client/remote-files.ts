@@ -34,19 +34,19 @@ export function installRemoteFiles(ctx: Context, api: HostsApi): void {
   }
 
   face.list = async (sessionId, path, signal) => {
-    const result = await api.fileList(sessionId, path)
+    const result = await api.fileList(sessionId, path, signal)
     return result.mirrored ? { ok: true, value: result.value } : original.list(sessionId, path, signal)
   }
   face.read = async (sessionId, path, range, signal) => {
-    const result = await api.fileRead(sessionId, path, range.offset, range.limit)
+    const result = await api.fileRead(sessionId, path, range.offset, range.limit, signal)
     return result.mirrored ? { ok: true, value: result.value } : original.read(sessionId, path, range, signal)
   }
   face.stat = async (sessionId, path, signal) => {
-    const result = await api.fileStat(sessionId, path)
+    const result = await api.fileStat(sessionId, path, signal)
     return result.mirrored ? { ok: true, value: result.value } : original.stat(sessionId, path, signal)
   }
   face.readBytes = async (sessionId, path, options, signal) => {
-    const result = await api.fileBytes(sessionId, path, options.range?.offset, options.range?.length)
+    const result = await api.fileBytes(sessionId, path, options.range?.offset, options.range?.length, signal)
     return result.mirrored ? { ok: true, value: result.value } : original.readBytes(sessionId, path, options, signal)
   }
 }

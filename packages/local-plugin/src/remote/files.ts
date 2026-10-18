@@ -24,6 +24,8 @@ import type {
 import type { RemoteHostsService } from '../service.ts'
 import type { RemoteMirrorService } from '../mirror/service.ts'
 
+const HELPER_TIMEOUT_MS = 15_000
+
 const HELPER = String.raw`
 import sys, json, os, base64
 req = json.load(sys.stdin)
@@ -245,7 +247,10 @@ function targetOf(
       workspaceRoot: anchor,
     }
   }
-  return undefined
+  throw Object.assign(
+    new Error(`remote file path is outside the mirrored workspace: ${path}`),
+    { code: 'workspace-file/not-found' },
+  )
 }
 
 async function helper(
@@ -254,6 +259,7 @@ async function helper(
   request: Record<string, unknown>,
   signal: AbortSignal,
 ): Promise<Record<string, unknown>> {
+  if (signal.aborted) throw new Error('remote file helper aborted')
   const ssh = hosts.sshFor(hostId)
   const args = [
     '-o', 'BatchMode=yes',
@@ -269,7 +275,7 @@ async function helper(
     const timer = setTimeout(() => {
       child.kill('SIGKILL')
       reject(new Error('remote file helper timed out'))
-    }, 30_000)
+    }, HELPER_TIMEOUT_MS)
     const abort = (): void => {
       child.kill('SIGKILL')
       reject(new Error('remote file helper aborted'))
@@ -279,6 +285,11 @@ async function helper(
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', chunk => { stdout += chunk })
     child.stderr.on('data', chunk => { stderr += chunk })
+    child.stdin.on('error', error => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', abort)
+      reject(error)
+    })
     child.on('error', error => {
       clearTimeout(timer)
       signal.removeEventListener('abort', abort)

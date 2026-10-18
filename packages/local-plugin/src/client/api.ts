@@ -53,10 +53,10 @@ export interface HostsApi {
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly openSession: (sessionId: string) => void
-  readonly fileList: (sessionId: string, path: string) => Promise<MirrorFileResult>
-  readonly fileRead: (sessionId: string, path: string, offset?: number, limit?: number) => Promise<MirrorFileResult>
-  readonly fileStat: (sessionId: string, path: string) => Promise<MirrorFileResult>
-  readonly fileBytes: (sessionId: string, path: string, offset?: number, length?: number) => Promise<MirrorFileResult>
+  readonly fileList: (sessionId: string, path: string, signal?: AbortSignal) => Promise<MirrorFileResult>
+  readonly fileRead: (sessionId: string, path: string, offset?: number, limit?: number, signal?: AbortSignal) => Promise<MirrorFileResult>
+  readonly fileStat: (sessionId: string, path: string, signal?: AbortSignal) => Promise<MirrorFileResult>
+  readonly fileBytes: (sessionId: string, path: string, offset?: number, length?: number, signal?: AbortSignal) => Promise<MirrorFileResult>
   readonly prompt: (hostId: string, sessionId: string, text: string, mode?: PromptDeliveryMode, selection?: { provider: string; model: string; reasoningEffort?: string }) => Promise<AcceptedResult>
   readonly cancel: (hostId: string, sessionId: string) => Promise<AcceptedResult>
 }
@@ -89,20 +89,20 @@ export function createHostsApi(ctx: Context): HostsApi {
     }),
     createSession: (hostId, input) => call('host/session/create', { hostId, ...input }),
     openSession: sessionId => { ctx.uiWorkspace.openSession(sessionId as never) },
-    fileList: (sessionId, path) => call('host/files/list', { sessionId, path }),
-    fileRead: (sessionId, path, offset, limit) => call('host/files/read', {
+    fileList: (sessionId, path, signal) => call('host/files/list', { sessionId, path }, signal),
+    fileRead: (sessionId, path, offset, limit, signal) => call('host/files/read', {
       sessionId,
       path,
       ...offset === undefined ? {} : { offset },
       ...limit === undefined ? {} : { limit },
-    }),
-    fileStat: (sessionId, path) => call('host/files/stat', { sessionId, path }),
-    fileBytes: (sessionId, path, offset, length) => call('host/files/bytes', {
+    }, signal),
+    fileStat: (sessionId, path, signal) => call('host/files/stat', { sessionId, path }, signal),
+    fileBytes: (sessionId, path, offset, length, signal) => call('host/files/bytes', {
       sessionId,
       path,
       ...offset === undefined ? {} : { offset },
       ...length === undefined ? {} : { length },
-    }),
+    }, signal),
     prompt: (hostId, sessionId, text, mode, selection) => call('host/session/prompt', {
       hostId,
       sessionId,
@@ -117,12 +117,14 @@ export function createHostsApi(ctx: Context): HostsApi {
 async function call<K extends keyof HostApiPayloads & string>(
   endpoint: K,
   payload: HostApiPayloads[K],
+  signal?: AbortSignal,
 ): Promise<HostApiValues[K]> {
   const response = await fetch(HOST_API_PATH, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload === undefined ? { endpoint } : { endpoint, payload }),
+    ...signal === undefined ? {} : { signal },
   })
   if (!response.ok) {
     throw new RemoteUiError('request/invalid', `host API returned HTTP ${response.status}`)
