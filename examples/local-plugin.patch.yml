@@ -1,12 +1,10 @@
 # Example: local plugin profile patch
-
-Apply this as a layer after the local plugin bundle:
-
-```yaml
+#
+# The bundle already inserts the row; this patch can override defaults.
 - id: dsh-remote-local
   config:
     stateDir: ~/.dsh/remote
-    remoteStateFile: ~/.dsh/remote-agent/agent.json
+    remoteStateFile: ''
     sshBinary: ssh
     probeTimeoutMs: 10000
     connectTimeoutMs: 15000
@@ -14,7 +12,16 @@ Apply this as a layer after the local plugin bundle:
     reconnect: true
     maxReconnectDelayMs: 30000
     strictHostKeyChecking: accept-new
-```
 
-If the remote `DSH_HOME` is not `~/.dsh`, `remoteStateFile` must name the absolute remote path, for
-example `/srv/dsh/remote-agent/agent.json`.
+    autoProvision: true
+    remoteDshHome: ~/.dsh
+    remoteInstallDir: ~/.local/share/dsh-remote
+    remoteDshVersion: 0.2.1-rc.2
+    remotePnpmVersion: 11.21.0
+    remoteStart: systemd
+    provisionTimeoutMs: 600000
+
+    credentialProxy: true
+    credentialProxyUpstream: https://api.deepseek.com
+    credentialProxyRemotePort: 47821
+    modelCredentialRef: DEEPSEEK_API_KEY

@@ -1,112 +1,116 @@
 # Operations guide
 
-This guide covers installing and running the local plugin and the remote agent, plus the failure modes
-that show up most often in practice.
+The normal path is: install the local plugin once, then add an SSH host in Settings. The plugin
+provisions the remote side itself.
 
-## Prerequisites
+## 1. Install the local plugin
 
-### Local machine
-
-- DSH Desktop or a DSH Web/CLI installation with a profile that includes
-  `@deepseek-ai/dsh-base` and `@deepseek-ai/dsh-web-app`.
-- `ssh` on `PATH`.
-- Non-interactive SSH authentication: a key or ssh-agent. Password authentication works for the
-  initial manual SSH session but cannot keep a background tunnel alive.
-- The host key must be trusted. The default `accept-new` is TOFU; use `yes` after pre-populating
-  `known_hosts`.
-
-### Remote machine
-
-- Linux or macOS. Windows remotes are not supported.
-- Node.js 22.19+ and npm. The installer can find nvm, Volta, fnm, and Bun installations.
-- An SSH server that accepts the local key/agent.
-- Enough disk for a DSH install under `--install-dir` (or an existing `dsh` binary).
-- Model credentials configured remotely, or the Phase 2 credential proxy. The installer never copies
-  `DEEPSEEK_API_KEY`.
-
-## Install the remote agent
-
-From the workspace root after `pnpm build`:
+Quit DSH Desktop completely (including the tray process), then:
 
 ```sh
-node packages/installer/lib/cli.js plan --target user@host
+cd /path/to/dsh-remote/dsh-remote
+./scripts/install-local.sh
 ```
 
-`plan` prints the exact bash script that would run. Review it, then:
+For a DSH Web profile:
 
 ```sh
-node packages/installer/lib/cli.js install --target user@host
+./scripts/install-local.sh --profile web
+# restart the DSH Web process after the script finishes
 ```
 
-Useful flags:
+The script:
 
-| Flag | Default | Purpose |
-|---|---|---|
-| `--profile` | `web` | Remote DSH profile that receives the agent |
-| `--port` | `0` | Remote DSH Web port; 0 asks the OS |
-| `--install-dir` | `$HOME/.local/share/dsh-remote` | Local-to-remote Node tool install root |
-| `--dsh-home` | `$HOME/.dsh` | Remote DSH home |
-| `--dsh-version` | `0.2.1-rc.2` | Pinned DSH runtime |
-| `--start` | `systemd` | `systemd`, `nohup`, or `none` |
-| `--no-start` | — | Same as `--start none` |
-| `--json` | — | Machine-readable discover/pack output |
+1. installs workspace dependencies;
+2. builds all packages;
+3. packs `dsh-remote-agent` and embeds it in the local plugin's `assets/`;
+4. packs `dsh-remote-local-plugin`;
+5. adds it to the chosen profile with the DSH CLI.
 
-`systemd` mode writes `~/.config/systemd/user/dsh-remote-agent.service` and enables it. If the user
-systemd manager is unavailable it falls back to `nohup` and writes a pid file under
-`$DSH_HOME/remote-agent/web.pid`.
+It refuses to touch the desktop profile while the desktop app is running.
 
-### Verify
+## 2. Add a host
 
-```sh
-node packages/installer/lib/cli.js doctor --target user@host --dsh-home /path/on/host
-node packages/installer/lib/cli.js discover --target user@host --dsh-home /path/on/host
-```
+Open **Settings → 远程开发**, enter an SSH target (`user@host`, `host:port`, `ssh://…`, or an SSH
+config alias), and click **保存并连接**.
 
-`discover` prints the live port and versions. It never prints the token. The token lives at
-`$DSH_HOME/remote-agent/agent.json` with mode `0600`.
+The plugin then:
 
-## Install the local plugin
+1. tries to read `<remoteDshHome>/remote-agent/agent.json` over SSH;
+2. if no live agent exists and `autoProvision` is true:
+   - uploads the bundled agent tarball;
+   - runs the bootstrap script (`bash -s` over SSH);
+   - installs pnpm and the pinned DSH under `remoteInstallDir` when missing;
+   - adds the agent to the remote `web` profile;
+   - starts `dsh web` on `127.0.0.1` using systemd or nohup;
+3. waits for the state file and connects the loopback tunnel;
+4. starts the local credential proxy and adds a reverse SSH forward when a local model key exists.
 
-1. Quit DSH Desktop completely (including the tray process).
-2. Build and pack:
+The host card shows `安装中`, `正在连接`, then `已连接`. Errors appear on the card; fix SSH and click
+**重新安装** to retry.
 
-   ```sh
-   cd packages/local-plugin
-   npm pack
-   ```
+## 3. Add a remote workspace
 
-3. Install into the desktop profile with the CLI that belongs to the installation:
+Click **工作区**, enter an existing absolute remote directory, and click **添加工作区**. The directory
+must already exist on the remote machine. The workspace appears in the list with its session count.
 
-   ```sh
-   dsh plugin --profile desktop add ./dsh-remote-local-plugin-0.1.0.tgz
-   ```
+## 4. Chat or open the full remote UI
 
-4. Reopen DSH. **Settings → 远程开发** appears.
-5. Add the SSH target. The plugin discovers the remote state file over SSH, opens a random loopback
-   port, and connects to the agent.
+- **+ 新会话** creates a remote DSH session inside that workspace. The chat drawer polls the committed
+  transcript, sends prompts, and can cancel the active turn.
+- **开始使用** opens the full remote DSH UI through the tunnel (files, terminal, diffs, approvals,
+  tools).
 
-The local plugin stores its registry at `$DSH_HOME/remote/hosts.json` (mode `0600`). The token is in
-that file and is never returned by the authenticated host API.
+The local drawer is deliberately small: it is a convenience client for the remote session. Long
+sessions and advanced interactions belong in the full remote UI.
+
+## Model credentials
+
+The preferred path is the local credential proxy:
+
+- the local plugin resolves `DEEPSEEK_API_KEY` from the local DSH credential store at connect time;
+- the remote DSH is started with `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
+- the SSH tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
+- the local proxy injects the real key and forwards to `credentialProxyUpstream`.
+
+The real key is never written to the remote host. The reverse forward is reachable only on the remote
+loopback interface while the tunnel is up; connect only trusted hosts.
+
+If no local key is available, set `credentialProxy: false` or configure credentials in the remote DSH
+UI. The plugin still installs and connects; model calls use whatever the remote host has.
 
 ## Configuration
 
-Local plugin (`cordis.patch.yml` in the profile):
+Local plugin profile override:
 
 ```yaml
 - id: dsh-remote-local
   config:
-    stateDir: ~/.dsh/remote
-    remoteStateFile: ~/.dsh/remote-agent/agent.json
+    stateDir: ''                    # $DSH_HOME/remote
     sshBinary: ssh
+    remoteStateFile: ''             # <remoteDshHome>/remote-agent/agent.json
     probeTimeoutMs: 10000
     connectTimeoutMs: 15000
     healthIntervalMs: 15000
     reconnect: true
     maxReconnectDelayMs: 30000
     strictHostKeyChecking: accept-new
+
+    autoProvision: true
+    remoteDshHome: ~/.dsh
+    remoteInstallDir: ~/.local/share/dsh-remote
+    remoteDshVersion: 0.2.1-rc.2
+    remotePnpmVersion: 11.21.0
+    remoteStart: systemd            # systemd | nohup | none
+    provisionTimeoutMs: 600000
+
+    credentialProxy: true
+    credentialProxyUpstream: https://api.deepseek.com
+    credentialProxyRemotePort: 47821
+    modelCredentialRef: DEEPSEEK_API_KEY
 ```
 
-Remote agent (`cordis.patch.yml` in the remote profile):
+Remote agent override:
 
 ```yaml
 - id: dsh-remote-agent
@@ -119,46 +123,53 @@ Remote agent (`cordis.patch.yml` in the remote profile):
     heartbeatMs: 15000
 ```
 
-Set `remoteStateFile` to an absolute path when the remote `DSH_HOME` is not `~/.dsh`.
+## Manual installer (debugging only)
+
+The installer remains available for diagnosing a host without the UI:
+
+```sh
+node packages/installer/lib/cli.js plan --target user@host
+node packages/installer/lib/cli.js doctor --target user@host
+node packages/installer/lib/cli.js discover --target user@host
+node packages/installer/lib/cli.js install --target user@host --start nohup
+```
+
+The normal plugin flow calls the same provisioning library.
 
 ## Updating
 
-- **Remote agent:** re-run `install` after building a new tarball. `dsh plugin add` replaces the
-  profile dependency; restart the service (`systemctl --user restart dsh-remote-agent` or restart the
-  nohup process).
-- **Local plugin:** quit DSH, run `dsh plugin add` with the new tarball, reopen.
-- **Protocol:** bump `PROTOCOL_VERSION` only with a compatible client. A mismatch must be visible in
-  the UI, not silently ignored.
+- Local plugin: quit DSH, run `./scripts/install-local.sh`, reopen.
+- Remote agent: click **重新安装** on the host card. This re-uploads the currently bundled agent and
+  restarts the remote `dsh web` with the same host/state path.
+- If a remote restart changes the port, click **重新发现**.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Action |
 |---|---|---|
-| `SSH discovery timed out` | Key/agent auth not working non-interactively, or host unreachable | Run `ssh -o BatchMode=yes user@host true`; check `ssh-add -l` |
-| `remote agent state file was not found` | Installer did not run, wrong `DSH_HOME`, or `dsh web` not started | `installer discover --dsh-home <path>`; check the remote log |
-| `agent is installed but its DSH web listener is not running` | `dsh web` exited | `systemctl --user status dsh-remote-agent`; inspect `$DSH_HOME/remote-agent/web.log` |
-| `cannot get property "webServer"` in DSH logs | A plugin registered a naked `ctx.webServer` use without injecting the service | Use DSH Connection's `/api` Fetch route or inject the service properly |
-| `protocol/version-mismatch` | Client and agent protocol revisions differ | Upgrade both packages; never force a downgrade |
-| `auth/invalid` | Cached token is stale after a remote reset | Disconnect, remove the local host record, re-add it |
-| Tunnel connects but API times out | Remote agent port changed after a restart | Use **重新发现**; the local plugin re-reads the state file |
-| Remote UI opens but asks for a login | The launch token expired | Reopen **打开远端界面**; the local plugin requests a fresh path |
-| Local plugin not listed in Settings | Plugin missing from the desktop profile or DSH not restarted | Check the profile package.json and restart DSH |
+| Install never finishes | SSH auth is interactive or the remote lacks Node/npm | `ssh -o BatchMode=yes host true`; run `doctor`; inspect the host card error |
+| `remote agent state file was not found` | Auto-provision disabled or remote start failed | Click **重新安装**; inspect `$DSH_HOME/remote-agent/web.log` |
+| `remote agent: ... does not accept POST` | Remote agent is older than the local plugin | Click **重新安装** |
+| `已连接` but no reply | No local model key and no remote credentials | Configure remote credentials, or set a local key and reconnect |
+| Add workspace fails | Directory missing or not absolute | Create the directory on the remote host; use its absolute path |
+| Remote UI asks for login | Launch URL expired | Click **开始使用** again |
+| `protocol/version-mismatch` | Local plugin and remote agent revisions differ | Reinstall the remote agent from the local plugin |
+| Tunnel drops after sleep | SSH connection reset | The plugin reconnects; or click **连接** / **重新发现** |
 
 ### Logs
 
-- Local DSH: the process stderr / desktop logs.
+- Local plugin: DSH process stderr / desktop logs.
 - Remote systemd: `journalctl --user -u dsh-remote-agent -f`.
 - Remote nohup: `$DSH_HOME/remote-agent/web.log`.
-- Local host registry: `$DSH_HOME/remote/hosts.json` (contains tokens; do not paste publicly).
-- Remote state: `$DSH_HOME/remote-agent/agent.json` (contains a token; do not paste publicly).
+- Local host registry: `$DSH_HOME/remote/hosts.json` (contains tokens; do not paste).
+- Remote state: `$DSH_HOME/remote-agent/agent.json` (contains a token; do not paste).
 
 ## Security checklist
 
 - [ ] Remote DSH listens on `127.0.0.1` only.
 - [ ] The tunnel binds `127.0.0.1` only.
-- [ ] The remote agent token file is `0600`; the directory is `0700`.
-- [ ] The local `hosts.json` is `0600`.
-- [ ] `loopbackOnly` remains true.
 - [ ] Host keys are verified or intentionally TOFU.
-- [ ] Model credentials are not copied to the remote host.
-- [ ] The remote account is a trusted account; its shell privileges are the agent's privileges.
+- [ ] The remote agent token file and local `hosts.json` are `0600`.
+- [ ] `loopbackOnly` remains true unless a trusted authenticating proxy fronts the agent.
+- [ ] The local model key is proxied, not copied to the remote host.
+- [ ] The remote account is trusted; the remote DSH has the remote user's privileges.

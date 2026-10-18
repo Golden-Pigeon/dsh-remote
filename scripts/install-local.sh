@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Install dsh-remote-local-plugin into a local DSH profile.
+#
+# Usage:
+#   ./scripts/install-local.sh                 # desktop profile
+#   ./scripts/install-local.sh --profile web   # a DSH Web profile
+#
+# The desktop app must be fully quit first. The script builds the workspace,
+# packages the plugin (including the bundled dsh-remote-agent tarball), and
+# installs it with the DSH CLI.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROFILE="desktop"
+if [ "${1:-}" = "--profile" ] && [ -n "${2:-}" ]; then PROFILE="$2"; fi
+
+if [ "$PROFILE" = "desktop" ] && pgrep -f "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness" >/dev/null 2>&1; then
+  printf 'install-local: please fully quit DSH Desktop (Cmd+Q, including the tray process), then rerun.\n' >&2
+  exit 1
+fi
+
+DSH_BIN="${DSH_BIN:-}"
+if [ -z "$DSH_BIN" ] && [ -x "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" ]; then
+  DSH_BIN="/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"
+fi
+if [ -z "$DSH_BIN" ]; then
+  DSH_BIN="$(command -v dsh || true)"
+fi
+if [ -z "$DSH_BIN" ] || [ ! -x "$DSH_BIN" ]; then
+  printf 'install-local: could not find a DSH CLI; set DSH_BIN=/path/to/dsh\n' >&2
+  exit 1
+fi
+
+printf 'install-local: building (this also packs the remote agent asset)\n'
+cd "$ROOT"
+pnpm install
+pnpm -r build
+
+printf 'install-local: packing the local plugin\n'
+cd "$ROOT/packages/local-plugin"
+pnpm pack >/dev/null
+TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.2.0.tgz"
+if [ ! -f "$TARBALL" ]; then
+  printf 'install-local: plugin tarball was not produced at %s\n' "$TARBALL" >&2
+  exit 1
+fi
+
+printf 'install-local: installing into profile %s\n' "$PROFILE"
+"$DSH_BIN" plugin --profile "$PROFILE" add "$TARBALL"
+
+printf '\ninstall-local: done.\n'
+printf '1. Open DSH and go to Settings -> 远程开发.\n'
+printf '2. Enter an SSH target such as example-host and click 保存并连接.\n'
+printf '3. The plugin installs/starts the remote agent itself; then add a remote directory,\n'
+printf '   click + 新会话, and chat. 开始使用 opens the full remote DSH UI.\n'
+if [ "$PROFILE" != "desktop" ]; then
+  printf '\nRestart the DSH Web process that uses profile %s to load the new plugin.\n' "$PROFILE"
+fi

@@ -1,10 +1,10 @@
 # ADR-001: Use an agent-owned JSON/SSE envelope instead of `/api/remote.mux` for the remote link
 
-- **Status**: Accepted for Phase 1
+- **Status**: Accepted
 - **Date**: 2026-10-18
 - **Context**: `dsh-remote` needs a stable protocol between the local plugin and a remote DSH host.
   DSH already exposes a typed Remote API (`dsh-api-gateway`, `/api/remote.mux`).
-- **Decision**: Phase 1 uses a small JSON envelope over HTTP and SSE on
+- **Decision**: The implementation uses a small JSON envelope over HTTP and SSE on
   `/dsh-remote-agent/api/v1`. The local browser↔local Host link still uses DSH Connection's
   authenticated `/api` Fetch route. Revisit `/api/remote.mux` when the remote agent needs Host
   business methods, uplink streams, or cross-host multiplexing.
@@ -20,7 +20,7 @@ integration for a third-party package is significantly more complex than shippin
 contract, and the first phase only needs read projections plus an event stream.
 
 The design document explicitly listed "reuse `/api/remote.mux` or add an envelope" as an open
-decision. This ADR resolves it for Phase 1.
+decision. This ADR resolves it for the current implementation.
 
 ## Decision
 
@@ -29,8 +29,8 @@ decision. This ADR resolves it for Phase 1.
   - stable error codes;
   - explicit header negotiation.
 - Serve it on the remote DSH web server under `/dsh-remote-agent/api/v1`.
-- Use SSE for session events. The stream is one-way (Host → client), which is all a read-only
-  follower needs; the local UI sends no uplink.
+- Use SSE for session events. The stream is one-way (Host → client); prompts and cancellation use
+  explicit POST endpoints rather than an uplink.
 - Authenticate with a per-agent bearer token and a loopback peer check. The SSH tunnel is the only
   network path.
 - Keep the browser↔local Host bridge on DSH Connection's authenticated `/api` Fetch route, so the
@@ -41,6 +41,7 @@ decision. This ADR resolves it for Phase 1.
 **Positive**
 
 - The remote agent is a normal plugin package with no Typert build integration.
+- The write surface is tiny and explicit: workspace create, session create, prompt, cancel.
 - The contract is language- and version-explicit; a mismatch is a clear error.
 - Contract tests run against an in-memory fake host without DSH, SSH, or a browser.
 - The stream is simple to reason about: `ready → event* → end`.
@@ -48,6 +49,8 @@ decision. This ADR resolves it for Phase 1.
 **Negative**
 
 - The wire format is not reused from DSH and must be maintained.
+- The agent now has mutation endpoints, so every new write route needs the same auth/loopback and
+  validation review as a Host API method.
 - There is no multiplexed bidirectional stream; a future terminal or approval channel would need a
   second transport or a protocol revision.
 - The agent's routes are outside the `/api` browser fence and need their own auth review (done).

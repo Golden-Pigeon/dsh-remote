@@ -3,12 +3,12 @@
 - **Status**: v1, implemented by `dsh-remote-agent` and `@dsh-remote/protocol`
 - **Transport**: HTTP/1.1 over an SSH local forward; Server-Sent Events for streamed frames
 - **Encoding**: JSON envelopes; UTF-8
-- **Scope**: read-only host/workspace/session projections. No tool execution and no session mutation.
+- **Scope**: host/workspace/session projections plus a small session/workspace write surface. No arbitrary shell or file-content access.
 
 ## Why this protocol exists
 
 The design document left the choice between reusing DSH's `/api/remote.mux` and adding an envelope
-open. ADR-001 records the decision: Phase 1 uses a small agent-owned JSON/SSE protocol because its
+open. ADR-001 records the decision: the implementation uses a small agent-owned JSON/SSE protocol because its
 hosts are independent processes that may run different DSH versions, and Typert descriptors are
 generated from a Host TypeScript program at build time. The local browser↔Host link still uses DSH
 Connection's authenticated `/api` transport.
@@ -47,7 +47,7 @@ The agent advertises its revision on every response:
 
 ```http
 x-dsh-remote-server-protocol: 1
-x-dsh-remote-agent-version: 0.1.0
+x-dsh-remote-agent-version: 0.2.0
 x-dsh-remote-host-id: <echoed or local>
 x-dsh-remote-request-id: <echoed or generated>
 ```
@@ -100,7 +100,7 @@ Failure:
 | `route/not-found` | 404 | Unknown path |
 | `workspace/not-found` | 404 | Workspace not registered |
 | `session/not-found` | 404 | Session not live or persisted |
-| `session/not-live` | 409 | Follow requested for a cold session (Phase 2 resume) |
+| `session/not-live` | 409 | Follow requested for a cold session (cold resume is not implemented) |
 | `agent/not-ready` | 503 | Listener not bound |
 | `internal` | 500 | Unexpected agent failure |
 
@@ -120,7 +120,20 @@ tunnel exits, not on authentication or protocol errors.
 | `GET` | `/sessions/:sessionId/events?cursor=N` | `text/event-stream` |
 | `GET` | `/web-url` | `{ path: "/?token=..." }` |
 
-Only `GET` is accepted. Unknown paths return a JSON `route/not-found` envelope.
+Read routes use `GET`. Write routes use `POST` with a JSON body:
+
+| Method | Path | Body | Result |
+|---|---|---|---|
+| `POST` | `/workspaces` | `{ "path": "/abs/dir", "title"?: "…" }` | `RemoteWorkspace` |
+| `POST` | `/sessions` | `{ "workspaceId"?: "…", "cwd"?: "/abs/dir", "agentPreset"?: "…" }` | `CreateSessionResult` |
+| `POST` | `/sessions/:id/prompt` | `{ "text": "…", "mode"?: "queue" \| "steer" }` | `{ "accepted": true }` |
+| `POST` | `/sessions/:id/cancel` | `{}` | `{ "accepted": true }` |
+
+`workspaceId` and `cwd` are mutually exclusive. Prompt text must be non-empty. A wrong method for a
+route returns `405`; unknown paths return a JSON `route/not-found` envelope.
+
+The write surface is deliberately limited: it creates workspaces and sessions, submits prompts, and
+cancels a turn. It cannot execute arbitrary commands or read files outside the remote DSH APIs.
 
 ## Host identity
 
@@ -222,7 +235,7 @@ Rules:
 - Duplicate events are filtered; a forward gap ends the stream with `reason: "error"` and the client
   must request a new snapshot.
 - Heartbeats keep intermediaries from idling out.
-- The stream is read-only. Reattaching never executes a tool call.
+- The stream is a projection; attaching or replaying it never executes a tool call. Writes only happen through the explicit POST routes above.
 - `cursor > session.seq` is rejected with `request/invalid`; a stale but valid cursor replays.
 
 ### Cursor rules
@@ -240,6 +253,18 @@ The same rules are implemented by `HostScopedSessionStore` in `dsh-remote-client
 `/web-url` returns a browser-authenticated path on the remote DSH origin. The local plugin rewrites
 the origin to its tunnel and opens the result. The path contains a short-lived launch token; it is
 never logged or stored by the local plugin.
+
+## Write-surface guarantees
+
+- Every write route is authenticated by the same bearer token and loopback check as the reads.
+- `session.create` joins an existing workspace or an explicit remote directory; it never creates an
+  arbitrary local path outside the remote DSH workspace registry.
+- `session.prompt` submits text only. Attachments, terminal input, approvals, and direct file writes
+  are not part of this protocol yet. A prompt can still cause the remote DSH agent to use its own
+  tools under the remote sandbox and approval policy; that is the intended remote-execution path.
+- The bearer token grants session-writing capability. Treat it as a secret and keep the agent on
+  loopback.
+- `session.cancel` only cancels the active turn of an existing live session.
 
 ## Security notes
 

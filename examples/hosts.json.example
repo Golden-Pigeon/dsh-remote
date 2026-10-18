@@ -1,20 +1,38 @@
-{
-  "version": 1,
-  "hosts": [
-    {
-      "id": "example-host-gpu-a51146d3",
-      "label": "Example GPU",
-      "sshTarget": "user@host",
-      "sshPort": null,
-      "remoteAgentPort": 34817,
-      "token": "REPLACE_WITH_THE_REMOTE_AGENT_TOKEN",
-      "autoConnect": true,
-      "createdAt": "2026-10-18T08:23:48.232Z",
-      "updatedAt": "2026-10-18T08:23:48.507Z"
-    }
-  ]
-}
+# dsh-remote-agent
+
+A remote DSH plugin that exposes the remote host's workspaces and sessions to the local plugin.
+
+## What it does
+
+- Registers `/dsh-remote-agent/api/v1` on the remote DSH web server.
+- Generates and stores a bearer token in `$DSH_HOME/remote-agent/agent.json` (mode `0600`).
+- Projects host identity, workspaces, sessions, and session snapshots.
+- Streams committed session events over SSE.
+- Creates workspaces, creates sessions, submits text prompts, and cancels active turns.
+- Writes its live port into the state file so the local plugin can discover it over SSH.
+
+It does not expose arbitrary shell execution, file contents, terminal input, or approvals. The full
+remote UI is available separately through the same tunnel.
+
+## Install
+
+Normally the local plugin installs this package for you when you add a host. For a manual install:
+
+```sh
+node packages/installer/lib/cli.js install --target user@host
+# or
+dsh plugin --profile web add ./dsh-remote-agent-0.2.0.tgz
+dsh web --host 127.0.0.1 --port 0 --no-open
 ```
 
-This file is normally created by the plugin at `$DSH_HOME/remote/hosts.json` with mode `0600`.
-Never commit a real token.
+## Endpoints
+
+Read and write routes are documented in [`docs/protocol.md`](../../docs/protocol.md):
+
+- `GET /health`, `/host`, `/workspaces`, `/sessions`, `/sessions/:id`, `/sessions/:id/events`, `/web-url`
+- `POST /workspaces`, `/sessions`, `/sessions/:id/prompt`, `/sessions/:id/cancel`
+
+## Configuration
+
+See [`cordis.patch.yml`](cordis.patch.yml) and
+[`examples/remote-agent.patch.yml`](../../examples/remote-agent.patch.yml).
