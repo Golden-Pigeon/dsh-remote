@@ -15,6 +15,7 @@ import { LocalError, asLocalError } from '../errors.ts'
 import type { RemoteHostsService } from '../service.ts'
 import type { RemoteMirrorService } from '../mirror/service.ts'
 import { listRemoteDirectories } from '../remote/directory.ts'
+import { listLocalDirectories } from '../remote/local-directory.ts'
 import {
   HOST_API_PATH,
   type HostApiEndpoint,
@@ -142,6 +143,22 @@ async function dispatch(
     case 'host/directory/list': {
       const body = requireRecord(payload)
       return listRemoteDirectories(service, requireStringField(body, 'hostId'), optionalStringField(body, 'path') ?? '~')
+    }
+    case 'local/directory/list': {
+      const body = requireRecord(payload)
+      return listLocalDirectories(optionalStringField(body, 'path'))
+    }
+    case 'local/workspace/create': {
+      const body = requireRecord(payload)
+      const registry = ctx.get('workspaceRegistry') as
+        | { create(path: string, title?: string): Promise<{ id: string }> }
+        | undefined
+      if (registry === undefined) throw new LocalError('agent/unavailable', 'workspace registry is unavailable')
+      const workspace = await registry.create(
+        requireStringField(body, 'path'),
+        optionalStringField(body, 'title'),
+      )
+      return { workspaceId: String(workspace.id) }
     }
     case 'host/sessions': {
       const body = requireRecord(payload)

@@ -35,6 +35,8 @@ export type HostApiEndpoint =
   | 'host/workspaces'
   | 'host/workspace/create'
   | 'host/directory/list'
+  | 'local/directory/list'
+  | 'local/workspace/create'
   | 'host/sessions'
   | 'host/session'
   | 'host/session/create'
@@ -127,6 +129,8 @@ export interface HostApiPayloads {
   'host/workspaces': { hostId: string }
   'host/workspace/create': { hostId: string; path: string; title?: string }
   'host/directory/list': { hostId: string; path?: string }
+  'local/directory/list': { path?: string }
+  'local/workspace/create': { path: string; title?: string }
   'host/sessions': { hostId: string; workspaceId?: string }
   'host/session': { hostId: string; sessionId: string; limit?: number }
   'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
@@ -160,6 +164,8 @@ export interface HostApiValues {
   'host/workspaces': WorkspacesResult
   'host/workspace/create': RemoteWorkspace
   'host/directory/list': { path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }
+  'local/directory/list': { path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }
+  'local/workspace/create': { workspaceId: string }
   'host/sessions': SessionsResult
   'host/session': SessionSnapshot
   'host/session/create': HostCreateSessionResult

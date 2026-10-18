@@ -1,11 +1,9 @@
 /**
- * Local/remote choice for the native sidebar "Add workspace" button.
+ * Codex-style unified workspace creation dialog for the sidebar + button.
  *
- * The sidebar button is owned by @deepseek-ai/dsh-client-ui-workspace and has
- * no public click hook. A document-level capture listener replaces that click
- * with a small chooser; the local branch replays the original click so the
- * shipped directory browser remains untouched. The remote branch uses the
- * existing authenticated host API and opens the mirrored session.
+ * One modal owns the destination (local or a connected remote host), the
+ * optional workspace name, and the source folder browser. It is intentionally
+ * not a separate local/remote menu.
  *
  * @module dsh-remote-local/client/workspace-add
  */
@@ -16,18 +14,26 @@ import type { HostsApi } from './api.ts'
 
 const ADD_LABELS = new Set(['Add workspace', '添加工作区'])
 const NATIVE_CLICK_FLAG = 'dshrNativeClick'
-const MENU_CLASS = 'dshr-workspace-add-menu'
 const DIALOG_CLASS = 'dshr-workspace-add-dialog'
-let dismissHandler: ((event: Event) => void) | undefined
 let closeDialog: (() => void) | undefined
 let closeBrowser: (() => void) | undefined
+let closeMenu: (() => void) | undefined
 
 interface WorkspaceFlowContext {
   readonly ctx: Context
   readonly api: HostsApi
 }
 
-/** Install the sidebar add-workspace chooser once per client mount. */
+type Destination = { readonly kind: 'local' } | { readonly kind: 'remote'; readonly host: HostView }
+
+interface DirectoryListing {
+  readonly path: string
+  readonly parent: string
+  readonly entries: readonly { readonly name: string; readonly path: string }[]
+  readonly truncated: boolean
+}
+
+/** Install the sidebar add-workspace dialog once per client mount. */
 export function installWorkspaceAddMenu(ctx: Context, api: HostsApi): void {
   if (typeof document === 'undefined') return
   ensureStyles()
@@ -47,73 +53,17 @@ export function installWorkspaceAddMenu(ctx: Context, api: HostsApi): void {
       }
       event.preventDefault()
       event.stopImmediatePropagation()
-      openChooser({ ctx, api }, button)
+      void openCreateDialog({ ctx, api }, button)
     }
     document.addEventListener('click', onClick, true)
     return () => {
       document.removeEventListener('click', onClick, true)
       closeTransient()
     }
-  }, 'dsh-remote: workspace add menu')
+  }, 'dsh-remote: workspace add dialog')
 }
 
-function openChooser(flow: WorkspaceFlowContext, button: HTMLButtonElement): void {
-  closeTransient()
-  const menu = document.createElement('div')
-  menu.className = MENU_CLASS
-  menu.setAttribute('role', 'menu')
-  menu.setAttribute('aria-label', '新建工作区')
-
-  const addItem = (label: string, hint: string, action: () => void): void => {
-    const item = document.createElement('button')
-    item.type = 'button'
-    item.className = `${MENU_CLASS}-item`
-    item.setAttribute('role', 'menuitem')
-    const text = document.createElement('span')
-    text.className = `${MENU_CLASS}-label`
-    text.textContent = label
-    const note = document.createElement('span')
-    note.className = `${MENU_CLASS}-hint`
-    note.textContent = hint
-    item.append(text, note)
-    item.addEventListener('click', event => {
-      event.preventDefault()
-      event.stopPropagation()
-      action()
-    })
-    menu.append(item)
-  }
-
-  addItem('本地新建工作区', '使用本机目录选择器', () => {
-    closeTransient()
-    button.dataset[NATIVE_CLICK_FLAG] = '1'
-    button.click()
-  })
-  addItem('远程新建工作区…', '在已连接的远端主机上创建', () => {
-    closeTransient()
-    void openRemoteDialog(flow)
-  })
-
-  document.body.append(menu)
-  const rect = button.getBoundingClientRect()
-  menu.style.left = `${Math.max(8, Math.min(rect.right + 8, window.innerWidth - 260))}px`
-  menu.style.top = `${Math.max(8, Math.min(rect.top - 4, window.innerHeight - 160))}px`
-
-  const dismiss = (event: Event): void => {
-    const target = event.target
-    if (target instanceof Node && menu.contains(target)) return
-    closeTransient()
-  }
-  dismissHandler = dismiss
-  window.addEventListener('pointerdown', dismiss, true)
-  window.addEventListener('keydown', onKeyDown, true)
-}
-
-function onKeyDown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') closeTransient()
-}
-
-async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
+async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonElement): Promise<void> {
   closeTransient()
   const overlay = document.createElement('div')
   overlay.className = `${DIALOG_CLASS}-overlay`
@@ -122,49 +72,53 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
   dialog.className = DIALOG_CLASS
   dialog.setAttribute('role', 'dialog')
   dialog.setAttribute('aria-modal', 'true')
-  dialog.setAttribute('aria-label', '新建远端工作区')
+  dialog.setAttribute('aria-label', '新建工作区')
 
   const title = document.createElement('h2')
   title.className = `${DIALOG_CLASS}-title`
-  title.textContent = '新建远端工作区'
-  const subtitle = document.createElement('p')
-  subtitle.className = `${DIALOG_CLASS}-subtitle`
-  subtitle.textContent = '选择一个远端主机和源目录，创建后立即打开镜像会话。'
-
-  const hostLabel = document.createElement('label')
-  hostLabel.className = `${DIALOG_CLASS}-field`
-  const hostText = document.createElement('span')
-  hostText.textContent = '远端主机'
-  const hostSelect = document.createElement('select')
-  hostSelect.className = `${DIALOG_CLASS}-input`
-  hostLabel.append(hostText, hostSelect)
+  title.textContent = '新建工作区'
 
   const nameLabel = document.createElement('label')
   nameLabel.className = `${DIALOG_CLASS}-field`
   const nameText = document.createElement('span')
   nameText.textContent = '工作区名称'
+  const nameRow = document.createElement('div')
+  nameRow.className = `${DIALOG_CLASS}-input-row`
+  const nameIcon = document.createElement('span')
+  nameIcon.className = `${DIALOG_CLASS}-input-icon`
+  setFolderIcon(nameIcon)
   const nameInput = document.createElement('input')
   nameInput.className = `${DIALOG_CLASS}-input`
-  nameInput.placeholder = '可选，默认使用目录名称'
+  nameInput.placeholder = '工作区名称'
   nameInput.autocomplete = 'off'
-  nameLabel.append(nameText, nameInput)
+  nameRow.append(nameIcon, nameInput)
+  nameLabel.append(nameText, nameRow)
 
-  const sourceLabel = document.createElement('div')
-  sourceLabel.className = `${DIALOG_CLASS}-field`
-  const sourceText = document.createElement('span')
-  sourceText.textContent = '源目录'
-  const sourceRow = document.createElement('div')
-  sourceRow.className = `${DIALOG_CLASS}-source-row`
-  const sourcePath = document.createElement('input')
-  sourcePath.className = `${DIALOG_CLASS}-input ${DIALOG_CLASS}-source-path`
-  sourcePath.placeholder = '选择远端目录'
-  sourcePath.readOnly = true
-  const browse = document.createElement('button')
-  browse.type = 'button'
-  browse.className = `${DIALOG_CLASS}-button`
-  browse.textContent = '选择目录…'
-  sourceRow.append(sourcePath, browse)
-  sourceLabel.append(sourceText, sourceRow)
+  const sourceTitle = document.createElement('h3')
+  sourceTitle.className = `${DIALOG_CLASS}-section-title`
+  sourceTitle.textContent = '源目录'
+  const sourceBox = document.createElement('div')
+  sourceBox.className = `${DIALOG_CLASS}-source-box`
+  const sourceCenter = document.createElement('div')
+  sourceCenter.className = `${DIALOG_CLASS}-source-center`
+  const sourceTrigger = document.createElement('button')
+  sourceTrigger.type = 'button'
+  sourceTrigger.className = `${DIALOG_CLASS}-source-trigger`
+  const sourceTriggerText = document.createElement('span')
+  const sourceChevron = document.createElement('span')
+  sourceChevron.className = `${DIALOG_CLASS}-chevron`
+  sourceChevron.textContent = '⌄'
+  sourceTrigger.append(sourceTriggerText, sourceChevron)
+  const addFolder = document.createElement('button')
+  addFolder.type = 'button'
+  addFolder.className = `${DIALOG_CLASS}-add-folder`
+  const addFolderIcon = document.createElement('span')
+  addFolderIcon.className = `${DIALOG_CLASS}-add-folder-icon`
+  const addFolderText = document.createElement('span')
+  addFolderText.textContent = '添加'
+  addFolder.append(addFolderIcon, addFolderText)
+  sourceCenter.append(sourceTrigger, addFolder)
+  sourceBox.append(sourceCenter)
 
   const error = document.createElement('p')
   error.className = `${DIALOG_CLASS}-error`
@@ -182,40 +136,34 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
   create.textContent = '创建工作区'
   actions.append(cancel, create)
 
-  dialog.append(title, subtitle, hostLabel, nameLabel, sourceLabel, error, actions)
+  dialog.append(title, nameLabel, sourceTitle, sourceBox, error, actions)
   overlay.append(dialog)
   document.body.append(overlay)
 
   let hosts: HostView[] = []
-  let selectedHostId = ''
+  let destination: Destination = { kind: 'local' }
   let selectedPath = ''
-  const updateCreate = (): void => { create.disabled = hosts.length === 0 || selectedPath === '' }
-  hostSelect.disabled = true
-  browse.disabled = true
-  create.disabled = true
-  try {
-    const state = await flow.api.state()
-    hosts = state.hosts.filter(host => host.phase === 'connected')
-    hostSelect.replaceChildren()
-    for (const host of hosts) {
-      const option = document.createElement('option')
-      option.value = host.id
-      option.textContent = `${host.label} · ${host.hostInfo?.hostname ?? host.sshTarget}`
-      hostSelect.append(option)
+  const update = (): void => {
+    const label = destination.kind === 'local' ? '本机' : destination.host.label
+    sourceTriggerText.textContent = `将目录添加到 ${label}`
+    addFolderIcon.textContent = selectedPath === '' ? '+ ' : '✓ '
+    create.disabled = nameInput.value.trim() === '' || selectedPath === ''
+    const last = sourceBox.querySelector(`.${DIALOG_CLASS}-selected-folder`)
+    last?.remove()
+    if (selectedPath !== '') {
+      const row = document.createElement('div')
+      row.className = `${DIALOG_CLASS}-selected-folder`
+      const icon = document.createElement('span')
+      icon.textContent = '📁'
+      const text = document.createElement('span')
+      text.textContent = selectedPath
+      row.append(icon, text)
+      sourceBox.append(row)
     }
-    selectedHostId = hosts[0]?.id ?? ''
-    hostSelect.value = selectedHostId
-    if (hosts.length === 0) {
-      error.textContent = '没有已连接的远端主机。请先在 Settings → 远程开发 里连接。'
-    }
-    hostSelect.disabled = hosts.length === 0
-    browse.disabled = hosts.length === 0
-  } catch (failure) {
-    error.textContent = messageOf(failure, '读取远端主机失败')
   }
-
   const close = (): void => {
     closeBrowser?.()
+    closeMenu?.()
     overlay.remove()
     window.removeEventListener('keydown', keyHandler, true)
     overlay.removeEventListener('pointerdown', outside, true)
@@ -232,56 +180,66 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
   overlay.addEventListener('pointerdown', outside, true)
   cancel.addEventListener('click', close)
 
-  hostSelect.addEventListener('change', () => {
-    selectedHostId = hostSelect.value
-    selectedPath = ''
-    sourcePath.value = ''
-    updateCreate()
-  })
-  browse.addEventListener('click', () => {
-    const host = hosts.find(item => item.id === selectedHostId)
-    if (host === undefined) return
-    const startPath = selectedPath || host.hostInfo?.home || '~'
-    openDirectoryBrowser(flow, host, startPath, path => {
-      selectedPath = path
-      sourcePath.value = path
-      updateCreate()
+  sourceTrigger.addEventListener('click', () => {
+    openDestinationMenu(sourceTrigger, hosts, destination, next => {
+      destination = next
+      selectedPath = ''
+      update()
     })
   })
+  addFolder.addEventListener('click', () => {
+    const initial = destination.kind === 'local'
+      ? '~'
+      : destination.host.hostInfo?.home ?? '~'
+    openDirectoryBrowser(flow, destination, initial, path => {
+      selectedPath = path
+      update()
+    })
+  })
+  nameInput.addEventListener('input', update)
 
+  try {
+    const state = await flow.api.state()
+    hosts = state.hosts.filter(host => host.phase === 'connected')
+  } catch {
+    hosts = []
+  }
+  if (hosts.length === 0) {
+    error.textContent = '还没有已连接的远端主机；当前仍可在本机创建。'
+  }
+  update()
   create.addEventListener('click', () => {
-    const host = hosts.find(item => item.id === selectedHostId)
-    if (host === undefined) {
-      error.textContent = '请选择已连接的远端主机。'
-      return
-    }
-    if (selectedPath === '') {
-      error.textContent = '请选择一个源目录。'
-      return
-    }
-    const workspaceTitle = nameInput.value.trim()
-    error.textContent = ''
+    const title = nameInput.value.trim()
+    if (title === '' || selectedPath === '') return
     create.disabled = true
     cancel.disabled = true
     create.textContent = '创建中…'
     void (async () => {
       try {
-        const workspace = await flow.api.createWorkspace(host.id, {
+        if (destination.kind === 'local') {
+          const local = await flow.api.createLocalWorkspace({ path: selectedPath, title })
+          close()
+          flow.ctx.uiWorkspace.startSession(local.workspaceId as never)
+          return
+        }
+        const workspace = await flow.api.createWorkspace(destination.host.id, {
           path: selectedPath,
-          ...workspaceTitle === '' ? {} : { title: workspaceTitle },
+          title,
         })
-        const session = await flow.api.createSession(host.id, { workspaceId: workspace.workspaceId })
+        const session = await flow.api.createSession(destination.host.id, {
+          workspaceId: workspace.workspaceId,
+        })
         if (session.localSessionId !== undefined) {
           close()
           flow.api.openSession(session.localSessionId)
           return
         }
-        const localId = await waitForLocalWorkspace(flow.api, host.id, workspace.workspaceId)
+        const localId = await waitForLocalWorkspace(flow.api, destination.host.id, workspace.workspaceId)
         if (localId === undefined) throw new Error('远端 workspace 已创建，但本地镜像还没有同步完成')
         close()
         flow.ctx.uiWorkspace.startSession(localId as never)
       } catch (failure) {
-        error.textContent = messageOf(failure, '远程新建工作区失败')
+        error.textContent = messageOf(failure, '新建工作区失败')
         create.disabled = false
         cancel.disabled = false
         create.textContent = '创建工作区'
@@ -289,13 +247,74 @@ async function openRemoteDialog(flow: WorkspaceFlowContext): Promise<void> {
     })()
   })
 
-  updateCreate()
   nameInput.focus()
+}
+
+function openDestinationMenu(
+  anchor: HTMLElement,
+  hosts: readonly HostView[],
+  current: Destination,
+  onPick: (destination: Destination) => void,
+): void {
+  closeMenu?.()
+  const menu = document.createElement('div')
+  menu.className = `${DIALOG_CLASS}-destination-menu`
+  const add = (label: string, destination: Destination): void => {
+    const item = document.createElement('button')
+    item.type = 'button'
+    item.className = `${DIALOG_CLASS}-destination-item`
+    const text = document.createElement('span')
+    text.textContent = label
+    const check = document.createElement('span')
+    check.className = `${DIALOG_CLASS}-destination-check`
+    const selected = current.kind === destination.kind
+      && (destination.kind === 'local' || (current.kind === 'remote' && current.host.id === destination.host.id))
+    check.textContent = selected ? '✓' : ''
+    item.append(text, check)
+    item.addEventListener('click', () => {
+      onPick(destination)
+      close()
+    })
+    menu.append(item)
+  }
+  add('本机', { kind: 'local' })
+  if (hosts.length > 0) {
+    const section = document.createElement('div')
+    section.className = `${DIALOG_CLASS}-destination-section`
+    section.textContent = '远端设备'
+    menu.append(section)
+    for (const host of hosts) add(host.label, { kind: 'remote', host })
+  }
+  const addRemote = document.createElement('button')
+  addRemote.type = 'button'
+  addRemote.className = `${DIALOG_CLASS}-destination-item ${DIALOG_CLASS}-destination-add`
+  addRemote.textContent = '+ 添加远端…'
+  addRemote.addEventListener('click', () => {
+    close()
+    const error = document.querySelector(`.${DIALOG_CLASS}-error`)
+    if (error !== null) error.textContent = '请先在 Settings → 远程开发 添加并连接远端主机。'
+  })
+  menu.append(addRemote)
+  document.body.append(menu)
+  const rect = anchor.getBoundingClientRect()
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`
+  menu.style.top = `${rect.bottom + 6}px`
+  const close = (): void => {
+    menu.remove()
+    window.removeEventListener('pointerdown', dismiss, true)
+    if (closeMenu === close) closeMenu = undefined
+  }
+  closeMenu = close
+  const dismiss = (event: Event): void => {
+    if (event.target instanceof Node && menu.contains(event.target)) return
+    close()
+  }
+  window.addEventListener('pointerdown', dismiss, true)
 }
 
 async function openDirectoryBrowser(
   flow: WorkspaceFlowContext,
-  host: HostView,
+  destination: Destination,
   initialPath: string,
   onPick: (path: string) => void,
 ): Promise<void> {
@@ -310,31 +329,25 @@ async function openDirectoryBrowser(
   dialog.setAttribute('aria-label', '选择源目录')
 
   const title = document.createElement('h2')
-  title.className = `${DIALOG_CLASS}-title`
+  title.className = `${DIALOG_CLASS}-browser-title`
   title.textContent = '选择源目录'
-  const subtitle = document.createElement('p')
-  subtitle.className = `${DIALOG_CLASS}-subtitle`
-  subtitle.textContent = `${host.label} · ${host.sshTarget}`
-
   const pathRow = document.createElement('div')
-  pathRow.className = `${DIALOG_CLASS}-source-row`
+  pathRow.className = `${DIALOG_CLASS}-browser-path-row`
   const up = document.createElement('button')
   up.type = 'button'
-  up.className = `${DIALOG_CLASS}-button ${DIALOG_CLASS}-up`
+  up.className = `${DIALOG_CLASS}-up`
   up.textContent = '↑'
   up.setAttribute('aria-label', '上一级')
   const pathInput = document.createElement('input')
-  pathInput.className = `${DIALOG_CLASS}-input`
+  pathInput.className = `${DIALOG_CLASS}-browser-path`
   pathInput.value = initialPath
   pathInput.autocomplete = 'off'
   pathRow.append(up, pathInput)
-
   const status = document.createElement('p')
   status.className = `${DIALOG_CLASS}-browser-status`
-  status.textContent = '正在读取目录…'
+  status.textContent = '选择当前目录'
   const list = document.createElement('div')
   list.className = `${DIALOG_CLASS}-browser-list`
-
   const actions = document.createElement('div')
   actions.className = `${DIALOG_CLASS}-actions`
   const cancel = document.createElement('button')
@@ -346,8 +359,7 @@ async function openDirectoryBrowser(
   use.className = `${DIALOG_CLASS}-button ${DIALOG_CLASS}-primary`
   use.textContent = '使用此目录'
   actions.append(cancel, use)
-
-  dialog.append(title, subtitle, pathRow, status, list, actions)
+  dialog.append(title, pathRow, status, list, actions)
   overlay.append(dialog)
   document.body.append(overlay)
 
@@ -358,15 +370,16 @@ async function openDirectoryBrowser(
     if (busy) return
     busy = true
     status.textContent = '正在读取目录…'
-    status.classList.remove(`${DIALOG_CLASS}-error-text`)
     list.replaceChildren()
     try {
-      const result = await flow.api.listDirectories(host.id, path)
-      current = result.path
-      parent = result.parent
-      pathInput.value = result.path
-      status.textContent = result.entries.length === 0 ? '此目录没有子目录' : '选择当前目录，或进入子目录'
-      for (const entry of result.entries) {
+      const listing: DirectoryListing = destination.kind === 'local'
+        ? await flow.api.listLocalDirectories(path)
+        : await flow.api.listDirectories(destination.host.id, path)
+      current = listing.path
+      parent = listing.parent
+      pathInput.value = listing.path
+      status.textContent = '选择当前目录'
+      for (const entry of listing.entries) {
         const item = document.createElement('button')
         item.type = 'button'
         item.className = `${DIALOG_CLASS}-browser-entry`
@@ -378,14 +391,18 @@ async function openDirectoryBrowser(
         item.addEventListener('click', () => { void load(entry.path) })
         list.append(item)
       }
+      if (listing.entries.length === 0) {
+        const empty = document.createElement('p')
+        empty.className = `${DIALOG_CLASS}-browser-empty`
+        empty.textContent = '此目录没有子目录'
+        list.append(empty)
+      }
     } catch (failure) {
       status.textContent = messageOf(failure, '读取目录失败')
-      status.classList.add(`${DIALOG_CLASS}-error-text`)
     } finally {
       busy = false
     }
   }
-
   const close = (): void => {
     overlay.remove()
     window.removeEventListener('keydown', keyHandler, true)
@@ -429,14 +446,9 @@ async function waitForLocalWorkspace(api: HostsApi, hostId: string, workspaceId:
 }
 
 function closeTransient(): void {
-  for (const node of document.querySelectorAll(`.${MENU_CLASS}`)) node.remove()
   closeDialog?.()
   closeBrowser?.()
-  if (dismissHandler !== undefined) {
-    window.removeEventListener('pointerdown', dismissHandler, true)
-    dismissHandler = undefined
-  }
-  window.removeEventListener('keydown', onKeyDown, true)
+  closeMenu?.()
 }
 
 function messageOf(failure: unknown, fallback: string): string {
@@ -444,75 +456,71 @@ function messageOf(failure: unknown, fallback: string): string {
   return fallback
 }
 
+function setFolderIcon(icon: HTMLElement): void {
+  icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" stroke="currentColor" stroke-width="1.5"/></svg>'
+}
+
 function ensureStyles(): void {
   if (document.getElementById('dshr-workspace-add-style') !== null) return
   const style = document.createElement('style')
   style.id = 'dshr-workspace-add-style'
   style.textContent = `
-    .${MENU_CLASS} {
-      position: fixed; z-index: 100000; min-width: 240px; padding: 6px;
-      border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
-      background: #252526; color: #eee; box-shadow: 0 16px 40px rgba(0,0,0,.45);
-      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    .${MENU_CLASS}-item {
-      display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-      width: 100%; padding: 9px 10px; border: 0; border-radius: 7px;
-      background: transparent; color: inherit; text-align: left; cursor: pointer;
-    }
-    .${MENU_CLASS}-item:hover, .${MENU_CLASS}-item:focus-visible { background: rgba(255,255,255,.09); outline: none; }
-    .${MENU_CLASS}-label { font-weight: 600; }
-    .${MENU_CLASS}-hint { color: rgba(255,255,255,.55); font-size: 11px; }
     .${DIALOG_CLASS}-overlay {
       position: fixed; inset: 0; z-index: 100001; display: grid; place-items: center;
-      background: rgba(0,0,0,.5); padding: 24px;
+      padding: 24px; background: rgba(0,0,0,.55);
     }
     .${DIALOG_CLASS} {
-      width: min(440px, 100%); padding: 20px; border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.14); background: #252526; color: #eee;
-      box-shadow: 0 24px 70px rgba(0,0,0,.6);
-      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      width: 720px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 30px;
+      border-radius: 18px; border: 1px solid rgba(255,255,255,.1);
+      background: #242424; color: #f2f2f2; box-shadow: 0 28px 80px rgba(0,0,0,.65);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .${DIALOG_CLASS}-title { margin: 0 0 4px; font-size: 16px; }
-    .${DIALOG_CLASS}-subtitle { margin: 0 0 16px; color: rgba(255,255,255,.58); font-size: 12px; }
-    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; font-size: 12px; color: rgba(255,255,255,.75); }
-    .${DIALOG_CLASS}-input {
-      width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 7px;
-      border: 1px solid rgba(255,255,255,.18); background: #1d1d1e; color: #eee;
-      font: inherit; outline: none;
+    .${DIALOG_CLASS}-title {
+      margin: 0 0 24px; font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em;
     }
-    .${DIALOG_CLASS}-input:focus { border-color: #4f8cff; }
-    .${DIALOG_CLASS}-source-row { display: flex; gap: 8px; align-items: center; }
-    .${DIALOG_CLASS}-source-path { flex: 1; }
-    .${DIALOG_CLASS}-browser-overlay {
-      position: fixed; inset: 0; z-index: 100002; display: grid; place-items: center;
-      background: rgba(0,0,0,.58); padding: 24px;
+    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .${DIALOG_CLASS}-field > span { font-size: 13px; color: rgba(255,255,255,.72); }
+    .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 10px; padding: 0 14px; background: transparent; }
+    .${DIALOG_CLASS}-input-icon { display: inline-flex; color: rgba(255,255,255,.7); }
+    .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; padding: 14px 0; }
+    .${DIALOG_CLASS}-section-title { margin: 4px 0 10px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.72); }
+    .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 28px 20px 16px; min-height: 130px; display: flex; flex-direction: column; align-items: center; }
+    .${DIALOG_CLASS}-source-center { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 16px; cursor: pointer; }
+    .${DIALOG_CLASS}-source-trigger span:first-child { color: #fff; font-weight: 600; }
+    .${DIALOG_CLASS}-chevron { font-size: 18px; line-height: 1; }
+    .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 9px; padding: 9px 16px; background: rgba(255,255,255,.12); color: #fff; font: inherit; cursor: pointer; }
+    .${DIALOG_CLASS}-add-folder:hover { background: rgba(255,255,255,.18); }
+    .${DIALOG_CLASS}-add-folder-icon { font-size: 18px; line-height: 1; }
+    .${DIALOG_CLASS}-selected-folder { display: flex; gap: 8px; align-items: center; max-width: 100%; margin-top: 18px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,.07); color: rgba(255,255,255,.86); font-size: 13px; overflow: hidden; }
+    .${DIALOG_CLASS}-selected-folder span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .${DIALOG_CLASS}-error { min-height: 18px; margin: 12px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
+    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 26px; }
+    .${DIALOG_CLASS}-button { padding: 10px 16px; border-radius: 9px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; }
+    .${DIALOG_CLASS}-button:disabled { opacity: .45; cursor: default; }
+    .${DIALOG_CLASS}-primary { border-color: #bdbdbd; background: #bdbdbd; color: #1a1a1a; font-weight: 600; }
+    .${DIALOG_CLASS}-primary:hover:not(:disabled) { background: #d0d0d0; }
+    .${DIALOG_CLASS}-destination-menu {
+      position: fixed; z-index: 100010; min-width: 250px; padding: 6px;
+      border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: #2a2a2a; color: #eee;
+      box-shadow: 0 18px 48px rgba(0,0,0,.55); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .${DIALOG_CLASS}-browser { width: min(620px, 100%); max-height: min(720px, 88vh); display: flex; flex-direction: column; }
-    .${DIALOG_CLASS}-up { flex: none; min-width: 36px; padding: 8px 10px; }
-    .${DIALOG_CLASS}-browser-status { margin: 10px 0 4px; color: rgba(255,255,255,.55); font-size: 12px; }
-    .${DIALOG_CLASS}-error-text { color: #ff8b8b; }
-    .${DIALOG_CLASS}-browser-list {
-      flex: 1; min-height: 160px; overflow: auto; margin-top: 6px;
-      border: 1px solid rgba(255,255,255,.12); border-radius: 9px; padding: 4px;
-      background: #1d1d1e;
-    }
-    .${DIALOG_CLASS}-browser-entry {
-      display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
-      padding: 10px 10px; border: 0; border-radius: 7px; background: transparent;
-      color: inherit; text-align: left; cursor: pointer; font: inherit;
-    }
-    .${DIALOG_CLASS}-browser-entry:hover, .${DIALOG_CLASS}-browser-entry:focus-visible {
-      background: rgba(255,255,255,.08); outline: none;
-    }
-    .${DIALOG_CLASS}-error { min-height: 18px; margin: 10px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
-    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-    .${DIALOG_CLASS}-button {
-      padding: 8px 12px; border-radius: 7px; border: 1px solid rgba(255,255,255,.18);
-      background: transparent; color: #eee; cursor: pointer; font: inherit;
-    }
-    .${DIALOG_CLASS}-button:disabled { opacity: .55; cursor: default; }
-    .${DIALOG_CLASS}-primary { border-color: #4f8cff; background: #4f8cff; color: white; }
+    .${DIALOG_CLASS}-destination-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+    .${DIALOG_CLASS}-destination-item:hover { background: rgba(255,255,255,.09); }
+    .${DIALOG_CLASS}-destination-section { padding: 14px 12px 6px; color: rgba(255,255,255,.5); font-size: 13px; }
+    .${DIALOG_CLASS}-destination-check { color: #bdbdbd; }
+    .${DIALOG_CLASS}-destination-add { color: rgba(255,255,255,.75); }
+    .${DIALOG_CLASS}-browser-overlay { position: fixed; inset: 0; z-index: 100002; display: grid; place-items: center; background: rgba(0,0,0,.6); padding: 24px; }
+    .${DIALOG_CLASS}-browser { width: 640px; max-height: 86vh; display: flex; flex-direction: column; padding: 26px; }
+    .${DIALOG_CLASS}-browser-title { margin: 0 0 20px; font-size: 26px; line-height: 1.15; font-weight: 700; }
+    .${DIALOG_CLASS}-browser-path-row { display: flex; align-items: center; gap: 8px; }
+    .${DIALOG_CLASS}-up { flex: none; width: 34px; height: 34px; border: 0; background: transparent; color: rgba(255,255,255,.65); font-size: 22px; cursor: pointer; }
+    .${DIALOG_CLASS}-browser-path { flex: 1; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: transparent; color: #fff; font: inherit; font-size: 16px; padding: 12px 14px; outline: none; }
+    .${DIALOG_CLASS}-browser-status { margin: 14px 0 8px; color: rgba(255,255,255,.55); font-size: 13px; }
+    .${DIALOG_CLASS}-browser-list { flex: 1; min-height: 220px; max-height: 420px; overflow: auto; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 6px; }
+    .${DIALOG_CLASS}-browser-entry { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 11px 12px; border: 0; border-radius: 8px; background: transparent; color: #fff; font: inherit; font-size: 16px; text-align: left; cursor: pointer; }
+    .${DIALOG_CLASS}-browser-entry:hover { background: rgba(255,255,255,.08); }
+    .${DIALOG_CLASS}-browser-empty { margin: 16px 12px; color: rgba(255,255,255,.5); font-size: 13px; }
   `
   document.head.append(style)
 }

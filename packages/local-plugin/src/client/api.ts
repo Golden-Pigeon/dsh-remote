@@ -45,6 +45,8 @@ export interface HostsApi {
   readonly provision: (hostId: string) => Promise<HostView>
   readonly workspaces: (hostId: string) => Promise<WorkspacesResult>
   readonly listDirectories: (hostId: string, path?: string) => Promise<{ path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }>
+  readonly listLocalDirectories: (path?: string) => Promise<{ path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }>
+  readonly createLocalWorkspace: (input: { path: string; title?: string }) => Promise<{ workspaceId: string }>
   readonly createWorkspace: (hostId: string, input: { path: string; title?: string }) => Promise<RemoteWorkspace>
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
@@ -72,6 +74,8 @@ export function createHostsApi(ctx: Context): HostsApi {
     provision: hostId => call('host/provision', { hostId }),
     workspaces: hostId => call('host/workspaces', { hostId }),
     listDirectories: (hostId, path) => call('host/directory/list', { hostId, ...path === undefined ? {} : { path } }),
+    listLocalDirectories: path => call('local/directory/list', { ...path === undefined ? {} : { path } }),
+    createLocalWorkspace: input => call('local/workspace/create', input),
     createWorkspace: (hostId, input) => call('host/workspace/create', { hostId, ...input }),
     sessions: (hostId, workspaceId) => call('host/sessions', {
       hostId,
