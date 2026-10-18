@@ -18,7 +18,25 @@ node scripts/release-plugin.mjs
 `node_modules/dsh-remote-terminal-controller` and declared as a bundled dependency, so DSH users only
 install `dsh-remote-local-plugin`.
 
-## Publish manually
+## Publish automatically
+
+The normal path is tag-driven:
+
+1. Bump `packages/local-plugin/package.json` to the next version.
+2. Commit and push `main`.
+3. Create and push the matching tag:
+
+```sh
+git tag v<version>
+git push origin v<version>
+```
+
+The `Release` workflow uses the `NPM_TOKEN` repository secret to publish the bundled tarball. It
+skips npm publishing when that exact version already exists, then attaches the tarball to the GitHub
+release. The token is stored in `.secret/npm_token` locally; `.secret/` is ignored and must never be
+committed.
+
+Manual publish is only a fallback:
 
 ```sh
 npm publish packages/local-plugin/dsh-remote-local-plugin-<version>.tgz --access public
