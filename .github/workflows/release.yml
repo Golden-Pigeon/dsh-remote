@@ -23,9 +23,9 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
       - run: pnpm -r typecheck
       - run: pnpm -r test
-      - run: pnpm -r build
       - run: node scripts/release-plugin.mjs
       - name: Publish npm tarball
         run: npm publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --access public --provenance
