@@ -959,7 +959,12 @@ export class RemoteMirrorService {
           continue
         }
         if (frame.type === 'chunk') {
-          this.#emitAssistant(runtime, frame)
+          // Transient tool-call cards are completed by the durable assistant
+          // message + tool/result pair. Forwarding partial tool-call chunks
+          // leaves a second card stuck in "preparing" when the durable
+          // settlement replaces only the first one.
+          const chunkType = (frame.chunk as { type?: unknown } | undefined)?.type
+          if (chunkType !== 'tool-call-delta') this.#emitAssistant(runtime, frame)
           continue
         }
         const outcome = frame.outcome
