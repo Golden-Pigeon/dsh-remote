@@ -31,9 +31,10 @@ Local DSH                                         Remote host
 | Remote sessions open in the normal Conversation UI | Available |
 | Prompts, stop, transcripts, tool cards, usage | Available |
 | Local model key proxy through a reverse SSH tunnel | Available |
-| Full remote DSH UI through the tunnel (`开始使用`) | Available |
+| Remote file tree and file previews | Available (SSH-backed) |
+| Remote terminal per Session | Available (local Sessions keep local PTY; remote Sessions use SSH PTY) |
 | Agent tools for host/workspace/session operations | Available |
-| Approval prompts bridged into the local UI | Not yet — use the full remote UI |
+| Approval prompts bridged into the local UI | Available |
 | Relay/NAT traversal, cloud sandbox, multi-tenant | Not yet |
 
 ## Install
@@ -45,8 +46,8 @@ cd /path/to/dsh-remote/dsh-remote
 ./scripts/install-local.sh
 ```
 
-The script builds the workspace, packs the plugin with the bundled remote agent, and installs it into
-the `desktop` profile. For a DSH Web profile:
+The script builds the workspace, packs the plugin with the bundled remote agent, packs the terminal
+controller fork, and installs both into the `desktop` profile. For a DSH Web profile:
 
 ```sh
 ./scripts/install-local.sh --profile web
@@ -67,8 +68,8 @@ Reopen DSH. **Settings → 远程开发** appears.
    row's **New session** action uses the same remote path.
 5. Type in the usual composer. The remote DSH runs the turn; the local transcript updates live. Tool
    calls, usage, stop, and multi-turn follow-ups behave like a local session.
-6. **开始使用** on the host card opens the complete remote DSH UI when you need the remote file tree,
-   terminal, diffs, or approval dialogs.
+6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
+   use the local machine, remote mirror Sessions use the remote workspace.
 
 The Settings page is now only host/workspace management. The conversation is not a popup.
 
@@ -113,7 +114,6 @@ remote DSH UI or use `credentialProxy: false`. The host card shows **模型代�
 | `remote_session_prompt` | Send a prompt |
 | `remote_session_snapshot` | Read a transcript page |
 | `remote_session_cancel` | Cancel the active turn |
-| `remote_web_url` | Authenticated full remote UI URL |
 
 ## Requirements
 
@@ -132,6 +132,7 @@ and Bun. Windows remotes are not supported.
 - The real model key never reaches the remote host; only the local proxy has it.
 - Browser requests use DSH Connection's authenticated `/api` Fetch route. Tokens/credentials are stored
   in `0600` files and never returned to the browser.
+- File-tree, preview, and terminal traffic also stays inside the authenticated SSH tunnel.
 - Only connect trusted remote accounts; the remote DSH has that account's privileges.
 
 ## Configuration
@@ -170,11 +171,14 @@ The remote agent config remains available for advanced deployments:
 
 ## Known limits
 
-- Approval prompts are not bridged into the local mirror yet. Tools that require approval may block;
-  open **开始使用** to answer them in the full remote UI.
-- The local workspace anchor is a metadata handle; the remote file tree/terminal is in the full remote
-  UI. Conversation, prompts, stop, tool cards, and usage are native.
-- A remote session longer than `mirrorMaxEvents` is not mirrored; open it in the full remote UI.
+- The complete remote DSH browser UI is not offered by default. The remote host disables its
+  Remote-Event carrier so approval waterfalls reach the native local UI; this is the tradeoff that
+  makes **Allow once / Reject** work in the ordinary conversation.
+- The local workspace anchor is a metadata handle. File listing, preview, and terminal are routed to
+  the remote workspace; remote diffs and some advanced file actions still use the native session's
+  own tool results.
+- A remote session longer than `mirrorMaxEvents` is not mirrored; increase the limit or open it on the
+  remote host directly.
 - Windows remotes and relay/NAT traversal are not supported.
 
 ## Troubleshooting
@@ -184,9 +188,10 @@ The remote agent config remains available for advanced deployments:
 | **安装中** never finishes | Check `ssh -o BatchMode=yes example-host true`; fix SSH and click **重新安装** |
 | `does not accept POST` | Remote agent is old; click **重新安装** |
 | No remote workspace in sidebar | Click **工作区** and add one; wait for the sync message |
-| Native session has no reply | Check **模型代理**; configure remote credentials or use full UI |
-| Approval blocked | Open the full remote UI with **开始使用** |
-| Remote UI asks for login | Click **开始使用** again for a new launch URL |
+| Native session has no reply | Check **模型代理**; configure remote credentials |
+| Approval appears locally but remote tool still fails | The local decision was sent; check the remote tool result |
+| Local terminal opens local shell | Expected for local Sessions; remote Sessions use `Remote · <dir>` terminals |
+| Remote terminal opens local zsh | The terminal-controller fork is not active; run `./scripts/install-local.sh` again |
 | Port changed after remote restart | Click **重新发现** |
 
 Remote logs: `journalctl --user -u dsh-remote-agent -f` or `$DSH_HOME/remote-agent/web.log`.
@@ -202,8 +207,6 @@ client bundle. The native path was validated against a real Linux example-host h
 remote workspace/session creation, a remote prompt through the local key proxy, live event mirroring
 into the ordinary Conversation UI, a second follow-up, and a remote tool call/result.
 
-The full remote UI remains available for comparison and approval-heavy work.
-
 ## Documentation
 
 - [Wire protocol](docs/protocol.md)
@@ -218,6 +221,7 @@ The full remote UI remains available for comparison and approval-heavy work.
 | [`@dsh-remote/protocol`](packages/protocol) | Wire types, surface metadata, cursor, SSE, typed client |
 | [`dsh-remote-local-plugin`](packages/local-plugin) | Provisioning, tunnel, proxy, **native session mirror**, tools, Settings |
 | [`dsh-remote-agent`](packages/remote-agent) | Remote host plugin for workspaces, sessions, prompts, SSE |
+| [`dsh-remote-terminal-controller`](packages/terminal-controller) | Profile fork routing local vs mirrored terminals |
 | [`@dsh-remote/installer`](packages/installer) | Bootstrap library/CLI used by the plugin |
 | [`@dsh-remote/testkit`](packages/testkit) | Fake host and wire contract tests |
 

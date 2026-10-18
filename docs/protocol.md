@@ -120,7 +120,8 @@ tunnel exits, not on authentication or protocol errors.
 | `GET` | `/sessions/:sessionId/events?cursor=N` | `text/event-stream` |
 | `GET` | `/web-url` | `{ path: "/?token=..." }` |
 
-Read routes use `GET`. Write routes use `POST` with a JSON body:
+Read routes use `GET`. `GET /approvals/events` is an SSE approval-question stream. Write routes use
+`POST` with a JSON body:
 
 | Method | Path | Body | Result |
 |---|---|---|---|
@@ -128,6 +129,7 @@ Read routes use `GET`. Write routes use `POST` with a JSON body:
 | `POST` | `/sessions` | `{ "workspaceId"?: "…", "cwd"?: "/abs/dir", "agentPreset"?: "…" }` | `CreateSessionResult` |
 | `POST` | `/sessions/:id/prompt` | `{ "text": "…", "mode"?: "queue" \| "steer", "provider"?: "…", "model"?: "…", "reasoningEffort"?: "…" }` | `{ "accepted": true }` |
 | `POST` | `/sessions/:id/cancel` | `{}` | `{ "accepted": true }` |
+| `POST` | `/approvals/answer` | `{ "id": "…", "outcome": "allowed-once" \| "rejected" \| "cancelled" \| "unavailable" }` | `{ "accepted": true }` |
 
 `workspaceId` and `cwd` are mutually exclusive. Prompt text must be non-empty. An optional provider/model
 selection is installed on the remote Session before the prompt. A wrong method for a route returns
@@ -135,6 +137,13 @@ selection is installed on the remote Session before the prompt. A wrong method f
 
 The write surface is deliberately limited: it creates workspaces and sessions, submits prompts, and
 cancels a turn. It cannot execute arbitrary commands or read files outside the remote DSH APIs.
+
+## Approvals
+
+`GET /approvals/events` sends `ready`, then one `request` frame per pending approval. Pending
+questions are replayed when a follower connects. Each request carries the remote Session id, tool
+name, optional call id/reason, and localized display text. The local plugin forwards it through the
+local `approval/request` waterfall and posts the decision to `/approvals/answer`.
 
 ## Host identity
 
@@ -263,9 +272,10 @@ never logged or stored by the local plugin.
 - Every write route is authenticated by the same bearer token and loopback check as the reads.
 - `session.create` joins an existing workspace or an explicit remote directory; it never creates an
   arbitrary local path outside the remote DSH workspace registry.
-- `session.prompt` submits text only. Attachments, terminal input, approvals, and direct file writes
-  are not part of this protocol yet. A prompt can still cause the remote DSH agent to use its own
-  tools under the remote sandbox and approval policy; that is the intended remote-execution path.
+- `session.prompt` submits text and an optional model selection. Attachments, file content, terminal
+  input, and direct file writes are not part of this protocol. Approval questions travel on the
+  dedicated approval stream; the local UI's decision is posted back to this agent. A prompt can still
+  cause the remote DSH agent to use its own tools under the remote sandbox and approval policy.
 - The bearer token grants session-writing capability. Treat it as a secret and keep the agent on
   loopback.
 - `session.cancel` only cancels the active turn of an existing live session.
@@ -277,5 +287,7 @@ never logged or stored by the local plugin.
   disabling it; a direct public port cannot.
 - State files are written atomically with `0600`.
 - The protocol never carries model credentials.
-- The agent has no mutation verbs. Adding prompt/terminal/approval verbs requires a new protocol
-  revision and a re-review of the trust boundary.
+- The agent's write surface is session/workspace creation, prompts, cancel, and approval answers.
+  Terminal and file traffic for the native UI is carried by the local plugin's SSH adapter, not this
+  HTTP protocol.
+- Adding another mutation verb requires a protocol revision and a re-review of this boundary.

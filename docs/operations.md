@@ -21,8 +21,8 @@ For a DSH Web profile:
 ```
 
 The script installs dependencies, builds all packages, packs the remote agent into the local plugin,
-and adds the plugin to the chosen profile. It refuses to touch the desktop profile while the desktop
-app is running.
+packs the terminal-controller fork, and adds both to the chosen profile. It refuses to touch the
+desktop profile while the desktop app is running.
 
 ## 2. Add a host
 
@@ -61,8 +61,14 @@ local mirror appends its committed events, so tool cards, usage, follow-ups, and
 local session. A second prompt on the same session resumes the remote agent and restarts the mirror
 poll.
 
-**开始使用** opens the full remote DSH UI for the remote file tree, terminal, diffs, and approval
-dialogs.
+The **Workspace files** and **New terminal** panels are Session-scoped:
+
+- local Session: stock local workspace files and local PTY;
+- remote mirror Session: SSH-backed remote file listing/preview and an SSH PTY in the remote workspace.
+
+The install script also installs the `dsh-remote-terminal-controller` profile fork. It disables the
+stock terminal-controller row and inserts the fork so `ClientTerminals` is constructed with the
+Session-routing provider. This is profile-local; `app.asar` is untouched.
 
 The Settings page is for host/workspace management only; the remote conversation is not a drawer or
 iframe.
@@ -77,7 +83,7 @@ Preferred path:
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
 The key never reaches the remote filesystem. If no local key resolves, the plugin still provisions and
-connects; configure remote credentials or use the full remote UI.
+connects; configure remote credentials.
 
 ## Native mirror rules
 
@@ -90,7 +96,8 @@ connects; configure remote credentials or use the full remote UI.
   model before prompting.
 - The mirror polls the remote log at `mirrorPollMs`, appends only contiguous events, and stops when a
   cold remote session is fully caught up. A new prompt restarts it.
-- Remote sessions longer than `mirrorMaxEvents` are skipped with a warning; use the full remote UI.
+- Remote sessions longer than `mirrorMaxEvents` are skipped with a warning; increase the limit or
+  work on the remote host directly.
 - On plugin restart, old local mirrors are archived and recreated from the current remote log.
 
 ## Configuration
@@ -167,7 +174,7 @@ The normal plugin flow calls the same provisioning library.
 | `does not accept POST` | Remote agent older than local plugin | Click **重新安装** |
 | Remote workspace not in sidebar | Not added yet or sync pending | Add it in **工作区**; wait a few seconds |
 | Native session has no reply | Local proxy has no key and remote has no credentials | Check **模型代理**; configure remote credentials |
-| Approval blocked | Approval bridge is not implemented | Open **开始使用** and answer there |
+| Approval appears locally but remote tool still fails | The decision was delivered but the tool failed remotely | Inspect the remote tool result |
 | Duplicate native session after restart | Old mirror archive failed | Archive the old session in the sidebar; new mirrors use fresh IDs |
 | Tunnel drops after sleep | SSH reset | Plugin reconnects; or click **连接** / **重新发现** |
 
