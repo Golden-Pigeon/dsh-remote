@@ -4,6 +4,8 @@
 
 - Detect the remote installer proxy through the account's actual login shell, including zsh, fish,
   and other shell-specific login/interactive startup files, instead of hard-coding bash.
+- Propagate the detected proxy into the remote systemd unit (and nohup process) so model calls use it
+  after installation, not only package downloads.
 
 ## 0.8.2
 

@@ -198,6 +198,8 @@ If the remote host needs a proxy, set `remoteInstallProxy` to a URL that is reac
 remote host**, for example `http://127.0.0.1:17890` when a port forward serves the proxy there. The
 installer exports `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `npm_config_*` for the bootstrap.
 When the option is empty, it uses the account's actual login shell (bash, zsh, fish, and other common shells) and its login/interactive startup files to read `HTTPS_PROXY`/`HTTP_PROXY`.
+The same proxy is written into the remote systemd unit (or inherited by the `nohup` process), so
+remote model requests use it as well, not just the installer.
 
 ## Security
 

@@ -152,7 +152,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 
 自动安装 Node.js 需要远端有 `curl` 或 `wget`、`tar`，以及 `sha256sum` 或 `shasum`。不支持 Windows 远端。
 
-如果远端需要代理，把 `remoteInstallProxy` 设为**从远端能访问的**代理 URL，例如端口转发后暴露在远端的 `http://127.0.0.1:17890`。安装流程会为 bootstrap 导出 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和 `npm_config_*`。留空时会使用该账号真实的登录 shell（bash、zsh、fish 等）及其登录/交互启动文件读取 `HTTPS_PROXY` / `HTTP_PROXY`。
+如果远端需要代理，把 `remoteInstallProxy` 设为**从远端能访问的**代理 URL，例如端口转发后暴露在远端的 `http://127.0.0.1:17890`。安装流程会为 bootstrap 导出 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和 `npm_config_*`。留空时会使用该账号真实的登录 shell（bash、zsh、fish 等）及其登录/交互启动文件读取 `HTTPS_PROXY` / `HTTP_PROXY`。同一个代理也会写入远端 systemd unit（或由 `nohup` 进程继承），因此远端模型请求也会走代理，而不只是安装阶段。
 
 ## 安全
 

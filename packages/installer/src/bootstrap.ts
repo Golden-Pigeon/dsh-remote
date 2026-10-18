@@ -65,6 +65,7 @@ export function renderSystemdUnit(options: BootstrapOptions): string {
     // $PATH is expanded by the bootstrap shell after nodePathPrelude(), so the
     // systemd unit sees the discovered nvm/Volta/fnm Node bin directory too.
     'Environment="PATH=$INSTALL_DIR/node/bin:$INSTALL_DIR/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:$PATH"',
+    '${PROXY_ENV_LINES}',
     ...options.modelBaseUrl === undefined ? [] : ['Environment="DEEPSEEK_BASE_URL=$MODEL_BASE_URL"'],
     ...options.modelApiKey === undefined ? [] : ['Environment="DEEPSEEK_API_KEY=$MODEL_API_KEY"'],
     'ExecStart="$DSH_BIN" web --host 127.0.0.1 --port $PORT --no-open',
@@ -272,6 +273,16 @@ if [ -n "$PROXY_URL" ]; then
     export NO_PROXY="$PROXY_NO_PROXY" no_proxy="$PROXY_NO_PROXY"
   fi
   echo "dsh-remote: install proxy configured"
+fi
+PROXY_ENV_LINES=""
+if [ -n "$PROXY_URL" ]; then
+  PROXY_ENV_LINES="Environment=\\"HTTP_PROXY=$PROXY_URL\\"
+Environment=\\"HTTPS_PROXY=$PROXY_URL\\"
+Environment=\\"ALL_PROXY=$PROXY_URL\\""
+  if [ -n "$PROXY_NO_PROXY" ]; then
+    PROXY_ENV_LINES="$PROXY_ENV_LINES
+Environment=\\"NO_PROXY=$PROXY_NO_PROXY\\""
+  fi
 fi
 
 ${nodePathPrelude()}
