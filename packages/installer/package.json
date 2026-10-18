@@ -1,0 +1,24 @@
+{
+  "name": "@dsh-remote/installer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bootstrap CLI for installing dsh-remote-agent on an SSH host and starting its DSH Web host.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "bin": {
+    "dsh-remote-install": "lib/cli.js"
+  },
+  "files": [
+    "lib"
+  ],
+  "devDependencies": {
+    "@dsh-remote/protocol": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && DSH_REMOTE_CLI=1 DSH_REMOTE_HOST_ENTRY=src/cli.ts DSH_REMOTE_HOST_OUT=lib/cli.js node ../../scripts/build-host.mjs && node ../../scripts/build-host.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  }
+}
