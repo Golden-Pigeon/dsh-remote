@@ -31,10 +31,17 @@ git tag v<version>
 git push origin v<version>
 ```
 
-The `Release` workflow uses the `NPM_TOKEN` repository secret to publish the bundled tarball. It
-skips npm publishing when that exact version already exists, then attaches the tarball to the GitHub
-release. The token is stored in `.secret/npm_token` locally; `.secret/` is ignored and must never be
-committed.
+The `Release` workflow uses the `NPM_TOKEN` repository secret to **stage** the bundled tarball with
+`npm stage publish`. Stage-only tokens are intentional: they cannot publish directly, so CI does not
+need 2FA. The final publish requires a maintainer with 2FA:
+
+```sh
+npm stage list dsh-remote-local-plugin
+npm stage approve <stage-id>
+```
+
+The workflow also attaches the tarball to the GitHub release. The token is stored in
+`.secret/npm_token` locally; `.secret/` is ignored and must never be committed.
 
 Manual publish is only a fallback:
 
@@ -60,8 +67,9 @@ git tag v<version>
 git push origin v<version>
 ```
 
-The `Release` workflow builds the workspace, creates the bundled tarball, publishes it to npm, and
-attaches the tarball to the GitHub release.
+The `Release` workflow builds the workspace, creates the bundled tarball, stages it with npm, and
+attaches the tarball to the GitHub release. A maintainer must approve the staged version with 2FA
+before it becomes live on npm.
 
 ## Compatibility
 

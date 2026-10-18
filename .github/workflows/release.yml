@@ -23,6 +23,8 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      - name: Install npm with staged publishing
+        run: npm install --global npm@12
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
       - run: pnpm -r typecheck
@@ -46,9 +48,11 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Publish npm tarball
+      - name: Stage npm tarball
         if: steps.published.outputs.exists != 'true'
-        run: npm publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --access public --provenance
+        run: |
+          npm stage publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --tag latest --provenance
+          echo "::notice::npm package staged. Approve it with 2FA: npm stage list dsh-remote-local-plugin && npm stage approve <stage-id>"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Upload GitHub release assets
