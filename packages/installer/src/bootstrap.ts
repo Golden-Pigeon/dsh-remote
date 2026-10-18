@@ -221,12 +221,47 @@ export DSH_HOME
 mkdir -p "$INSTALL_DIR" "$DSH_HOME/remote-agent"
 echo "dsh-remote: preparing remote install"
 if [ -z "$PROXY_URL" ]; then
-  # Reuse a proxy already configured in the remote login environment.
-  PROXY_URL="$(bash -lc 'printf "%s" "\${HTTPS_PROXY:-\${HTTP_PROXY:-}}"' 2>/dev/null | tail -n 1 || true)"
-fi
-if [ -z "$PROXY_URL" ]; then
-  # Some clusters configure the proxy in .bashrc, which login shells skip.
-  PROXY_URL="$(bash -ic 'printf "%s" "\${HTTPS_PROXY:-\${HTTP_PROXY:-}}"' 2>/dev/null | tail -n 1 || true)"
+  # Reuse a proxy already configured by the account's actual login shell.
+  LOGIN_SHELL="\${SHELL:-}"
+  if [ -z "$LOGIN_SHELL" ] || [ ! -x "$LOGIN_SHELL" ]; then
+    if command -v getent >/dev/null 2>&1; then
+      LOGIN_SHELL="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)"
+    else
+      LOGIN_SHELL="$(awk -F: -v u="$(id -un)" '$1 == u { print $7; exit }' /etc/passwd)"
+    fi
+  fi
+  if [ -z "$LOGIN_SHELL" ] || [ ! -x "$LOGIN_SHELL" ]; then
+    LOGIN_SHELL=/bin/sh
+  fi
+  PROXY_TIMEOUT=""
+  if command -v timeout >/dev/null 2>&1; then
+    PROXY_TIMEOUT="timeout 5"
+  fi
+  read_proxy_env() {
+    if [ -n "$PROXY_TIMEOUT" ]; then
+      $PROXY_TIMEOUT "$LOGIN_SHELL" "$@" -c 'env' 2>/dev/null || true
+    else
+      "$LOGIN_SHELL" "$@" -c 'env' 2>/dev/null || true
+    fi
+  }
+  proxy_from_env() {
+    local proxy_value
+    proxy_value="$(printf '%s\\n' "$1" | tr -d '\\r' | sed -n -e 's/^HTTPS_PROXY=//p' -e 's/^https_proxy=//p' | head -n 1)"
+    if [ -z "$proxy_value" ]; then
+      proxy_value="$(printf '%s\\n' "$1" | tr -d '\\r' | sed -n -e 's/^HTTP_PROXY=//p' -e 's/^http_proxy=//p' | head -n 1)"
+    fi
+    printf '%s' "$proxy_value"
+  }
+  PROXY_ENV="$(read_proxy_env -l -i)"
+  PROXY_URL="$(proxy_from_env "$PROXY_ENV")"
+  if [ -z "$PROXY_URL" ]; then
+    PROXY_ENV="$(read_proxy_env -l)"
+    PROXY_URL="$(proxy_from_env "$PROXY_ENV")"
+  fi
+  if [ -z "$PROXY_URL" ]; then
+    PROXY_ENV="$(read_proxy_env -i)"
+    PROXY_URL="$(proxy_from_env "$PROXY_ENV")"
+  fi
 fi
 if [ -n "$PROXY_URL" ]; then
   export HTTP_PROXY="$PROXY_URL" http_proxy="$PROXY_URL"

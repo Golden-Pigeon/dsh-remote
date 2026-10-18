@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.3
+
+- Detect the remote installer proxy through the account's actual login shell, including zsh, fish,
+  and other shell-specific login/interactive startup files, instead of hard-coding bash.
+
 ## 0.8.2
 
 - Use a remote-visible HTTP(S) proxy for installer downloads. The bootstrap reads

@@ -30,7 +30,7 @@ DSH version is:
 | Component | Tested version |
 |---|---|
 | [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
-| Plugin | [**0.8.2**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| Plugin | [**0.8.3**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
@@ -197,7 +197,7 @@ SHA-256 checksum, and uses it without root. This needs `curl` or `wget`, `tar`, 
 If the remote host needs a proxy, set `remoteInstallProxy` to a URL that is reachable **from the
 remote host**, for example `http://127.0.0.1:17890` when a port forward serves the proxy there. The
 installer exports `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `npm_config_*` for the bootstrap.
-When the option is empty, it reads `HTTPS_PROXY`/`HTTP_PROXY` from the remote login shell.
+When the option is empty, it uses the account's actual login shell (bash, zsh, fish, and other common shells) and its login/interactive startup files to read `HTTPS_PROXY`/`HTTP_PROXY`.
 
 ## Security
 
