@@ -187,7 +187,7 @@ The remote agent config remains available for advanced deployments:
 
 | Symptom | Action |
 |---|---|
-| **安装中** never finishes | Check `ssh -o BatchMode=yes example-host true`; fix SSH and click **重新安装** |
+| **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes example-host true`; if the remote uses nvm under systemd, ensure the unit PATH includes the Node bin (new installer does), or use `remoteStart: nohup`; then **重新安装** |
 | `does not accept POST` | Remote agent is old; click **重新安装** |
 | No remote workspace in sidebar | Click **工作区** and add one; wait for the sync message |
 | Native session has no reply | Check **模型代理**; configure remote credentials |

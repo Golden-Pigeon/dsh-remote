@@ -83,6 +83,7 @@ describe('bootstrap rendering', () => {
       agentTarball: '/tmp/agent.tgz',
     })
     assert.match(unit, /Environment="DSH_HOME=\$DSH_HOME"/)
+    assert.match(unit, /PATH=.*:\$PATH/)
     assert.match(unit, /ExecStart="\$DSH_BIN" web --host 127\.0\.0\.1 --port \$PORT --no-open/)
   })
 

@@ -56,7 +56,9 @@ export function renderSystemdUnit(options: BootstrapOptions): string {
     '[Service]',
     'Type=simple',
     'Environment="DSH_HOME=$DSH_HOME"',
-    'Environment="PATH=$INSTALL_DIR/node_modules/.bin:/usr/local/bin:/usr/bin:/bin"',
+    // $PATH is expanded by the bootstrap shell after nodePathPrelude(), so the
+    // systemd unit sees the discovered nvm/Volta/fnm Node bin directory too.
+    'Environment="PATH=$INSTALL_DIR/node_modules/.bin:/usr/local/bin:/usr/bin:/bin:$PATH"',
     ...options.modelBaseUrl === undefined ? [] : ['Environment="DEEPSEEK_BASE_URL=$MODEL_BASE_URL"'],
     ...options.modelApiKey === undefined ? [] : ['Environment="DEEPSEEK_API_KEY=$MODEL_API_KEY"'],
     'ExecStart="$DSH_BIN" web --host 127.0.0.1 --port $PORT --no-open',
