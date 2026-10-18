@@ -24,7 +24,7 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - name: Install npm with staged publishing
-        run: npm install --global npm@12
+        run: npm install --global npm@11.21.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
       - run: pnpm -r typecheck
@@ -51,7 +51,7 @@ jobs:
       - name: Stage npm tarball
         if: steps.published.outputs.exists != 'true'
         run: |
-          npm stage publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --tag latest --provenance
+          npm stage publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --tag latest --access public --provenance
           echo "::notice::npm package staged. Approve it with 2FA: npm stage list dsh-remote-local-plugin && npm stage approve <stage-id>"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
