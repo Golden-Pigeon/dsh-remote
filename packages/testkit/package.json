@@ -1,0 +1,28 @@
+{
+  "name": "@dsh-remote/testkit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fake remote host and contract tests for the dsh-remote protocol.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "devDependencies": {
+    "@dsh-remote/protocol": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  }
+}
