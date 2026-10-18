@@ -16,7 +16,7 @@ plugin (bundled), the installer, the testkit, and the contract tests.
 const client = new RemoteAgentClient({
   baseUrl: 'http://127.0.0.1:41234',
   token: await readToken(),
-  hostId: 'example-host-gpu',
+  hostId: 'example-host',
 })
 const health = await client.health()
 const workspaces = await client.listWorkspaces()

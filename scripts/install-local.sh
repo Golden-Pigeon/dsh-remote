@@ -41,7 +41,7 @@ cd "$ROOT/packages/local-plugin"
 pnpm pack >/dev/null
 cd "$ROOT/packages/terminal-controller"
 pnpm pack >/dev/null
-TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.7.6.tgz"
+TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.7.7.tgz"
 FORK_TARBALL="$ROOT/packages/terminal-controller/dsh-remote-terminal-controller-0.1.1.tgz"
 if [ ! -f "$TARBALL" ]; then
   printf 'install-local: plugin tarball was not produced at %s\n' "$TARBALL" >&2
@@ -54,7 +54,7 @@ printf 'install-local: installing into profile %s\n' "$PROFILE"
 
 printf '\ninstall-local: done.\n'
 printf '1. Open DSH and go to Settings -> 远程开发.\n'
-printf '2. Enter an SSH target such as example-host and click 保存并连接.\n'
+printf '2. Enter an SSH target such as my-host and click 保存并连接.\n'
 printf '3. The plugin installs/starts the remote agent itself; then add a remote directory,\n'
 printf '   click + 新会话, and chat; local Sessions keep local terminals, remote Sessions use SSH PTYs.\n'
 if [ "$PROFILE" != "desktop" ]; then

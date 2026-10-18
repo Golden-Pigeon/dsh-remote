@@ -6,8 +6,6 @@ Add an SSH host once. The plugin provisions the remote DSH runtime itself, mirro
 sessions into the local sidebar, and opens a remote session in the **ordinary Conversation UI** — the
 same transcript, composer, tool cards, stop control, and session list as a local session.
 
-![Remote session in the native conversation UI](docs/images/remote-development-native.png)
-
 ```text
 Local DSH                                         Remote host
 ┌──────────────────────────────────────┐          ┌──────────────────────────────┐
@@ -59,16 +57,14 @@ Reopen DSH. **Settings → 远程开发** appears.
 
 ## Use
 
-1. In **Settings → 远程开发**, enter the SSH target (`example-host`) and click **保存并连接**.
+1. In **Settings → 远程开发**, enter the SSH target (`my-host`) and click **保存并连接**.
 2. On first use the plugin discovers or installs the remote agent, starts remote `dsh web`, opens the
    loopback tunnel, and copies the resolved model key into the remote environment. The card shows
    **安装中 → 已连接** and **模型代理：远端直连**.
 3. In the sidebar **Workspaces** header, click **+** and choose **远程新建工作区…**; pick the
    connected host and enter an existing remote directory (for example `/tmp`), then **创建并打开**.
-   The remote workspace appears in the normal left sidebar as `example-host · tmp`. Choose
+   The remote workspace appears in the normal left sidebar as `my-host · tmp`. Choose
    **本地新建工作区** to keep the native local directory flow.
-
-![Sidebar add-workspace chooser](docs/images/workspace-add-menu.png)
 
 4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
    Conversation UI**. The workspace row's **New session** action uses the same remote path.
@@ -76,8 +72,6 @@ Reopen DSH. **Settings → 远程开发** appears.
    calls, usage, stop, and multi-turn follow-ups behave like a local session.
 6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
    use the local machine, remote mirror Sessions use the remote workspace.
-
-![Remote terminal attached to a mirrored Session](docs/images/remote-terminal-native.png)
 
 The Settings page is now only host/workspace management. The conversation is not a popup.
 
@@ -203,7 +197,7 @@ The remote agent config remains available for advanced deployments:
 
 | Symptom | Action |
 |---|---|
-| **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes example-host true`; if the remote uses nvm under systemd, ensure the unit PATH includes the Node bin (new installer does), or use `remoteStart: nohup`; then **重新安装** |
+| **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes my-host true`; if the remote uses nvm under systemd, ensure the unit PATH includes the Node bin (new installer does), or use `remoteStart: nohup`; then **重新安装** |
 | `does not accept POST` | Remote agent is old; click **重新安装** |
 | No remote workspace in sidebar | Use **Workspaces + → 远程新建工作区…**, or Settings → 远程开发 → 工作区 |
 | Native session has no reply | Check **模型代理**; configure remote credentials |
@@ -222,7 +216,7 @@ pnpm verify
 ```
 
 The suite covers protocol/SSE/cursor/write contracts, installer rendering, proxy forwarding, and the
-client bundle. The native path was validated against a real Linux example-host host: plugin provisioning,
+client bundle. The native path was validated against a real Linux remote host: plugin provisioning,
 remote workspace/session creation, a remote prompt through the local key proxy, live event mirroring
 into the ordinary Conversation UI, a second follow-up, and a remote tool call/result.
 

@@ -221,7 +221,7 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
           <h2>远程开发</h2>
           <p className="dshr-subtitle">
             只需填写 SSH 目标。插件会自动安装并启动远端 agent，建立隧道。
-            连接后远端工作区和会话会同步到左侧，像本地会话一样打开；模型凭据经隧道代理，不写入远端磁盘。
+            连接后远端工作区和会话会同步到左侧，像本地会话一样打开；模型凭据默认写入远端服务环境；也可启用本地代理模式。
           </p>
         </div>
         <button
@@ -261,7 +261,7 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
             <input
               value={form.label}
               onChange={event => setForm(current => ({ ...current, label: event.target.value }))}
-              placeholder="Example GPU"
+              placeholder="可选，例如 开发机"
             />
           </label>
           <div className="dshr-form-actions">
