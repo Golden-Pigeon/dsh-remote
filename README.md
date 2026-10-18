@@ -29,15 +29,15 @@ DSH version is:
 
 | Component | Tested version |
 |---|---|
-| DSH Desktop / official client | **0.2.1-rc.2** |
-| Plugin | **0.8.0** |
-| Remote DSH runtime | **0.2.1-rc.2** |
-| Remote Node.js | **22.19+** |
+| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| Plugin | [**0.8.0**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
 
 Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and other DSH versions have
 **not** been tested. The package's dependency range is intentionally permissive for installation, but
-it is not a compatibility or support guarantee. Pin DSH to `0.2.1-rc.2` when using this release.
+it is not a compatibility or support guarantee. Pin DSH to [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) when using this release.
 
 ## What works now
 
@@ -68,7 +68,7 @@ Open **Plugins → Add plugin** and enter:
 dsh-remote-local-plugin
 ```
 
-The package is published on npm; DSH installs the bundle from the registry. The package includes the remote agent asset and the
+The package is published on [npm](https://www.npmjs.com/package/dsh-remote-local-plugin); DSH installs the bundle from the registry. The package includes the remote agent asset and the
 terminal-controller fork, so there is nothing else to install. Restart DSH when the plugin page asks
 for it; **Settings → Remote development** then appears.
 
@@ -186,11 +186,11 @@ credentials. The host card shows **Model credentials: Local proxy / Remote direc
 
 ## Requirements
 
-**Local:** DSH Desktop/Web, `ssh` with key or ssh-agent auth.
+**Local:** official [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) or DSH Web with the same core version, plus `ssh` with key or ssh-agent auth. Only the official Desktop client is a verified GUI target.
 
-**Remote:** Linux or macOS with an SSH server. Node.js 22.19+ is preferred and discovered through
+**Remote:** Linux or macOS with an SSH server. [Node.js 22.19+](https://nodejs.org/en/download) is preferred and discovered through
 PATH, nvm, Volta, fnm, Bun, asdf, mise, Nix, Homebrew, and the login shell. When no usable Node.js is
-found, the installer downloads the official Node.js tarball into `remoteInstallDir`, verifies its
+found, the installer downloads the official [Node.js tarball](https://nodejs.org/en/download) into `remoteInstallDir`, verifies its
 SHA-256 checksum, and uses it without root. This needs `curl` or `wget`, `tar`, and `sha256sum` or
 `shasum`; Windows remotes are not supported.
 
@@ -269,7 +269,7 @@ The remote agent config remains available for advanced deployments:
 
 | Symptom | Action |
 |---|---|
-| **Installing** never finishes / `Waiting for remote dsh web…` | Check `ssh -o BatchMode=yes my-host true`; the installer discovers nvm/Volta/fnm and automatically downloads Node.js when needed. If the host blocks nodejs.org or checksum tools, install Node.js 22.19+ manually or use `remoteStart: nohup`; then **Reinstall** |
+| **Installing** never finishes / `Waiting for remote dsh web…` | Check `ssh -o BatchMode=yes my-host true`; the installer discovers nvm/Volta/fnm and automatically downloads Node.js when needed. If the host blocks nodejs.org or checksum tools, install [Node.js 22.19+](https://nodejs.org/en/download) manually or use `remoteStart: nohup`; then **Reinstall** |
 | `does not accept POST` | Remote agent is old; click **Reinstall** |
 | No remote workspace in sidebar | Use **Workspaces +**, or Settings → Remote development → Workspaces |
 | Native session has no reply | Check **Model credentials**; configure remote credentials |

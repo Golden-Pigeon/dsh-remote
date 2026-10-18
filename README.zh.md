@@ -22,17 +22,17 @@
 
 ## 支持环境
 
-本插件面向 **官方 DSH Desktop 客户端**开发。目前唯一测试并声明支持的 DSH 版本是：
+本插件面向 **[官方 DSH Desktop 客户端](https://github.com/deepseek-ai/deepseek-harness)** 开发。目前唯一测试并声明支持的 DSH 版本是：
 
 | 组件 | 测试版本 |
 |---|---|
-| DSH Desktop / 官方客户端 | **0.2.1-rc.2** |
-| 插件 | **0.8.0** |
-| 远端 DSH 运行时 | **0.2.1-rc.2** |
-| 远端 Node.js | **22.19+** |
+| [DSH Desktop / 官方客户端](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| 插件 | [**0.8.0**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| 远端 DSH 运行时 | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| 远端 Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | 远端操作系统 | Linux 或 macOS |
 
-没有测试过其他 DSH GUI 插件、社区 fork、修改过的客户端、非 DSH GUI 或其他 DSH 版本。包的依赖范围为了安装兼容性写得较宽，但不代表兼容性承诺或支持范围。使用本版本时请把 DSH 固定为 `0.2.1-rc.2`。
+没有测试过其他 DSH GUI 插件、社区 fork、修改过的客户端、非 DSH GUI 或其他 DSH 版本。包的依赖范围为了安装兼容性写得较宽，但不代表兼容性承诺或支持范围。使用本版本时请把 DSH 固定为 [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)。
 
 ## 已实现功能
 
@@ -146,9 +146,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 
 ## 环境要求
 
-**本地：** DSH Desktop/Web，可通过 key 或 ssh-agent 免交互认证的 `ssh`。
+**本地：** 官方 [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness)，或同核心版本的 DSH Web；需要可通过 key 或 ssh-agent 免交互认证的 `ssh`。只有官方 Desktop 客户端是经过验证的 GUI 目标。
 
-**远端：** Linux 或 macOS，带 SSH server。优先使用 Node.js 22.19+，会从 PATH、nvm、Volta、fnm、Bun、asdf、mise、Nix、Homebrew 和登录 shell 中查找。找不到可用 Node.js 时，安装器会把官方 Node.js tarball 下载到 `remoteInstallDir`，校验 SHA-256 后解压使用，不需要 root。
+**远端：** Linux 或 macOS，带 SSH server。优先使用 [Node.js 22.19+](https://nodejs.org/en/download)，会从 PATH、nvm、Volta、fnm、Bun、asdf、mise、Nix、Homebrew 和登录 shell 中查找。找不到可用 Node.js 时，安装器会把官方 Node.js tarball 下载到 `remoteInstallDir`，校验 SHA-256 后解压使用，不需要 root。
 
 自动安装 Node.js 需要远端有 `curl` 或 `wget`、`tar`，以及 `sha256sum` 或 `shasum`。不支持 Windows 远端。
 
@@ -213,7 +213,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 
 | 现象 | 处理 |
 |---|---|
-| **Installing** 一直不结束 / `Waiting for remote dsh web…` | 检查 `ssh -o BatchMode=yes my-host true`；安装器会查找 nvm/Volta/fnm，并在需要时自动下载 Node.js。如果主机无法访问 nodejs.org 或缺少校验工具，手动安装 Node.js 22.19+，或使用 `remoteStart: nohup`，然后点 **Reinstall** |
+| **Installing** 一直不结束 / `Waiting for remote dsh web…` | 检查 `ssh -o BatchMode=yes my-host true`；安装器会查找 nvm/Volta/fnm，并在需要时自动下载 Node.js。如果主机无法访问 nodejs.org 或缺少校验工具，手动安装 [Node.js 22.19+](https://nodejs.org/en/download)，或使用 `remoteStart: nohup`，然后点 **Reinstall** |
 | `does not accept POST` | 远端 agent 太旧；点 **Reinstall** |
 | 侧边栏没有远端 workspace | 用 **Workspaces +** 创建，或到 Settings → Remote development → Workspaces 查看 |
 | 原生 Session 没有回复 | 检查 **Model credentials**；配置远端凭据 |

@@ -2,9 +2,9 @@
 
 ## Requirements
 
-- Node.js 22.19 or newer
+- [Node.js 22.19 or newer](https://nodejs.org/en/download)
 - pnpm 11.21.0 (the version declared by the workspace)
-- Official DSH Desktop 0.2.1-rc.2 for the supported compatibility target
+- [Official DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) for the supported compatibility target
 
 Other DSH GUI plugins, forks, modified clients, non-DSH GUIs, and other DSH versions are outside the
 tested support matrix.

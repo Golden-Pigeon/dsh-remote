@@ -66,5 +66,5 @@ attaches the tarball to the GitHub release.
 ## Compatibility
 
 Keep `dsh.compatibility.dsh` aligned with the DSH releases exercised by `pnpm -r test`. The current
-supported and tested client is the official DSH Desktop `0.2.1-rc.2`; other DSH GUI plugins, forks,
+supported and tested client is the official [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2); other DSH GUI plugins, forks,
 modified clients, non-DSH GUIs, and other DSH versions have not been tested.

@@ -5,8 +5,8 @@
 Security fixes are applied to the latest published `0.8.x` release. The plugin follows DSH
 pre-release API changes; older releases may not receive backports.
 
-The supported client is the official DSH Desktop `0.2.1-rc.2` application, with remote DSH
-`0.2.1-rc.2` and Node.js `22.19+`. Other DSH GUI plugins, forks, modified clients, non-DSH GUIs, and
+The supported client is the official [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)
+application, with remote DSH [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) and [Node.js `22.19+`](https://nodejs.org/en/download). Other DSH GUI plugins, forks, modified clients, non-DSH GUIs, and
 other DSH versions have not been tested. A wider dependency range in `package.json` is an
 installation allowance, not a support guarantee.
 
