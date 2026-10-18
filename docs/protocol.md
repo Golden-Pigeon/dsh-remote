@@ -126,11 +126,12 @@ Read routes use `GET`. Write routes use `POST` with a JSON body:
 |---|---|---|---|
 | `POST` | `/workspaces` | `{ "path": "/abs/dir", "title"?: "…" }` | `RemoteWorkspace` |
 | `POST` | `/sessions` | `{ "workspaceId"?: "…", "cwd"?: "/abs/dir", "agentPreset"?: "…" }` | `CreateSessionResult` |
-| `POST` | `/sessions/:id/prompt` | `{ "text": "…", "mode"?: "queue" \| "steer" }` | `{ "accepted": true }` |
+| `POST` | `/sessions/:id/prompt` | `{ "text": "…", "mode"?: "queue" \| "steer", "provider"?: "…", "model"?: "…", "reasoningEffort"?: "…" }` | `{ "accepted": true }` |
 | `POST` | `/sessions/:id/cancel` | `{}` | `{ "accepted": true }` |
 
-`workspaceId` and `cwd` are mutually exclusive. Prompt text must be non-empty. A wrong method for a
-route returns `405`; unknown paths return a JSON `route/not-found` envelope.
+`workspaceId` and `cwd` are mutually exclusive. Prompt text must be non-empty. An optional provider/model
+selection is installed on the remote Session before the prompt. A wrong method for a route returns
+`405`; unknown paths return a JSON `route/not-found` envelope.
 
 The write surface is deliberately limited: it creates workspaces and sessions, submits prompts, and
 cancels a turn. It cannot execute arbitrary commands or read files outside the remote DSH APIs.
@@ -206,6 +207,9 @@ interface SessionSnapshot {
 
 - `limit` defaults to 500 and is capped by the agent (2,000).
 - The snapshot contains the **newest** page; older events are omitted and `truncated` is true.
+- Message events retain `surfaceOp` and `sourceEventSeqs` when the Host event carries them. A native
+  mirror uses this metadata to replay the remote log into a local `Session` without losing surface
+  placement.
 - A cold session is read through `sessionPersistence`; a live session through its in-memory
   snapshot.
 - `cursor` is the next sequence number, not the last event's sequence.

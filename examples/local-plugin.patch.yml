@@ -25,3 +25,7 @@
     credentialProxyUpstream: https://api.deepseek.com
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY
+
+    mirrorSessions: true
+    mirrorPollMs: 1500
+    mirrorMaxEvents: 2000

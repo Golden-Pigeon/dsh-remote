@@ -1,7 +1,8 @@
 # Operations guide
 
-The normal path is: install the local plugin once, then add an SSH host in Settings. The plugin
-provisions the remote side itself.
+The normal path is: install the local plugin once, add an SSH host, and use the resulting remote
+workspace/session in the ordinary DSH sidebar and Conversation UI. The plugin provisions the remote
+side itself.
 
 ## 1. Install the local plugin
 
@@ -19,65 +20,77 @@ For a DSH Web profile:
 # restart the DSH Web process after the script finishes
 ```
 
-The script:
-
-1. installs workspace dependencies;
-2. builds all packages;
-3. packs `dsh-remote-agent` and embeds it in the local plugin's `assets/`;
-4. packs `dsh-remote-local-plugin`;
-5. adds it to the chosen profile with the DSH CLI.
-
-It refuses to touch the desktop profile while the desktop app is running.
+The script installs dependencies, builds all packages, packs the remote agent into the local plugin,
+and adds the plugin to the chosen profile. It refuses to touch the desktop profile while the desktop
+app is running.
 
 ## 2. Add a host
 
 Open **Settings → 远程开发**, enter an SSH target (`user@host`, `host:port`, `ssh://…`, or an SSH
 config alias), and click **保存并连接**.
 
-The plugin then:
+The plugin:
 
-1. tries to read `<remoteDshHome>/remote-agent/agent.json` over SSH;
-2. if no live agent exists and `autoProvision` is true:
-   - uploads the bundled agent tarball;
-   - runs the bootstrap script (`bash -s` over SSH);
-   - installs pnpm and the pinned DSH under `remoteInstallDir` when missing;
-   - adds the agent to the remote `web` profile;
-   - starts `dsh web` on `127.0.0.1` using systemd or nohup;
-3. waits for the state file and connects the loopback tunnel;
-4. starts the local credential proxy and adds a reverse SSH forward when a local model key exists.
+1. reads `<remoteDshHome>/remote-agent/agent.json` over SSH;
+2. if no agent is present and `autoProvision` is true, uploads its bundled agent, installs pnpm/DSH
+   when missing, adds the agent to the remote `web` profile, and starts `dsh web` on `127.0.0.1`;
+3. waits for the state file and opens the loopback tunnel;
+4. starts the local credential proxy and adds the reverse SSH forward when a local key resolves.
 
-The host card shows `安装中`, `正在连接`, then `已连接`. Errors appear on the card; fix SSH and click
-**重新安装** to retry.
+The host card shows `安装中 → 正在连接 → 已连接`. If it fails, fix SSH and click **重新安装**.
 
 ## 3. Add a remote workspace
 
-Click **工作区**, enter an existing absolute remote directory, and click **添加工作区**. The directory
-must already exist on the remote machine. The workspace appears in the list with its session count.
+Click **工作区**, enter an existing absolute remote directory, and click **添加工作区**.
 
-## 4. Chat or open the full remote UI
+The plugin creates a local anchor and a mirror workspace. The remote workspace then appears in the
+normal left sidebar, titled `<host label> · <remote title>`. Sessions in that remote workspace are
+mirrored automatically.
 
-- **+ 新会话** creates a remote DSH session inside that workspace. The chat drawer polls the committed
-  transcript, sends prompts, and can cancel the active turn.
-- **开始使用** opens the full remote DSH UI through the tunnel (files, terminal, diffs, approvals,
-  tools).
+## 4. Use the ordinary Conversation UI
 
-The local drawer is deliberately small: it is a convenience client for the remote session. Long
-sessions and advanced interactions belong in the full remote UI.
+Click **+ 新会话** in Settings or the normal sidebar. The plugin:
+
+1. creates the remote session;
+2. creates a local mirror Session and registers the custom Agent façade;
+3. opens that local Session through `uiWorkspace.openSession`.
+
+From there, the normal composer and transcript are used. The remote DSH executes the turn and the
+local mirror appends its committed events, so tool cards, usage, follow-ups, and stop behave like a
+local session. A second prompt on the same session resumes the remote agent and restarts the mirror
+poll.
+
+**开始使用** opens the full remote DSH UI for the remote file tree, terminal, diffs, and approval
+dialogs.
+
+The Settings page is for host/workspace management only; the remote conversation is not a drawer or
+iframe.
 
 ## Model credentials
 
-The preferred path is the local credential proxy:
+Preferred path:
 
-- the local plugin resolves `DEEPSEEK_API_KEY` from the local DSH credential store at connect time;
-- the remote DSH is started with `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
-- the SSH tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
+- the local plugin resolves `DEEPSEEK_API_KEY` from the local DSH credential store;
+- remote DSH starts with `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
+- the tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
-The real key is never written to the remote host. The reverse forward is reachable only on the remote
-loopback interface while the tunnel is up; connect only trusted hosts.
+The key never reaches the remote filesystem. If no local key resolves, the plugin still provisions and
+connects; configure remote credentials or use the full remote UI.
 
-If no local key is available, set `credentialProxy: false` or configure credentials in the remote DSH
-UI. The plugin still installs and connects; model calls use whatever the remote host has.
+## Native mirror rules
+
+- The mirror is a local `Session` seeded from the remote committed event log. The remote session
+  remains the execution owner.
+- Local prompts are delivered to the remote agent. The optimistic local submission is settled by
+  reusing its message identity when the remote `user/message` event arrives, so the transcript does
+  not show a duplicate pending message.
+- The local `model/selection` event is forwarded with the next prompt; the remote session selects that
+  model before prompting.
+- The mirror polls the remote log at `mirrorPollMs`, appends only contiguous events, and stops when a
+  cold remote session is fully caught up. A new prompt restarts it.
+- Remote sessions longer than `mirrorMaxEvents` are skipped with a warning; use the full remote UI.
+- On plugin restart, old local mirrors are archived and recreated from the current remote log.
 
 ## Configuration
 
@@ -108,6 +121,10 @@ Local plugin profile override:
     credentialProxyUpstream: https://api.deepseek.com
     credentialProxyRemotePort: 47821
     modelCredentialRef: DEEPSEEK_API_KEY
+
+    mirrorSessions: true
+    mirrorPollMs: 1500
+    mirrorMaxEvents: 2000
 ```
 
 Remote agent override:
@@ -125,8 +142,6 @@ Remote agent override:
 
 ## Manual installer (debugging only)
 
-The installer remains available for diagnosing a host without the UI:
-
 ```sh
 node packages/installer/lib/cli.js plan --target user@host
 node packages/installer/lib/cli.js doctor --target user@host
@@ -139,22 +154,21 @@ The normal plugin flow calls the same provisioning library.
 ## Updating
 
 - Local plugin: quit DSH, run `./scripts/install-local.sh`, reopen.
-- Remote agent: click **重新安装** on the host card. This re-uploads the currently bundled agent and
-  restarts the remote `dsh web` with the same host/state path.
+- Remote agent: click **重新安装** on the host card.
 - If a remote restart changes the port, click **重新发现**.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Action |
 |---|---|---|
-| Install never finishes | SSH auth is interactive or the remote lacks Node/npm | `ssh -o BatchMode=yes host true`; run `doctor`; inspect the host card error |
+| Install never finishes | SSH auth is interactive or remote lacks Node/npm | `ssh -o BatchMode=yes host true`; run `doctor`; inspect the card |
 | `remote agent state file was not found` | Auto-provision disabled or remote start failed | Click **重新安装**; inspect `$DSH_HOME/remote-agent/web.log` |
-| `remote agent: ... does not accept POST` | Remote agent is older than the local plugin | Click **重新安装** |
-| `已连接` but no reply | No local model key and no remote credentials | Configure remote credentials, or set a local key and reconnect |
-| Add workspace fails | Directory missing or not absolute | Create the directory on the remote host; use its absolute path |
-| Remote UI asks for login | Launch URL expired | Click **开始使用** again |
-| `protocol/version-mismatch` | Local plugin and remote agent revisions differ | Reinstall the remote agent from the local plugin |
-| Tunnel drops after sleep | SSH connection reset | The plugin reconnects; or click **连接** / **重新发现** |
+| `does not accept POST` | Remote agent older than local plugin | Click **重新安装** |
+| Remote workspace not in sidebar | Not added yet or sync pending | Add it in **工作区**; wait a few seconds |
+| Native session has no reply | Local proxy has no key and remote has no credentials | Check **模型代理**; configure remote credentials |
+| Approval blocked | Approval bridge is not implemented | Open **开始使用** and answer there |
+| Duplicate native session after restart | Old mirror archive failed | Archive the old session in the sidebar; new mirrors use fresh IDs |
+| Tunnel drops after sleep | SSH reset | Plugin reconnects; or click **连接** / **重新发现** |
 
 ### Logs
 
@@ -162,14 +176,15 @@ The normal plugin flow calls the same provisioning library.
 - Remote systemd: `journalctl --user -u dsh-remote-agent -f`.
 - Remote nohup: `$DSH_HOME/remote-agent/web.log`.
 - Local host registry: `$DSH_HOME/remote/hosts.json` (contains tokens; do not paste).
+- Mirror map: `$DSH_HOME/remote/mirrors.json` (contains local/remote session ids).
 - Remote state: `$DSH_HOME/remote-agent/agent.json` (contains a token; do not paste).
 
 ## Security checklist
 
 - [ ] Remote DSH listens on `127.0.0.1` only.
-- [ ] The tunnel binds `127.0.0.1` only.
+- [ ] Tunnel binds `127.0.0.1` only.
 - [ ] Host keys are verified or intentionally TOFU.
-- [ ] The remote agent token file and local `hosts.json` are `0600`.
+- [ ] Agent token and `hosts.json` are `0600`.
 - [ ] `loopbackOnly` remains true unless a trusted authenticating proxy fronts the agent.
-- [ ] The local model key is proxied, not copied to the remote host.
-- [ ] The remote account is trusted; the remote DSH has the remote user's privileges.
+- [ ] The real model key is proxied, not copied to the remote host.
+- [ ] Only trusted remote accounts are used; the remote DSH has their privileges.
