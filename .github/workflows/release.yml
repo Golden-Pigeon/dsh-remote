@@ -27,7 +27,17 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: node scripts/release-plugin.mjs
+      - name: Check whether this version is already published
+        id: published
+        run: |
+          VERSION="$(node -p "require('./packages/local-plugin/package.json').version")"
+          if npm view "dsh-remote-local-plugin@${VERSION}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish npm tarball
+        if: steps.published.outputs.exists != 'true'
         run: npm publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
