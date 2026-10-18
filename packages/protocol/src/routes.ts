@@ -27,6 +27,8 @@ export type AgentRoute =
   | { readonly kind: 'sessions' }
   | { readonly kind: 'session'; readonly sessionId: string }
   | { readonly kind: 'session-events'; readonly sessionId: string }
+  | { readonly kind: 'session-prompt'; readonly sessionId: string }
+  | { readonly kind: 'session-cancel'; readonly sessionId: string }
   | { readonly kind: 'workspace-sessions'; readonly workspaceId: string }
   | { readonly kind: 'web-url' }
 
@@ -38,6 +40,16 @@ export function workspaceSessionsPath(workspaceId: string): string {
 /** Path of one session snapshot. */
 export function sessionPath(sessionId: string): string {
   return `${AGENT_API_PREFIX}/sessions/${encodeURIComponent(sessionId)}`
+}
+
+/** Path that accepts a prompt for one session. */
+export function sessionPromptPath(sessionId: string): string {
+  return `${sessionPath(sessionId)}/prompt`
+}
+
+/** Path that cancels one session's active turn. */
+export function sessionCancelPath(sessionId: string): string {
+  return `${sessionPath(sessionId)}/cancel`
 }
 
 /** Path of one session's live event stream. */
@@ -84,9 +96,12 @@ export function matchAgentRoute(pathname: string): AgentRoute | undefined {
       const sessionId = segment(parts[0] ?? '')
       return sessionId === undefined ? undefined : { kind: 'session', sessionId }
     }
-    if (parts.length === 2 && parts[1] === 'events') {
+    if (parts.length === 2) {
       const sessionId = segment(parts[0] ?? '')
-      return sessionId === undefined ? undefined : { kind: 'session-events', sessionId }
+      if (sessionId === undefined) return undefined
+      if (parts[1] === 'events') return { kind: 'session-events', sessionId }
+      if (parts[1] === 'prompt') return { kind: 'session-prompt', sessionId }
+      if (parts[1] === 'cancel') return { kind: 'session-cancel', sessionId }
     }
     return undefined
   }

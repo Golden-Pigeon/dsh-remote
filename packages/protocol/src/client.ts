@@ -12,18 +12,25 @@
 import { EventCursor } from './cursor.ts'
 import { RemoteProtocolError } from './errors.ts'
 import {
+  sessionCancelPath,
   sessionEventsPath,
   sessionPath,
+  sessionPromptPath,
   workspaceSessionsPath,
   AGENT_ROUTES,
 } from './routes.ts'
 import { parseSseStream } from './sse.ts'
 import type {
+  AcceptedResult,
+  CreateSessionRequest,
+  CreateSessionResult,
+  CreateWorkspaceRequest,
   HostInfo,
   ListSessionsResult,
   ListWorkspacesResult,
   RemoteSessionEvent,
   RemoteSessionSummary,
+  PromptSessionRequest,
   RemoteWorkspace,
   SessionSnapshot,
   SessionSnapshotOptions,
@@ -31,10 +38,13 @@ import type {
   WebUrlResult,
 } from './types.ts'
 import {
+  isAcceptedResult,
   isApiFailure,
+  isCreateSessionResult,
   isHostInfoValue,
   isListSessionsResult,
   isListWorkspacesResult,
+  isRemoteWorkspace,
   isSessionSnapshot,
   isSessionStreamFrame,
   isWebUrlResult,
@@ -147,6 +157,35 @@ export class RemoteAgentClient {
     return this.#request(`${sessionPath(sessionId)}${suffix}`, isSessionSnapshot)
   }
 
+  /** Register a remote workspace over the agent API. */
+  createWorkspace(request: CreateWorkspaceRequest): Promise<RemoteWorkspace> {
+    return this.#request(AGENT_ROUTES.workspaces, isRemoteWorkspace, { method: 'POST', body: request })
+  }
+
+  /** Create a remote session in a workspace or directory. */
+  createSession(request: CreateSessionRequest): Promise<CreateSessionResult> {
+    return this.#request(AGENT_ROUTES.sessions, isCreateSessionResult, {
+      method: 'POST',
+      body: request,
+    })
+  }
+
+  /** Send a text prompt to a remote session. */
+  async promptSession(sessionId: string, request: PromptSessionRequest): Promise<void> {
+    await this.#request(sessionPromptPath(sessionId), isAcceptedResult, {
+      method: 'POST',
+      body: request,
+    })
+  }
+
+  /** Cancel a remote session's active turn. */
+  async cancelSession(sessionId: string): Promise<void> {
+    await this.#request(sessionCancelPath(sessionId), isAcceptedResult, {
+      method: 'POST',
+      body: {},
+    })
+  }
+
   /** Fetch a browser-authenticated path for the remote Web UI. */
   webUrl(): Promise<WebUrlResult> {
     return this.#request(AGENT_ROUTES.webUrl, isWebUrlResult)
@@ -214,10 +253,21 @@ export class RemoteAgentClient {
     return response
   }
 
-  async #request<T>(path: string, guard: Guard<T>): Promise<T> {
+  async #request<T>(
+    path: string,
+    guard: Guard<T>,
+    init: { readonly method?: 'GET' | 'POST'; readonly body?: unknown } = {},
+  ): Promise<T> {
+    const headers = this.#headers()
+    if (init.body !== undefined) headers.set('content-type', 'application/json')
     const response = await fetchWithTimeout(
       `${this.baseUrl}${path}`,
-      { headers: this.#headers(), redirect: 'error' },
+      {
+        method: init.method ?? 'GET',
+        headers,
+        redirect: 'error',
+        ...init.body === undefined ? {} : { body: JSON.stringify(init.body) },
+      },
       this.#fetch,
       this.#timeoutMs,
       undefined,

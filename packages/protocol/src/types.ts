@@ -17,9 +17,13 @@ export type AgentCapability =
   | 'health'
   | 'host.info'
   | 'workspace.list'
+  | 'workspace.create'
   | 'session.list'
   | 'session.snapshot'
   | 'session.follow'
+  | 'session.create'
+  | 'session.prompt'
+  | 'session.cancel'
   | 'web.url'
 
 /** Identity and environment of the remote DSH host serving the agent API. */
@@ -169,6 +173,44 @@ export interface ApiFailure {
 
 /** Every JSON response from the agent uses one of these envelopes. */
 export type ApiEnvelope<T> = ApiSuccess<T> | ApiFailure
+
+/** Request to register a remote workspace. */
+export interface CreateWorkspaceRequest {
+  /** Absolute remote directory path. */
+  readonly path: string
+  /** Optional display title. */
+  readonly title?: string
+}
+
+/** Request to create a remote session. */
+export interface CreateSessionRequest {
+  /** Existing remote workspace to join; exclusive with `cwd`. */
+  readonly workspaceId?: string
+  /** Directory for an ungrouped session; exclusive with `workspaceId`. */
+  readonly cwd?: string
+  /** Optional agent preset name. */
+  readonly agentPreset?: string
+}
+
+/** Created or reused remote session. */
+export interface CreateSessionResult {
+  readonly sessionId: string
+  readonly agentPreset?: string
+}
+
+/** Delivery mode for a remote prompt. */
+export type PromptDeliveryMode = 'queue' | 'steer'
+
+/** Request to send a text prompt to a remote session. */
+export interface PromptSessionRequest {
+  readonly text: string
+  readonly mode?: PromptDeliveryMode
+}
+
+/** Accepted prompt/cancel receipt. */
+export interface AcceptedResult {
+  readonly accepted: true
+}
 
 /** Options accepted by `session.snapshot`. */
 export interface SessionSnapshotOptions {

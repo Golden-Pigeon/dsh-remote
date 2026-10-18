@@ -1,6 +1,6 @@
 # @dsh-remote/protocol
 
-The shared wire contract for `dsh-remote`:
+The shared wire contract for `dsh-remote` (reads and writes):
 
 - protocol revision negotiation;
 - JSON envelopes and stable error codes;
@@ -20,7 +20,10 @@ const client = new RemoteAgentClient({
 })
 const health = await client.health()
 const workspaces = await client.listWorkspaces()
-const snapshot = await client.snapshotSession(sessionId, { limit: 200 })
+const workspace = await client.createWorkspace({ path: '/home/me/project' })
+const session = await client.createSession({ workspaceId: workspace.workspaceId })
+await client.promptSession(session.sessionId, { text: 'Summarize this project' })
+const snapshot = await client.snapshotSession(session.sessionId, { limit: 200 })
 for await (const frame of client.followSession(sessionId, snapshot.cursor, signal)) {
   // ready | event | heartbeat | end
 }

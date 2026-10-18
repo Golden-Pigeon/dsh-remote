@@ -10,9 +10,11 @@
  */
 
 import type {
+  AcceptedResult,
   ApiEnvelope,
   ApiFailure,
   ApiSuccess,
+  CreateSessionResult,
   HostInfo,
   ListSessionsResult,
   ListWorkspacesResult,
@@ -58,7 +60,7 @@ function isHostInfo(value: unknown): value is HostInfo {
     && typeof value.workspaceCount === 'number'
 }
 
-function isRemoteWorkspace(value: unknown): value is RemoteWorkspace {
+export function isRemoteWorkspace(value: unknown): value is RemoteWorkspace {
   if (!isRecord(value)) return false
   return isString(value.workspaceId)
     && isString(value.path)
@@ -144,6 +146,17 @@ export function isSessionSnapshot(value: unknown): value is SessionSnapshot {
     && Array.isArray(value.events)
     && value.events.every(isRemoteEvent)
     && typeof value.truncated === 'boolean'
+}
+
+/** Guard for `session.create`. */
+export function isCreateSessionResult(value: unknown): value is CreateSessionResult {
+  return isRecord(value) && isString(value.sessionId)
+    && (value.agentPreset === undefined || isString(value.agentPreset))
+}
+
+/** Guard for `session.prompt` / `session.cancel`. */
+export function isAcceptedResult(value: unknown): value is AcceptedResult {
+  return isRecord(value) && value.accepted === true
 }
 
 /** Guard for `web.url`. */
