@@ -8,17 +8,25 @@
  */
 
 import { hostname } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
-import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import {
   PROTOCOL_VERSION,
   RemoteProtocolError,
+  type AcceptedResult,
+  type CreateSessionRequest,
+  type CreateSessionResult,
+  type CreateWorkspaceRequest,
   type HostInfo,
   type ListSessionsResult,
+  type PromptSessionRequest,
   type ListWorkspacesResult,
   type RemoteSessionSummary,
+  type RemoteWorkspace,
   type SessionSnapshot,
   type SessionStreamFrame,
   type WebUrlResult,
@@ -122,9 +130,13 @@ export class RemoteAgentService {
         'health',
         'host.info',
         'workspace.list',
+        'workspace.create',
         'session.list',
         'session.snapshot',
         'session.follow',
+        'session.create',
+        'session.prompt',
+        'session.cancel',
         'web.url',
       ],
       workspaceCount: this.ctx.workspaceRegistry.list().length,
@@ -188,6 +200,56 @@ export class RemoteAgentService {
       return right.createdAt.localeCompare(left.createdAt)
     })
     return { sessions: summaries }
+  }
+
+  /** Register a remote workspace over the agent API. */
+  async createWorkspace(request: CreateWorkspaceRequest): Promise<RemoteWorkspace> {
+    const path = request.path.trim()
+    if (path === '') {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: 'workspace path must not be empty' })
+    }
+    const workspace = await this.ctx.workspaceRegistry.create(path, request.title)
+    return projectWorkspaces([workspace as never])[0]!
+  }
+
+  /** Create a remote session in a workspace or directory. */
+  async createSession(request: CreateSessionRequest): Promise<CreateSessionResult> {
+    if (request.workspaceId !== undefined && request.cwd !== undefined) {
+      throw new RemoteProtocolError({
+        code: 'request/invalid',
+        message: 'workspaceId and cwd are mutually exclusive',
+      })
+    }
+    const created = await this.ctx.sessionController.create({
+      ...request.workspaceId === undefined ? {} : { workspaceId: request.workspaceId as WorkspaceId },
+      ...request.cwd === undefined ? {} : { cwd: request.cwd },
+      ...request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset },
+    })
+    return {
+      sessionId: String(created.sessionId),
+      ...created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset },
+    }
+  }
+
+  /** Send a text prompt to one remote session. */
+  async promptSession(sessionId: string, request: PromptSessionRequest): Promise<AcceptedResult> {
+    const text = request.text.trim()
+    if (text === '') {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: 'prompt text must not be empty' })
+    }
+    await this.ctx.sessionController.prompt({
+      requestId: randomUUID() as never,
+      sessionId: sessionId as SessionId,
+      mode: request.mode ?? 'queue',
+      content: [{ type: 'text', text }],
+    }, new AbortController().signal)
+    return { accepted: true }
+  }
+
+  /** Cancel the active turn of one remote session. */
+  cancelSession(sessionId: string): AcceptedResult {
+    this.ctx.sessionController.cancel({ sessionId: sessionId as SessionId })
+    return { accepted: true }
   }
 
   /** Read the newest page of one session's event log. */

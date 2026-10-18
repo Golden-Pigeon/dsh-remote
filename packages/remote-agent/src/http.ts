@@ -94,20 +94,45 @@ async function handleAgentRequest(
       })
     }
 
-    if (req.method !== 'GET') {
-      throw new RemoteProtocolError({
-        code: 'request/invalid',
-        message: 'only GET is supported',
-        httpStatus: 405,
-      })
-    }
-
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     const route = matchAgentRoute(url.pathname)
     if (route === undefined) {
       throw new RemoteProtocolError({
         code: 'route/not-found',
         message: `no route for ${url.pathname}`,
+      })
+    }
+    const method = req.method ?? 'GET'
+
+    // Write routes. Everything else is read-only GET.
+    if (method === 'POST') {
+      const body = await readJsonBody(req)
+      switch (route.kind) {
+        case 'workspaces':
+          sendJson(res, await service.createWorkspace(asWorkspaceRequest(body)))
+          return
+        case 'sessions':
+          sendJson(res, await service.createSession(asCreateRequest(body)))
+          return
+        case 'session-prompt':
+          sendJson(res, await service.promptSession(route.sessionId, asPromptRequest(body)))
+          return
+        case 'session-cancel':
+          sendJson(res, service.cancelSession(route.sessionId))
+          return
+        default:
+          throw new RemoteProtocolError({
+            code: 'request/invalid',
+            message: `${route.kind} does not accept POST`,
+            httpStatus: 405,
+          })
+      }
+    }
+    if (method !== 'GET') {
+      throw new RemoteProtocolError({
+        code: 'request/invalid',
+        message: 'unsupported method',
+        httpStatus: 405,
       })
     }
 
@@ -147,6 +172,9 @@ async function handleAgentRequest(
       case 'web-url':
         sendJson(res, service.webUrl())
         return
+      case 'session-prompt':
+      case 'session-cancel':
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'POST is required', httpStatus: 405 })
     }
   } catch (error) {
     if (res.headersSent) {
@@ -244,6 +272,70 @@ function writeStreamEnd(res: ServerResponse, reason: 'error' | 'server-shutdown'
   } catch {
     // The peer is already gone; there is nobody to notify.
   }
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = []
+  let bytes = 0
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    bytes += buffer.length
+    if (bytes > 256 * 1024) {
+      throw new RemoteProtocolError({ code: 'request/too-large', message: 'request body exceeds 256 KiB' })
+    }
+    chunks.push(buffer)
+  }
+  if (bytes === 0) return {}
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch (error) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'request body must be JSON', cause: error })
+  }
+}
+
+function asWorkspaceRequest(value: unknown): { path: string; title?: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  if (typeof body.path !== 'string' || body.path.trim() === '') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'path must be a non-empty string' })
+  }
+  if (body.title !== undefined && typeof body.title !== 'string') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'title must be a string' })
+  }
+  return { path: body.path.trim(), ...body.title === undefined ? {} : { title: body.title } }
+}
+
+function asCreateRequest(value: unknown): { workspaceId?: string; cwd?: string; agentPreset?: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  const result: { workspaceId?: string; cwd?: string; agentPreset?: string } = {}
+  for (const key of ['workspaceId', 'cwd', 'agentPreset'] as const) {
+    if (body[key] !== undefined) {
+      if (typeof body[key] !== 'string') {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: `${key} must be a string` })
+      }
+      result[key] = body[key]
+    }
+  }
+  return result
+}
+
+function asPromptRequest(value: unknown): { text: string; mode?: 'queue' | 'steer' } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  if (typeof body.text !== 'string' || body.text.trim() === '') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'text must be a non-empty string' })
+  }
+  if (body.mode !== undefined && body.mode !== 'queue' && body.mode !== 'steer') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'mode must be queue or steer' })
+  }
+  return { text: body.text, ...body.mode === undefined ? {} : { mode: body.mode } }
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

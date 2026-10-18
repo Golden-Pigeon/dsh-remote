@@ -1,40 +1,36 @@
 # dsh-remote-agent
 
-A remote DSH plugin that exposes a read-only, loopback-only agent API.
+A remote DSH plugin that exposes the remote host's workspaces and sessions to the local plugin.
 
 ## What it does
 
 - Registers `/dsh-remote-agent/api/v1` on the remote DSH web server.
 - Generates and stores a bearer token in `$DSH_HOME/remote-agent/agent.json` (mode `0600`).
-- Projects host identity, workspaces, sessions, session snapshots, and live session events (SSE).
+- Projects host identity, workspaces, sessions, and session snapshots.
+- Streams committed session events over SSE.
+- Creates workspaces, creates sessions, submits text prompts, and cancels active turns.
 - Writes its live port into the state file so the local plugin can discover it over SSH.
-- Never executes tools, mutates sessions, or exposes file contents.
+
+It does not expose arbitrary shell execution, file contents, terminal input, or approvals. The full
+remote UI is available separately through the same tunnel.
 
 ## Install
 
+Normally the local plugin installs this package for you when you add a host. For a manual install:
+
 ```sh
 node packages/installer/lib/cli.js install --target user@host
-```
-
-Or manually into a remote profile:
-
-```sh
-dsh plugin --profile web add ./dsh-remote-agent-0.1.0.tgz
+# or
+dsh plugin --profile web add ./dsh-remote-agent-0.2.0.tgz
 dsh web --host 127.0.0.1 --port 0 --no-open
 ```
 
 ## Endpoints
 
-See [`docs/protocol.md`](../../docs/protocol.md). Quick check:
+Read and write routes are documented in [`docs/protocol.md`](../../docs/protocol.md):
 
-```sh
-TOKEN=$(cat ~/.dsh/remote-agent/agent.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-PORT=$(cat ~/.dsh/remote-agent/agent.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["port"])')
-curl -H "Authorization: Bearer $TOKEN" -H 'x-dsh-remote-protocol: 1' \
-  "http://127.0.0.1:$PORT/dsh-remote-agent/api/v1/health"
-```
-
-Do not paste the token or the state file into logs or tickets.
+- `GET /health`, `/host`, `/workspaces`, `/sessions`, `/sessions/:id`, `/sessions/:id/events`, `/web-url`
+- `POST /workspaces`, `/sessions`, `/sessions/:id/prompt`, `/sessions/:id/cancel`
 
 ## Configuration
 
