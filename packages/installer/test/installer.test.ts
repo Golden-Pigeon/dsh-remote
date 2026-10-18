@@ -86,6 +86,15 @@ describe('bootstrap rendering', () => {
     assert.match(unit, /ExecStart="\$DSH_BIN" web --host 127\.0\.0\.1 --port \$PORT --no-open/)
   })
 
+  it('renders proxy env only when configured', () => {
+    const script = renderBootstrapScript({
+      profile: 'web', port: 0, installDir: '/opt/dsh', dshHome: '/srv/dsh',
+      dshVersion: '0.2.1-rc.2', pnpmVersion: '11.21.0', start: 'nohup',
+      agentTarball: '/tmp/a.tgz', modelBaseUrl: 'http://127.0.0.1:47821', modelApiKey: 'placeholder',
+    })
+    assert.match(script, /DEEPSEEK_BASE_URL="\$MODEL_BASE_URL" DEEPSEEK_API_KEY="\$MODEL_API_KEY" nohup/)
+  })
+
   it('renders the bootstrap script and never embeds a token', () => {
     const script = fromOptions(options, '/tmp/agent.tgz')
     assert.match(script, /set -euo pipefail/)
@@ -99,6 +108,7 @@ describe('bootstrap rendering', () => {
   it('supports nohup and none start modes', () => {
     const nohup = fromOptions(parseArgs(['plan', '--target', 'example-host', '--start', 'nohup']), '/tmp/agent.tgz')
     assert.match(nohup, /nohup "\$DSH_BIN" web/)
+    assert.doesNotMatch(nohup, /DEEPSEEK_BASE_URL=/)
     const none = fromOptions(parseArgs(['plan', '--target', 'example-host', '--start', 'none']), '/tmp/agent.tgz')
     assert.match(none, /start mode none/)
     assert.doesNotMatch(none, /systemctl --user enable/)

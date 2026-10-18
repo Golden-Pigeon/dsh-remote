@@ -25,3 +25,5 @@ export {
 export { HELP, parseArgs, UsageError } from './options.ts'
 export type { Command, InstallerOptions, StartMode } from './options.ts'
 export { parseTarget, SshTargetError } from './ssh.ts'
+export { provisionRemoteAgent } from './provision.ts'
+export type { ProvisionRemoteOptions, ProvisionRemoteResult } from './provision.ts'

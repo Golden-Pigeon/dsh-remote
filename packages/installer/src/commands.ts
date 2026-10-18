@@ -64,7 +64,7 @@ export async function packAgent(): Promise<string> {
 /** Print the bootstrap script without touching the host. */
 export function commandPlan(options: InstallerOptions): string {
   const target = requireTarget(options)
-  return fromOptions(options, `${REMOTE_TMP_DIR}/dsh-remote-agent-0.1.0.tgz`)
+  return fromOptions(options, `${REMOTE_TMP_DIR}/dsh-remote-agent-0.2.0.tgz`)
 }
 
 /** Pack and print the tarball path. */
@@ -192,7 +192,7 @@ function quoteLocal(value: string): string {
   return `'${value.replace(/'/gu, `'\\''`)}'`
 }
 
-function uploadFile(local: string, remote: string, target: ParsedTarget, options: InstallerOptions): Promise<void> {
+export function uploadFile(local: string, remote: string, target: ParsedTarget, options: InstallerOptions): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const args = [
       '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,

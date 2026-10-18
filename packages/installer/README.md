@@ -1,6 +1,7 @@
 # @dsh-remote/installer
 
-`dsh-remote-install` bootstraps `dsh-remote-agent` on an SSH host.
+`dsh-remote-install` bootstraps `dsh-remote-agent` on an SSH host. The local plugin calls the same
+provisioning library automatically; the CLI is for manual diagnostics.
 
 ```sh
 node packages/installer/lib/cli.js install --target user@host

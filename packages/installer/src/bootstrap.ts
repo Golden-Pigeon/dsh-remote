@@ -21,6 +21,10 @@ export interface BootstrapOptions {
   readonly pnpmVersion: string
   readonly start: StartMode
   readonly agentTarball: string
+  /** Remote DSH model endpoint; the local credential proxy URL when proxying. */
+  readonly modelBaseUrl?: string
+  /** Placeholder key for the local credential proxy; never the real key. */
+  readonly modelApiKey?: string
 }
 
 /** Quote one shell literal. */
@@ -53,6 +57,8 @@ export function renderSystemdUnit(options: BootstrapOptions): string {
     'Type=simple',
     'Environment="DSH_HOME=$DSH_HOME"',
     'Environment="PATH=$INSTALL_DIR/node_modules/.bin:/usr/local/bin:/usr/bin:/bin"',
+    ...options.modelBaseUrl === undefined ? [] : ['Environment="DEEPSEEK_BASE_URL=$MODEL_BASE_URL"'],
+    ...options.modelApiKey === undefined ? [] : ['Environment="DEEPSEEK_API_KEY=$MODEL_API_KEY"'],
     'ExecStart="$DSH_BIN" web --host 127.0.0.1 --port $PORT --no-open',
     'Restart=always',
     'RestartSec=3',
@@ -90,6 +96,8 @@ PORT=${shellLiteral(String(options.port))}
 DSH_VERSION=${shellLiteral(options.dshVersion)}
 PNPM_VERSION=${shellLiteral(options.pnpmVersion)}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
+MODEL_BASE_URL=${options.modelBaseUrl === undefined ? "''" : shellLiteral(options.modelBaseUrl)}
+MODEL_API_KEY=${options.modelApiKey === undefined ? "''" : shellLiteral(options.modelApiKey)}
 STATE_FILE="$DSH_HOME/remote-agent/agent.json"
 WAIT_FOR_STATE=${options.start === 'none' ? 0 : 1}
 
@@ -157,7 +165,7 @@ function renderStartBlock(options: BootstrapOptions): string {
     return 'echo "dsh-remote: start mode none; start dsh web yourself"'
   }
   if (options.start === 'nohup') {
-    return renderNohup()
+    return renderNohup(options)
   }
   const unit = renderSystemdUnit(options)
   return `UNIT_DIR="$HOME/.config/systemd/user"
@@ -170,19 +178,22 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/
     echo "dsh-remote: started systemd user unit dsh-remote-agent.service"
   else
     echo "dsh-remote: systemd user unit failed; falling back to nohup" >&2
-    ${renderNohup()}
+    ${renderNohup(options)}
   fi
 else
   echo "dsh-remote: systemd user manager unavailable; falling back to nohup" >&2
-  ${renderNohup()}
+  ${renderNohup(options)}
 fi`
 }
 
-function renderNohup(): string {
+function renderNohup(options: BootstrapOptions): string {
+  const modelEnv = options.modelBaseUrl === undefined
+    ? ''
+    : `DEEPSEEK_BASE_URL="$MODEL_BASE_URL" DEEPSEEK_API_KEY="$MODEL_API_KEY" `
   return `if [ -f "$DSH_HOME/remote-agent/web.pid" ]; then
   kill "$(cat "$DSH_HOME/remote-agent/web.pid")" 2>/dev/null || true
 fi
-nohup "$DSH_BIN" web --host 127.0.0.1 --port "$PORT" --no-open > "$DSH_HOME/remote-agent/web.log" 2>&1 &
+${modelEnv}nohup "$DSH_BIN" web --host 127.0.0.1 --port "$PORT" --no-open > "$DSH_HOME/remote-agent/web.log" 2>&1 &
 echo $! > "$DSH_HOME/remote-agent/web.pid"
 echo "dsh-remote: started dsh web under nohup (pid $(cat "$DSH_HOME/remote-agent/web.pid"))"`
 }
