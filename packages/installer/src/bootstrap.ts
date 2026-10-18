@@ -176,8 +176,9 @@ cat > "$UNIT_DIR/dsh-remote-agent.service" <<DSH_REMOTE_UNIT
 ${unit}DSH_REMOTE_UNIT
 
 if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
-  if systemctl --user enable --now dsh-remote-agent.service; then
-    echo "dsh-remote: started systemd user unit dsh-remote-agent.service"
+  if systemctl --user enable dsh-remote-agent.service >/dev/null 2>&1 \
+    && systemctl --user restart dsh-remote-agent.service; then
+    echo "dsh-remote: restarted systemd user unit dsh-remote-agent.service"
   else
     echo "dsh-remote: systemd user unit failed; falling back to nohup" >&2
     ${renderNohup(options)}

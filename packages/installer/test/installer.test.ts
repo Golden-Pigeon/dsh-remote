@@ -113,6 +113,8 @@ describe('bootstrap rendering', () => {
     const none = fromOptions(parseArgs(['plan', '--target', 'example-host', '--start', 'none']), '/tmp/agent.tgz')
     assert.match(none, /start mode none/)
     assert.doesNotMatch(none, /systemctl --user enable/)
+    const systemd = fromOptions(options, '/tmp/agent.tgz')
+    assert.match(systemd, /systemctl --user restart dsh-remote-agent\.service/)
   })
 
   it('expands tilde paths only at remote runtime', () => {

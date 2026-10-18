@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-local-plugin",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "DSH remote-development local plugin: host registry, SSH tunnels, remote workspace/session discovery, an authenticated Connection RPC surface, agent tools, and a Settings page.",
   "keywords": [
     "dsh",
