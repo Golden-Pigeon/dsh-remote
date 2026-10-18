@@ -61,12 +61,17 @@ Reopen DSH. **Settings → 远程开发** appears.
 
 1. In **Settings → 远程开发**, enter the SSH target (`example-host`) and click **保存并连接**.
 2. On first use the plugin discovers or installs the remote agent, starts remote `dsh web`, opens the
-   loopback tunnel, and starts the local credential proxy. The card shows **安装中 → 已连接**.
-3. Click **工作区**, add an existing remote directory (for example `/tmp`), and click **添加工作区**.
-   The remote workspace appears in the normal left sidebar as `Native Example host · tmp`.
-4. Click **+ 新会话** (in Settings or the normal workspace row). The plugin creates the remote
-   session, creates a local mirror, and **opens it in the ordinary Conversation UI**. The workspace
-   row's **New session** action uses the same remote path.
+   loopback tunnel, and copies the resolved model key into the remote environment. The card shows
+   **安装中 → 已连接** and **模型代理：远端直连**.
+3. In the sidebar **Workspaces** header, click **+** and choose **远程新建工作区…**; pick the
+   connected host and enter an existing remote directory (for example `/tmp`), then **创建并打开**.
+   The remote workspace appears in the normal left sidebar as `example-host · tmp`. Choose
+   **本地新建工作区** to keep the native local directory flow.
+
+![Sidebar add-workspace chooser](docs/images/workspace-add-menu.png)
+
+4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
+   Conversation UI**. The workspace row's **New session** action uses the same remote path.
 5. Type in the usual composer. The remote DSH runs the turn; the local transcript updates live. Tool
    calls, usage, stop, and multi-turn follow-ups behave like a local session.
 6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
@@ -200,7 +205,7 @@ The remote agent config remains available for advanced deployments:
 |---|---|
 | **安装中** never finishes / `等待远端 dsh web 就绪…` | Check `ssh -o BatchMode=yes example-host true`; if the remote uses nvm under systemd, ensure the unit PATH includes the Node bin (new installer does), or use `remoteStart: nohup`; then **重新安装** |
 | `does not accept POST` | Remote agent is old; click **重新安装** |
-| No remote workspace in sidebar | Click **工作区** and add one; wait for the sync message |
+| No remote workspace in sidebar | Use **Workspaces + → 远程新建工作区…**, or Settings → 远程开发 → 工作区 |
 | Native session has no reply | Check **模型代理**; configure remote credentials |
 | `DeepSeek Messages request failed (404)` | Proxy upstream must be `https://api.deepseek.com/anthropic`; the fixed proxy joins/preserves the provider prefix. Reinstall the local plugin and reconnect |
 | Approval appears locally but remote tool still fails | The local decision was sent; check the remote tool result |
