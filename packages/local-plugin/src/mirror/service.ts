@@ -534,9 +534,20 @@ export class RemoteMirrorService {
     if (existing !== undefined) {
       const live = this.#sessions.get(existing.localSessionId as SessionId)
       const runtime = this.#runtimes.get(existing.localSessionId)
-      if (live !== undefined && runtime !== undefined) {
+      if (live !== undefined && runtime !== undefined && !runtime.stopped) {
         await this.#attach(workspace, live.id)
         return existing
+      }
+      const stalled = this.#runtimes.get(existing.localSessionId)
+      if (stalled !== undefined) {
+        stalled.stopped = true
+        if (stalled.timer !== undefined) clearTimeout(stalled.timer)
+        this.#runtimes.delete(existing.localSessionId)
+      }
+      const registration = this.#registrations.get(existing.localSessionId)
+      if (registration !== undefined) {
+        registration()
+        this.#registrations.delete(existing.localSessionId)
       }
       if (live !== undefined) {
         // A previous process left a persisted mirror; hide it before replacing.
