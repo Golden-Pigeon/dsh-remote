@@ -516,41 +516,42 @@ function ensureStyles(): void {
       padding: 24px; background: rgba(0,0,0,.55);
     }
     .${DIALOG_CLASS} {
-      width: min(1320px, calc(100vw - 96px)); min-height: min(760px, calc(100vh - 64px));
-      box-sizing: border-box; padding: 40px; display: flex; flex-direction: column;
-      border-radius: 22px; border: 1px solid rgba(255,255,255,.1);
+      width: min(632px, calc(100vw - 48px));
+      box-sizing: border-box; padding: 26px; display: flex; flex-direction: column;
+      border-radius: 14px; border: 1px solid rgba(255,255,255,.1);
       background: #242424; color: #f2f2f2; box-shadow: 0 28px 80px rgba(0,0,0,.65);
       font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .${DIALOG_CLASS}-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 30px; }
-    .${DIALOG_CLASS}-title { margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
+    .${DIALOG_CLASS}-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .${DIALOG_CLASS}-title { margin: 0; font-size: 28px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
     .${DIALOG_CLASS}-close { border: 0; background: transparent; color: rgba(255,255,255,.75); font-size: 30px; line-height: 1; cursor: pointer; padding: 0 2px; }
     .${DIALOG_CLASS}-close:hover { color: #fff; }
-    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
+    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
     .${DIALOG_CLASS}-field > span { font-size: 13px; color: rgba(255,255,255,.72); }
-    .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; padding: 0 16px; background: transparent; }
+    .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 9px; padding: 0 12px; background: transparent; }
     .${DIALOG_CLASS}-input-icon { display: inline-flex; color: rgba(255,255,255,.7); }
-    .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 16px; padding: 16px 0; }
+    .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 14px; padding: 13px 0; }
     .${DIALOG_CLASS}-source-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
     .${DIALOG_CLASS}-section-title { margin: 0; font-size: 17px; font-weight: 600; color: rgba(255,255,255,.92); }
     .${DIALOG_CLASS}-host-indicator { display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,.62); font-size: 15px; }
     .${DIALOG_CLASS}-host-icon { display: inline-flex; }
-    .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 32px 20px; min-height: 220px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; padding: 24px 16px; min-height: 150px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .${DIALOG_CLASS}-source-center { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-    .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 17px; cursor: pointer; }
+    .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 15px; cursor: pointer; }
     .${DIALOG_CLASS}-source-trigger span:first-child { color: #fff; font-weight: 600; }
     .${DIALOG_CLASS}-chevron { font-size: 18px; line-height: 1; }
-    .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 10px; padding: 10px 18px; background: rgba(255,255,255,.12); color: #fff; font: inherit; font-size: 16px; cursor: pointer; }
+    .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; padding: 8px 14px; background: rgba(255,255,255,.12); color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
     .${DIALOG_CLASS}-add-folder:hover { background: rgba(255,255,255,.18); }
     .${DIALOG_CLASS}-add-folder-icon { font-size: 18px; line-height: 1; }
     .${DIALOG_CLASS}-source-box-selected { padding: 0; min-height: 0; flex: none; justify-content: flex-start; }
-    .${DIALOG_CLASS}-selected-folder { display: none; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 18px 18px; color: rgba(255,255,255,.92); font-size: 19px; }
+    .${DIALOG_CLASS}-selected-folder { display: none; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 12px 14px; color: rgba(255,255,255,.92); font-size: 16px; }
     .${DIALOG_CLASS}-selected-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .${DIALOG_CLASS}-remove-folder { flex: none; border: 0; background: transparent; color: rgba(255,255,255,.6); font-size: 24px; line-height: 1; cursor: pointer; padding: 0 2px; }
     .${DIALOG_CLASS}-remove-folder:hover { color: #fff; }
-    .${DIALOG_CLASS}-error { min-height: 18px; margin: 12px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
-    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: auto; padding-top: 28px; }
-    .${DIALOG_CLASS}-button { padding: 13px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; font-size: 17px; }
+    .${DIALOG_CLASS}-error { margin: 6px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
+    .${DIALOG_CLASS}-error:empty { display: none; }
+    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+    .${DIALOG_CLASS}-button { padding: 11px 18px; border-radius: 8px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; font-size: 15px; }
     .${DIALOG_CLASS}-button:disabled { opacity: .45; cursor: default; }
     .${DIALOG_CLASS}-primary { border-color: #bdbdbd; background: #bdbdbd; color: #1a1a1a; font-weight: 600; }
     .${DIALOG_CLASS}-primary:hover:not(:disabled) { background: #d0d0d0; }
