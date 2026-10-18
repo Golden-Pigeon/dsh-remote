@@ -20,6 +20,8 @@
     remotePnpmVersion: 11.21.0
     remoteStart: systemd
     provisionTimeoutMs: 600000
+    remoteInstallProxy: ''
+    remoteInstallNoProxy: 127.0.0.1,localhost
 
     credentialProxy: false
     copyModelKey: true

@@ -33,6 +33,8 @@ const DETAIL_KEYS: Record<string, CopyKey> = {
   '正在重新安装远端 agent…': 'detail.reprovisioning',
   'SSH 隧道断开，等待重连…': 'detail.reconnecting',
   '正在准备远端安装环境…': 'detail.preparing',
+  '正在配置远端安装代理…': 'detail.proxyPreparing',
+  '已配置远端安装代理…': 'detail.proxy',
   '正在上传远端 agent 安装包…': 'detail.uploadingAgent',
   '安装包上传完成，开始远端安装…': 'detail.uploaded',
   '正在下载 Node.js…': 'detail.nodeDownloading',

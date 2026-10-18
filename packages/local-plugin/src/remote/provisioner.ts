@@ -46,6 +46,8 @@ export class RemoteProvisioner {
   ): Promise<void> {
     const tarball = findAgentTarball()
     options.onProgress?.('正在准备远端安装环境…')
+    const proxyUrl = this.#config.remoteInstallProxy.trim() || undefined
+    if (proxyUrl !== undefined) options.onProgress?.('正在配置远端安装代理…')
     try {
       await provisionRemoteAgent({
         target: target.canonical,
@@ -64,6 +66,10 @@ export class RemoteProvisioner {
         ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },
         ...options.modelApiKey === undefined ? {} : { modelApiKey: options.modelApiKey },
         verbose: false,
+        ...proxyUrl === undefined ? {} : {
+          proxyUrl,
+          noProxy: this.#config.remoteInstallNoProxy,
+        },
         onProgress: line => {
           const message = progressForLine(line)
           if (message !== undefined) options.onProgress?.(message)
@@ -120,6 +126,7 @@ const PROVISION_PROGRESS: readonly (readonly [string, string])[] = [
   ['uploading agent package', '正在上传远端 agent 安装包…'],
   ['agent package uploaded', '安装包上传完成，开始远端安装…'],
   ['preparing remote install', '正在准备远端安装环境…'],
+  ['install proxy configured', '已配置远端安装代理…'],
   ['downloading node.js', '正在下载 Node.js…'],
   ['installed node.js', 'Node.js 安装完成，继续安装 pnpm/DSH…'],
   ['node ready', 'Node.js 已就绪，准备安装 pnpm/DSH…'],

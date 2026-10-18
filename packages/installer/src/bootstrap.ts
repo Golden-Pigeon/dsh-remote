@@ -27,6 +27,10 @@ export interface BootstrapOptions {
   readonly modelBaseUrl?: string
   /** Placeholder key for the local credential proxy; never the real key. */
   readonly modelApiKey?: string
+  /** HTTP(S) proxy used by the remote installer. */
+  readonly proxyUrl?: string
+  /** Comma-separated proxy bypass list. */
+  readonly noProxy?: string
 }
 
 /** Quote one shell literal. */
@@ -208,12 +212,32 @@ AUTO_INSTALL_NODE=${options.autoInstallNode ? '1' : '0'}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
 MODEL_BASE_URL=${options.modelBaseUrl === undefined ? "''" : shellLiteral(options.modelBaseUrl)}
 MODEL_API_KEY=${options.modelApiKey === undefined ? "''" : shellLiteral(options.modelApiKey)}
+PROXY_URL=${options.proxyUrl === undefined ? "''" : shellLiteral(options.proxyUrl)}
+PROXY_NO_PROXY=${options.noProxy === undefined ? "''" : shellLiteral(options.noProxy)}
 STATE_FILE="$DSH_HOME/remote-agent/agent.json"
 WAIT_FOR_STATE=${options.start === 'none' ? 0 : 1}
 
 export DSH_HOME
 mkdir -p "$INSTALL_DIR" "$DSH_HOME/remote-agent"
 echo "dsh-remote: preparing remote install"
+if [ -z "$PROXY_URL" ]; then
+  # Reuse a proxy already configured in the remote login environment.
+  PROXY_URL="$(bash -lc 'printf "%s" "\${HTTPS_PROXY:-\${HTTP_PROXY:-}}"' 2>/dev/null | tail -n 1 || true)"
+fi
+if [ -z "$PROXY_URL" ]; then
+  # Some clusters configure the proxy in .bashrc, which login shells skip.
+  PROXY_URL="$(bash -ic 'printf "%s" "\${HTTPS_PROXY:-\${HTTP_PROXY:-}}"' 2>/dev/null | tail -n 1 || true)"
+fi
+if [ -n "$PROXY_URL" ]; then
+  export HTTP_PROXY="$PROXY_URL" http_proxy="$PROXY_URL"
+  export HTTPS_PROXY="$PROXY_URL" https_proxy="$PROXY_URL"
+  export ALL_PROXY="$PROXY_URL" all_proxy="$PROXY_URL"
+  export npm_config_proxy="$PROXY_URL" npm_config_https_proxy="$PROXY_URL"
+  if [ -n "$PROXY_NO_PROXY" ]; then
+    export NO_PROXY="$PROXY_NO_PROXY" no_proxy="$PROXY_NO_PROXY"
+  fi
+  echo "dsh-remote: install proxy configured"
+fi
 
 ${nodePathPrelude()}
 

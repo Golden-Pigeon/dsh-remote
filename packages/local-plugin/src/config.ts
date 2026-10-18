@@ -31,6 +31,10 @@ export interface Config {
   readonly remotePnpmVersion?: string
   /** Node.js version installed into the remote install dir when none is usable. */
   readonly remoteNodeVersion?: string
+  /** Optional HTTP(S) proxy for remote provisioning; empty means auto-detect. */
+  readonly remoteInstallProxy?: string
+  /** Comma-separated proxy bypass list. */
+  readonly remoteInstallNoProxy?: string
   /** Download Node.js into the remote install dir when it is missing or too old. */
   readonly autoInstallNode?: boolean
   /** `systemd`, `nohup`, or `none`. */
@@ -72,6 +76,8 @@ export const Config: z<Config> = z.object({
   remoteDshVersion: z.string().default('0.2.1-rc.2'),
   remotePnpmVersion: z.string().default('11.21.0'),
   remoteNodeVersion: z.string().default('22.19.0'),
+  remoteInstallProxy: z.string().default(''),
+  remoteInstallNoProxy: z.string().default('127.0.0.1,localhost'),
   autoInstallNode: z.boolean().default(true),
   remoteStart: z.string().default('systemd'),
   provisionTimeoutMs: z.number().min(60_000).max(1_800_000).default(600_000),
@@ -106,6 +112,8 @@ export interface ResolvedConfig {
   readonly remoteDshVersion: string
   readonly remotePnpmVersion: string
   readonly remoteNodeVersion: string
+  readonly remoteInstallProxy: string
+  readonly remoteInstallNoProxy: string
   readonly autoInstallNode: boolean
   readonly remoteStart: RemoteStartMode
   readonly provisionTimeoutMs: number
@@ -173,6 +181,8 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
     remoteDshVersion: config.remoteDshVersion ?? '0.2.1-rc.2',
     remotePnpmVersion: config.remotePnpmVersion ?? '11.21.0',
     remoteNodeVersion: config.remoteNodeVersion ?? '22.19.0',
+    remoteInstallProxy: config.remoteInstallProxy ?? '',
+    remoteInstallNoProxy: config.remoteInstallNoProxy ?? '127.0.0.1,localhost',
     autoInstallNode: config.autoInstallNode ?? true,
     remoteStart,
     provisionTimeoutMs: config.provisionTimeoutMs ?? 600_000,

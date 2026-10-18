@@ -227,8 +227,19 @@ export function runRemoteScript(
         stderr: Buffer.concat(stderr).toString('utf8'),
         code: code ?? (signal === null ? 1 : 137),
       }
-      if (result.code === 0) resolve(result)
-      else reject(Object.assign(new Error(`remote bootstrap exited with ${String(result.code)}`), { result }))
+      if (result.code === 0) {
+        resolve(result)
+        return
+      }
+      const tail = result.stderr
+        .split(/\r?\n/u)
+        .map(line => line.trim())
+        .filter(line => line !== '')
+        .slice(-2)
+        .join(' | ')
+        .slice(0, 500)
+      const message = `remote bootstrap exited with ${String(result.code)}${tail === '' ? '' : `: ${tail}`}`
+      reject(Object.assign(new Error(message), { result }))
     })
     child.stdin.end(script)
   })

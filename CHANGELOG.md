@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2
+
+- Use a remote-visible HTTP(S) proxy for installer downloads. The bootstrap reads
+  `HTTPS_PROXY`/`HTTP_PROXY` from the remote login and interactive shells, and supports explicit
+  `remoteInstallProxy`/`remoteInstallNoProxy` configuration.
+- Include the last bootstrap stderr lines in provisioning failures.
+- Show staged remote-install progress across upload, proxy, Node.js, pnpm, DSH, agent, service,
+  state-file, tunnel, and health phases.
+
 ## 0.8.1
 
 - Show staged remote-install progress in the host card: upload, Node.js, pnpm, DSH, agent,

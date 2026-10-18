@@ -39,6 +39,9 @@ export interface ProvisionRemoteOptions {
   readonly verbose?: boolean
   /** Human-readable bootstrap lines, used by the Settings progress card. */
   readonly onProgress?: (line: string) => void
+  /** Proxy URL as seen from the remote host. */
+  readonly proxyUrl?: string
+  readonly noProxy?: string
 }
 
 /** Result of a provisioning run. */
@@ -71,6 +74,8 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     agentTarball: remoteTarball,
     ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },
     ...options.modelApiKey === undefined ? {} : { modelApiKey: options.modelApiKey },
+    ...options.proxyUrl === undefined ? {} : { proxyUrl: options.proxyUrl },
+    ...options.noProxy === undefined ? {} : { noProxy: options.noProxy },
   })
 
   let stdoutBuffer = ''

@@ -30,7 +30,7 @@ DSH version is:
 | Component | Tested version |
 |---|---|
 | [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
-| Plugin | [**0.8.1**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| Plugin | [**0.8.2**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
@@ -194,6 +194,11 @@ found, the installer downloads the official [Node.js tarball](https://nodejs.org
 SHA-256 checksum, and uses it without root. This needs `curl` or `wget`, `tar`, and `sha256sum` or
 `shasum`; Windows remotes are not supported.
 
+If the remote host needs a proxy, set `remoteInstallProxy` to a URL that is reachable **from the
+remote host**, for example `http://127.0.0.1:17890` when a port forward serves the proxy there. The
+installer exports `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `npm_config_*` for the bootstrap.
+When the option is empty, it reads `HTTPS_PROXY`/`HTTP_PROXY` from the remote login shell.
+
 ## Security
 
 - SSH is the transport; tunnels bind `127.0.0.1` only.
@@ -222,6 +227,9 @@ SHA-256 checksum, and uses it without root. This needs `curl` or `wget`, `tar`, 
     remoteDshVersion: 0.2.1-rc.2
     remotePnpmVersion: 11.21.0
     remoteNodeVersion: 22.19.0
+    # Remote-visible proxy for Node/npm/DSH downloads. Empty means inspect the remote login shell.
+    remoteInstallProxy: ''
+    remoteInstallNoProxy: 127.0.0.1,localhost
     autoInstallNode: true
     remoteStart: systemd          # systemd | nohup | none
     # Direct key mode (default): copy the resolved key to the remote service env.

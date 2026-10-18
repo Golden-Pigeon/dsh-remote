@@ -27,7 +27,7 @@
 | 组件 | 测试版本 |
 |---|---|
 | [DSH Desktop / 官方客户端](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
-| 插件 | [**0.8.1**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| 插件 | [**0.8.2**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | 远端 DSH 运行时 | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
 | 远端 Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | 远端操作系统 | Linux 或 macOS |
@@ -152,6 +152,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 
 自动安装 Node.js 需要远端有 `curl` 或 `wget`、`tar`，以及 `sha256sum` 或 `shasum`。不支持 Windows 远端。
 
+如果远端需要代理，把 `remoteInstallProxy` 设为**从远端能访问的**代理 URL，例如端口转发后暴露在远端的 `http://127.0.0.1:17890`。安装流程会为 bootstrap 导出 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和 `npm_config_*`。留空时会读取远端登录 shell 的 `HTTPS_PROXY` / `HTTP_PROXY`。
+
 ## 安全
 
 - SSH 是传输层；隧道只绑定 `127.0.0.1`。
@@ -173,6 +175,9 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
     remoteDshVersion: 0.2.1-rc.2
     remotePnpmVersion: 11.21.0
     remoteNodeVersion: 22.19.0
+    # 远端可访问的代理；留空则读取远端登录 shell 的环境变量
+    remoteInstallProxy: ''
+    remoteInstallNoProxy: 127.0.0.1,localhost
     autoInstallNode: true
     remoteStart: systemd          # systemd | nohup | none
     credentialProxy: false

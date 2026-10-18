@@ -33,6 +33,9 @@
         remotePnpmVersion: 11.21.0
         remoteStart: systemd
         provisionTimeoutMs: 600000
+        # Remote-visible HTTP(S) proxy. Empty means read the remote login shell.
+        remoteInstallProxy: ''
+        remoteInstallNoProxy: 127.0.0.1,localhost
 
         # Default: copy the locally resolved key into the remote service env.
         credentialProxy: false

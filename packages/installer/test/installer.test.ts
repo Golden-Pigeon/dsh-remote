@@ -100,6 +100,18 @@ describe('bootstrap rendering', () => {
     assert.match(script, /DEEPSEEK_BASE_URL="\$MODEL_BASE_URL" DEEPSEEK_API_KEY="\$MODEL_API_KEY" nohup/)
   })
 
+  it('exports a remote install proxy for bootstrap downloads', () => {
+    const script = renderBootstrapScript({
+      profile: 'web', port: 0, installDir: '/opt/dsh', dshHome: '/srv/dsh',
+      dshVersion: '0.2.1-rc.2', pnpmVersion: '11.21.0', nodeVersion: '22.19.0', autoInstallNode: true, start: 'nohup',
+      agentTarball: '/tmp/a.tgz', proxyUrl: 'http://127.0.0.1:17890', noProxy: '127.0.0.1,localhost',
+    })
+    assert.match(script, /PROXY_URL='http:\/\/127\.0\.0\.1:17890'/)
+    assert.match(script, /export HTTP_PROXY="\$PROXY_URL"/)
+    assert.match(script, /npm_config_proxy="\$PROXY_URL"/)
+    assert.match(script, /install proxy configured/)
+  })
+
   it('renders the bootstrap script and never embeds a token', () => {
     const script = fromOptions(options, '/tmp/agent.tgz')
     assert.match(script, /set -euo pipefail/)
