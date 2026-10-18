@@ -307,12 +307,14 @@ export class RemoteMirrorService {
       runtime.lastError = null
       this.#schedule(runtime)
     }
+    const selection = this.#selectionFor(runtime)
+    if (selection !== undefined) Object.assign(runtime.agent.options, selection)
     void this.#hosts.promptSession(
       runtime.record.hostId,
       runtime.record.remoteSessionId,
       text,
       mode,
-      latestSelection(runtime.session),
+      selection,
     ).catch(error => {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       runtime.pendingUsers.shift()
@@ -321,12 +323,36 @@ export class RemoteMirrorService {
     })
   }
 
-  /** Route cancellation to the remote session. */
+  /** Route cancellation to the remote session only after the remote accepts it. */
   cancel(runtime: MirrorRuntime): void {
-    void this.#hosts.cancelSession(runtime.record.hostId, runtime.record.remoteSessionId).catch(error => {
-      this.#ctx.logger.warn('dsh-remote-local: remote cancel failed: %s', String(error))
+    void this.#hosts.cancelSession(runtime.record.hostId, runtime.record.remoteSessionId).then(() => {
+      this.#setRunning(runtime, false)
+    }).catch(error => {
+      runtime.lastError = error instanceof Error ? error.message : String(error)
+      this.#ctx.logger.warn('dsh-remote-local: remote cancel failed: %s', runtime.lastError)
+      // Keep the local Agent running so the UI can offer Stop again.
+      this.#setRunning(runtime, true)
     })
-    this.#setRunning(runtime, false)
+  }
+
+  #selectionFor(runtime: MirrorRuntime): { provider: string; model: string; reasoningEffort?: string } | undefined {
+    const projections = this.#ctx.get('sessionProjections') as unknown as {
+      stateOf?: (session: Session, key: string) => unknown
+    } | undefined
+    const state = projections?.stateOf?.(runtime.session, 'modelSelection') as
+      | { pending?: unknown; lastUsed?: unknown }
+      | undefined
+    for (const candidate of [state?.pending, state?.lastUsed]) {
+      if (typeof candidate !== 'object' || candidate === null) continue
+      const record = candidate as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+      if (typeof record.provider !== 'string' || typeof record.model !== 'string') continue
+      return {
+        provider: record.provider,
+        model: record.model,
+        ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
+      }
+    }
+    return latestSelection(runtime.session)
   }
 
   async #syncHost(host: HostView): Promise<void> {
@@ -809,6 +835,7 @@ export class RemoteMirrorService {
       )) {
         if (runtime.stopped || this.#disposed || signal.aborted) return
         if (frame.type === 'start') {
+          this.#setRunning(runtime, true)
           const { startedAfterSeq: _startedAfterSeq, ...rest } = frame as RemoteAssistantFrame & { startedAfterSeq?: number }
           this.#emitAssistant(runtime, rest as RemoteAssistantFrame)
           continue
