@@ -358,6 +358,14 @@ async function openDirectoryBrowser(
   const title = document.createElement('h2')
   title.className = `${DIALOG_CLASS}-browser-title`
   title.textContent = '选择源目录'
+  const browserHeader = document.createElement('div')
+  browserHeader.className = `${DIALOG_CLASS}-browser-header`
+  const browserClose = document.createElement('button')
+  browserClose.type = 'button'
+  browserClose.className = `${DIALOG_CLASS}-close`
+  browserClose.setAttribute('aria-label', '关闭')
+  browserClose.textContent = '×'
+  browserHeader.append(title, browserClose)
   const pathRow = document.createElement('div')
   pathRow.className = `${DIALOG_CLASS}-browser-path-row`
   const up = document.createElement('button')
@@ -386,7 +394,7 @@ async function openDirectoryBrowser(
   use.className = `${DIALOG_CLASS}-button ${DIALOG_CLASS}-primary`
   use.textContent = '使用此目录'
   actions.append(cancel, use)
-  dialog.append(title, pathRow, status, list, actions)
+  dialog.append(browserHeader, pathRow, status, list, actions)
   overlay.append(dialog)
   document.body.append(overlay)
 
@@ -446,6 +454,7 @@ async function openDirectoryBrowser(
   window.addEventListener('keydown', keyHandler, true)
   overlay.addEventListener('pointerdown', outside, true)
   cancel.addEventListener('click', close)
+  browserClose.addEventListener('click', close)
   use.addEventListener('click', () => {
     onPick(current)
     close()
@@ -498,8 +507,8 @@ function setComputerIcon(icon: HTMLElement): void {
 }
 
 function ensureStyles(): void {
-  if (document.getElementById('dshr-workspace-add-style') !== null) return
-  const style = document.createElement('style')
+  const existing = document.getElementById('dshr-workspace-add-style')
+  const style = existing instanceof HTMLStyleElement ? existing : document.createElement('style')
   style.id = 'dshr-workspace-add-style'
   style.textContent = `
     .${DIALOG_CLASS}-overlay {
@@ -507,40 +516,41 @@ function ensureStyles(): void {
       padding: 24px; background: rgba(0,0,0,.55);
     }
     .${DIALOG_CLASS} {
-      width: 720px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 30px;
-      border-radius: 18px; border: 1px solid rgba(255,255,255,.1);
+      width: min(1320px, calc(100vw - 96px)); min-height: min(760px, calc(100vh - 64px));
+      box-sizing: border-box; padding: 40px; display: flex; flex-direction: column;
+      border-radius: 22px; border: 1px solid rgba(255,255,255,.1);
       background: #242424; color: #f2f2f2; box-shadow: 0 28px 80px rgba(0,0,0,.65);
       font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .${DIALOG_CLASS}-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-    .${DIALOG_CLASS}-title { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
+    .${DIALOG_CLASS}-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 30px; }
+    .${DIALOG_CLASS}-title { margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
     .${DIALOG_CLASS}-close { border: 0; background: transparent; color: rgba(255,255,255,.75); font-size: 30px; line-height: 1; cursor: pointer; padding: 0 2px; }
     .${DIALOG_CLASS}-close:hover { color: #fff; }
-    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
     .${DIALOG_CLASS}-field > span { font-size: 13px; color: rgba(255,255,255,.72); }
-    .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 10px; padding: 0 14px; background: transparent; }
+    .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; padding: 0 16px; background: transparent; }
     .${DIALOG_CLASS}-input-icon { display: inline-flex; color: rgba(255,255,255,.7); }
-    .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; padding: 14px 0; }
+    .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 16px; padding: 16px 0; }
     .${DIALOG_CLASS}-source-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
-    .${DIALOG_CLASS}-section-title { margin: 0; font-size: 16px; font-weight: 600; color: rgba(255,255,255,.92); }
+    .${DIALOG_CLASS}-section-title { margin: 0; font-size: 17px; font-weight: 600; color: rgba(255,255,255,.92); }
     .${DIALOG_CLASS}-host-indicator { display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,.62); font-size: 15px; }
     .${DIALOG_CLASS}-host-icon { display: inline-flex; }
-    .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 28px 20px 16px; min-height: 130px; display: flex; flex-direction: column; align-items: center; }
+    .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 32px 20px; min-height: 220px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .${DIALOG_CLASS}-source-center { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-    .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 16px; cursor: pointer; }
+    .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 17px; cursor: pointer; }
     .${DIALOG_CLASS}-source-trigger span:first-child { color: #fff; font-weight: 600; }
     .${DIALOG_CLASS}-chevron { font-size: 18px; line-height: 1; }
-    .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 9px; padding: 9px 16px; background: rgba(255,255,255,.12); color: #fff; font: inherit; cursor: pointer; }
+    .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 10px; padding: 10px 18px; background: rgba(255,255,255,.12); color: #fff; font: inherit; font-size: 16px; cursor: pointer; }
     .${DIALOG_CLASS}-add-folder:hover { background: rgba(255,255,255,.18); }
     .${DIALOG_CLASS}-add-folder-icon { font-size: 18px; line-height: 1; }
-    .${DIALOG_CLASS}-source-box-selected { padding: 0; min-height: 0; }
-    .${DIALOG_CLASS}-selected-folder { display: none; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 15px 16px; color: rgba(255,255,255,.9); font-size: 18px; }
+    .${DIALOG_CLASS}-source-box-selected { padding: 0; min-height: 0; flex: none; justify-content: flex-start; }
+    .${DIALOG_CLASS}-selected-folder { display: none; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 18px 18px; color: rgba(255,255,255,.92); font-size: 19px; }
     .${DIALOG_CLASS}-selected-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .${DIALOG_CLASS}-remove-folder { flex: none; border: 0; background: transparent; color: rgba(255,255,255,.6); font-size: 24px; line-height: 1; cursor: pointer; padding: 0 2px; }
     .${DIALOG_CLASS}-remove-folder:hover { color: #fff; }
     .${DIALOG_CLASS}-error { min-height: 18px; margin: 12px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
-    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 26px; }
-    .${DIALOG_CLASS}-button { padding: 10px 16px; border-radius: 9px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; }
+    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: auto; padding-top: 28px; }
+    .${DIALOG_CLASS}-button { padding: 13px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; font-size: 17px; }
     .${DIALOG_CLASS}-button:disabled { opacity: .45; cursor: default; }
     .${DIALOG_CLASS}-primary { border-color: #bdbdbd; background: #bdbdbd; color: #1a1a1a; font-weight: 600; }
     .${DIALOG_CLASS}-primary:hover:not(:disabled) { background: #d0d0d0; }
@@ -556,7 +566,8 @@ function ensureStyles(): void {
     .${DIALOG_CLASS}-destination-add { color: rgba(255,255,255,.75); }
     .${DIALOG_CLASS}-browser-overlay { position: fixed; inset: 0; z-index: 100002; display: grid; place-items: center; background: rgba(0,0,0,.6); padding: 24px; }
     .${DIALOG_CLASS}-browser { width: 640px; max-height: 86vh; display: flex; flex-direction: column; padding: 26px; }
-    .${DIALOG_CLASS}-browser-title { margin: 0 0 20px; font-size: 26px; line-height: 1.15; font-weight: 700; }
+    .${DIALOG_CLASS}-browser-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    .${DIALOG_CLASS}-browser-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 700; }
     .${DIALOG_CLASS}-browser-path-row { display: flex; align-items: center; gap: 8px; }
     .${DIALOG_CLASS}-up { flex: none; width: 34px; height: 34px; border: 0; background: transparent; color: rgba(255,255,255,.65); font-size: 22px; cursor: pointer; }
     .${DIALOG_CLASS}-browser-path { flex: 1; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: transparent; color: #fff; font: inherit; font-size: 16px; padding: 12px 14px; outline: none; }
@@ -566,5 +577,5 @@ function ensureStyles(): void {
     .${DIALOG_CLASS}-browser-entry:hover { background: rgba(255,255,255,.08); }
     .${DIALOG_CLASS}-browser-empty { margin: 16px 12px; color: rgba(255,255,255,.5); font-size: 13px; }
   `
-  document.head.append(style)
+  if (existing === null) document.head.append(style)
 }
