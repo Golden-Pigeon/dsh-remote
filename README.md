@@ -37,8 +37,11 @@ Local DSH                                         Remote host
 | Local model key proxy through a reverse SSH tunnel | Available |
 | Full remote DSH UI through the tunnel (`开始使用`) | Available |
 | Agent tools for all of the above | Available |
-| Remote session rendered in the local main conversation area | Not yet |
 | Relay/NAT traversal, cloud sandbox, multi-tenant | Not yet |
+
+The remote conversation lives in the plugin's chat drawer. Embedding a remote session directly in the
+main local conversation tab is a separate host-aware client integration; it is not required for the
+provisioning, workspace, session, prompt, or full-UI flows above.
 
 ## Install (local plugin)
 
