@@ -15,6 +15,8 @@ import {
   RemoteAgentClient,
   RemoteProtocolError,
   type AcceptedResult,
+  type ApprovalOutcome,
+  type RemoteApprovalFrame,
   type CreateSessionRequest,
   type CreateSessionResult,
   type CreateWorkspaceRequest,
@@ -363,6 +365,33 @@ export class RemoteHostsService {
     try {
       await client.cancelSession(sessionId)
       return { accepted: true }
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** SSH invocation facts for auxiliary remote file/terminal adapters. */
+  sshFor(id: string): { binary: string; target: string; port: number | null } {
+    const record = this.#requireRecord(id)
+    const target = parseSshTarget(record.sshTarget)
+    return { binary: this.config.sshBinary, target: target.destination, port: target.port }
+  }
+
+  /** Follow remote approval questions for one host. */
+  async *followApprovals(id: string, signal: AbortSignal): AsyncGenerator<RemoteApprovalFrame> {
+    const client = this.#requireClient(id)
+    try {
+      yield* client.followApprovals(signal)
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Send one approval answer to the remote agent. */
+  async answerApproval(id: string, approvalId: string, outcome: ApprovalOutcome): Promise<AcceptedResult> {
+    const client = this.#requireClient(id)
+    try {
+      return await client.answerApproval(approvalId, outcome)
     } catch (error) {
       throw this.#remoteFailure(id, error)
     }

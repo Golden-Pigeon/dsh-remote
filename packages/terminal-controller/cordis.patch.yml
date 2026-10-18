@@ -1,0 +1,8 @@
+# Disable the stock terminal-controller row and insert this fork in its place.
+# `name` in a non-insert patch only asserts an existing name, so replacement is
+# expressed as disable + insert.
+- id: terminal-controller
+  disabled: true
+- insert:
+    - id: terminal-controller-remote
+      name: dsh-remote-terminal-controller

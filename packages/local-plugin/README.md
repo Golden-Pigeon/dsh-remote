@@ -16,7 +16,9 @@ Remote development that appears as ordinary local sessions.
   while the normal Conversation UI renders the mirrored events.
 - `+ 新会话` creates the remote session, creates its local mirror, and opens it through
   `uiWorkspace.openSession` — not a popup.
-- `开始使用` opens the full remote DSH UI through the same tunnel.
+- SSH-backed remote workspace file listing/preview.
+- Remote SSH PTY terminals for mirror Sessions; local Sessions keep the local terminal.
+- Remote approval questions bridged into the normal local approval UI.
 - Model tools for every operation.
 - Authenticated host API at `/api/dsh-remote` through DSH Connection's Fetch route.
 
@@ -38,12 +40,12 @@ Quit DSH Desktop before installing the desktop profile.
 4. Click **工作区**, add an existing remote directory.
 5. Click **+ 新会话** (Settings or the workspace row). The mirrored session opens in the normal
    Conversation UI.
-6. Continue prompting, or click **开始使用** for the full remote UI.
+6. Continue prompting. **Workspace files** and **New terminal** follow the selected Session.
 
-## Mirror boundaries
+## Boundaries
 
-- Approval prompts are not bridged; use the full remote UI for approval-heavy tools.
-- The local workspace anchor is metadata; the remote file tree/terminal is in the full remote UI.
+- The remote browser UI is intentionally not exposed by default; the remote API-remotes carrier is
+  disabled so approvals reach the native local UI.
 - Sessions over `mirrorMaxEvents` are not mirrored.
 - On plugin restart, old mirrors are archived and recreated.
 
@@ -51,7 +53,7 @@ Quit DSH Desktop before installing the desktop profile.
 
 `remote_hosts_list`, `remote_host_add`, `remote_host_connect`, `remote_host_provision`,
 `remote_workspace_add`, `remote_workspaces_list`, `remote_session_create`, `remote_sessions_list`,
-`remote_session_prompt`, `remote_session_snapshot`, `remote_session_cancel`, `remote_web_url`.
+`remote_session_prompt`, `remote_session_snapshot`, `remote_session_cancel`.
 
 ## Configuration
 

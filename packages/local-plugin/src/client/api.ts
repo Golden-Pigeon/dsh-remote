@@ -7,7 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { AcceptedResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
-import type { HostCreateSessionResult } from '../host-api/contract.ts'
+import type { HostCreateSessionResult, MirrorFileResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -50,6 +50,10 @@ export interface HostsApi {
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly openSession: (sessionId: string) => void
+  readonly fileList: (sessionId: string, path: string) => Promise<MirrorFileResult>
+  readonly fileRead: (sessionId: string, path: string, offset?: number, limit?: number) => Promise<MirrorFileResult>
+  readonly fileStat: (sessionId: string, path: string) => Promise<MirrorFileResult>
+  readonly fileBytes: (sessionId: string, path: string, offset?: number, length?: number) => Promise<MirrorFileResult>
   readonly prompt: (hostId: string, sessionId: string, text: string, mode?: PromptDeliveryMode, selection?: { provider: string; model: string; reasoningEffort?: string }) => Promise<AcceptedResult>
   readonly cancel: (hostId: string, sessionId: string) => Promise<AcceptedResult>
 }
@@ -79,6 +83,20 @@ export function createHostsApi(ctx: Context): HostsApi {
     }),
     createSession: (hostId, input) => call('host/session/create', { hostId, ...input }),
     openSession: sessionId => { ctx.uiWorkspace.openSession(sessionId as never) },
+    fileList: (sessionId, path) => call('host/files/list', { sessionId, path }),
+    fileRead: (sessionId, path, offset, limit) => call('host/files/read', {
+      sessionId,
+      path,
+      ...offset === undefined ? {} : { offset },
+      ...limit === undefined ? {} : { limit },
+    }),
+    fileStat: (sessionId, path) => call('host/files/stat', { sessionId, path }),
+    fileBytes: (sessionId, path, offset, length) => call('host/files/bytes', {
+      sessionId,
+      path,
+      ...offset === undefined ? {} : { offset },
+      ...length === undefined ? {} : { length },
+    }),
     prompt: (hostId, sessionId, text, mode, selection) => call('host/session/prompt', {
       hostId,
       sessionId,

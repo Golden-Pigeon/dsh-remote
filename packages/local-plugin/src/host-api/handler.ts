@@ -33,11 +33,12 @@ export function registerHostApi(
     path: HOST_API_PATH,
     methods: ['POST'],
     requestBody: 'buffered',
-    fetch: request => handleHostApi(service, mirrors, request),
+    fetch: request => handleHostApi(ctx, service, mirrors, request),
   })
 }
 
 async function handleHostApi(
+  ctx: Context,
   service: RemoteHostsService,
   mirrors: RemoteMirrorService | undefined,
   request: Request,
@@ -64,7 +65,7 @@ async function handleHostApi(
   }
 
   try {
-    const value = await dispatch(service, mirrors, body.endpoint, body.payload)
+    const value = await dispatch(ctx, service, mirrors, body.endpoint, body.payload)
     return jsonResult({ ok: true, value })
   } catch (error) {
     const failure = asLocalError(error)
@@ -80,6 +81,7 @@ async function handleHostApi(
 }
 
 async function dispatch(
+  ctx: Context,
   service: RemoteHostsService,
   mirrors: RemoteMirrorService | undefined,
   endpoint: string,
@@ -192,6 +194,39 @@ async function dispatch(
     }
     case 'host/web-url':
       return service.webUrl(requireStringField(payload, 'hostId'))
+    case 'host/files/list':
+    case 'host/files/read':
+    case 'host/files/stat':
+    case 'host/files/bytes': {
+      const body = requireRecord(payload)
+      const sessionId = requireStringField(body, 'sessionId')
+      const path = requireStringField(body, 'path')
+      const sessions = ctx.get('sessions')
+      const session = sessions?.get(sessionId as never)
+      const root = session?.header.cwd
+      if (root === undefined || mirrors?.remoteFileContext(root) === undefined) return { mirrored: false }
+      const files = ctx.get('workspaceFiles') as unknown as {
+        list(scope: unknown, path: string, signal: AbortSignal): Promise<unknown>
+        read(scope: unknown, path: string, range: unknown, signal: AbortSignal): Promise<unknown>
+        readBytes(scope: unknown, path: string, options: unknown, signal: AbortSignal): Promise<unknown>
+        stat(scope: unknown, path: string, signal: AbortSignal): Promise<unknown>
+      } | undefined
+      if (files === undefined) return { mirrored: false }
+      const scope = { sessionId, workspaceRoot: root }
+      const signal = new AbortController().signal
+      if (endpoint === 'host/files/list') return { mirrored: true, value: await files.list(scope, path, signal) }
+      if (endpoint === 'host/files/stat') return { mirrored: true, value: await files.stat(scope, path, signal) }
+      if (endpoint === 'host/files/bytes') return { mirrored: true, value: await files.readBytes(scope, path, {
+        range: {
+          ...body.offset === undefined ? {} : { offset: body.offset },
+          ...body.length === undefined ? {} : { length: body.length },
+        },
+      }, signal) }
+      return { mirrored: true, value: await files.read(scope, path, {
+        ...body.offset === undefined ? {} : { offset: body.offset },
+        ...body.limit === undefined ? {} : { limit: body.limit },
+      }, signal) }
+    }
     default:
       throw new LocalError('request/invalid', `unknown remote-host endpoint: ${JSON.stringify(endpoint)}`)
   }

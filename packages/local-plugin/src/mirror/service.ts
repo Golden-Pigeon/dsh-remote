@@ -13,13 +13,18 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { scopeTarget } from '@deepseek-ai/dsh-scope'
+import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {
+  ApprovalOutcome,
+  RemoteApprovalRequest,
   RemoteSessionEvent,
   RemoteSessionSummary,
   RemoteWorkspace,
@@ -53,6 +58,7 @@ interface WorkspaceRecord {
   readonly remoteWorkspaceId: string | null
   localWorkspaceId: string
   readonly anchor: string
+  readonly remoteRoot?: string
   readonly title: string
   readonly updatedAt: string
 }
@@ -171,6 +177,7 @@ export class RemoteMirrorService {
   #state: MirrorState = { version: MIRROR_VERSION, sessions: {}, workspaces: {} }
   #runtimes = new Map<string, MirrorRuntime>()
   #registrations = new Map<string, () => void>()
+  #approvalStreams = new Map<string, AbortController>()
   #syncing = false
   #timer: NodeJS.Timeout | undefined
   #disposed = false
@@ -200,6 +207,8 @@ export class RemoteMirrorService {
     }
     for (const dispose of this.#registrations.values()) dispose()
     this.#registrations.clear()
+    for (const controller of this.#approvalStreams.values()) controller.abort()
+    this.#approvalStreams.clear()
     this.#runtimes.clear()
     await this.#save()
   }
@@ -220,6 +229,19 @@ export class RemoteMirrorService {
     } finally {
       this.#syncing = false
     }
+  }
+
+  /** Resolve a local workspace anchor to its remote filesystem context. */
+  remoteFileContext(workspaceRoot: string): { hostId: string; remoteRoot: string; anchor: string } | undefined {
+    const root = canonicalPath(workspaceRoot)
+    for (const record of Object.values(this.#state.workspaces)) {
+      if (record.remoteRoot === undefined) continue
+      const anchor = canonicalPath(record.anchor)
+      if (root === anchor || root.startsWith(`${anchor}/`)) {
+        return { hostId: record.hostId, remoteRoot: record.remoteRoot, anchor }
+      }
+    }
+    return undefined
   }
 
   /** Find the local mirror workspace for one remote workspace. */
@@ -288,6 +310,7 @@ export class RemoteMirrorService {
   }
 
   async #syncHost(host: HostView): Promise<void> {
+    this.#ensureApprovalStream(host)
     const workspaces = await this.#hosts.workspaces(host.id)
     const covered = new Set<string>()
     const byPath = new Map<string, { workspace: Workspace; anchor: string }>()
@@ -321,6 +344,10 @@ export class RemoteMirrorService {
         await mkdir(existing.anchor, { recursive: true })
         const workspace = await this.#workspaceRegistry.create(existing.anchor, existing.title)
         existing.localWorkspaceId = String(workspace.id)
+        if (existing.remoteRoot === undefined) {
+          this.#state.workspaces[ref] = { ...existing, remoteRoot: remote.path }
+          await this.#save()
+        }
         return workspace
       } catch (error) {
         this.#ctx.logger.warn('dsh-remote-local: mapped workspace %s unavailable: %s', ref, String(error))
@@ -335,6 +362,7 @@ export class RemoteMirrorService {
       remoteWorkspaceId: remote.workspaceId,
       localWorkspaceId: String(workspace.id),
       anchor,
+      remoteRoot: remote.path,
       title,
       updatedAt: new Date().toISOString(),
     }
@@ -350,6 +378,10 @@ export class RemoteMirrorService {
       await mkdir(existing.anchor, { recursive: true })
       const workspace = await this.#workspaceRegistry.create(existing.anchor, existing.title)
       existing.localWorkspaceId = String(workspace.id)
+      if (existing.remoteRoot === undefined) {
+        this.#state.workspaces[ref] = { ...existing, remoteRoot: cwd }
+        await this.#save()
+      }
       return { workspace, anchor: existing.anchor }
     }
     const anchor = join(this.#config.stateDir, 'anchors', safe(host.id), 'ungrouped', remoteId.split(':')[1] ?? 'root')
@@ -361,11 +393,70 @@ export class RemoteMirrorService {
       remoteWorkspaceId: null,
       localWorkspaceId: String(workspace.id),
       anchor,
+      remoteRoot: cwd,
       title,
       updatedAt: new Date().toISOString(),
     }
     await this.#save()
     return { workspace, anchor }
+  }
+
+  #ensureApprovalStream(host: HostView): void {
+    if (this.#approvalStreams.has(host.id)) return
+    const controller = new AbortController()
+    this.#approvalStreams.set(host.id, controller)
+    void (async () => {
+      try {
+        for await (const frame of this.#hosts.followApprovals(host.id, controller.signal)) {
+          if (frame.type === 'request') void this.#handleApproval(host.id, frame.request)
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          this.#ctx.logger.warn('dsh-remote-local: approval stream %s failed: %s', host.id, String(error))
+        }
+      } finally {
+        this.#approvalStreams.delete(host.id)
+      }
+    })()
+  }
+
+  async #handleApproval(hostId: string, request: RemoteApprovalRequest): Promise<void> {
+    const runtime = [...this.#runtimes.values()].find(
+      item => item.record.hostId === hostId && item.record.remoteSessionId === request.sessionId,
+    )
+    if (runtime === undefined) {
+      await this.#hosts.answerApproval(hostId, request.id, 'unavailable').catch(() => undefined)
+      return
+    }
+    const local = new AbortController()
+    let outcome: ApprovalOutcome = 'unavailable'
+    try {
+      const waterfall = this.#ctx.waterfall as unknown as (
+        thisArg: unknown,
+        name: string,
+        request: unknown,
+        next: () => Promise<unknown>,
+      ) => Promise<unknown>
+      outcome = await waterfall(
+        scopeTarget(runtime.agent as never, runtime.agent as never),
+        'approval/request',
+        {
+          agent: runtime.agent as never,
+          toolName: request.toolName,
+          ...request.callId === undefined ? {} : { callId: request.callId as never },
+          ...request.reason === undefined ? {} : { reason: request.reason },
+          ...request.displayReason === undefined ? {} : { displayReason: request.displayReason },
+          signal: local.signal,
+        },
+        async () => 'unavailable',
+      ) as ApprovalOutcome
+    } catch (error) {
+      this.#ctx.logger.warn('dsh-remote-local: local approval bridge failed: %s', String(error))
+      outcome = 'unavailable'
+    }
+    await this.#hosts.answerApproval(hostId, request.id, outcome).catch(error => {
+      this.#ctx.logger.warn('dsh-remote-local: approval answer failed: %s', String(error))
+    })
   }
 
   async #ensureMirror(
@@ -405,7 +496,9 @@ export class RemoteMirrorService {
     const localId = `session-${randomUUID()}`
     let session: Session
     try {
-      const seed = snapshot.events.map(toSeedEvent)
+      const filtered = snapshot.events.filter(event => !isMirrorNoise(event.type))
+      const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
+      const seed = filtered.map((event, index) => toSeedEvent(event, index, seqMap))
       session = this.#sessions.create(localId as SessionId, {
         ...seed.length === 0 ? {} : { seed },
         meta: { cwd: anchor },
@@ -427,7 +520,7 @@ export class RemoteMirrorService {
       localSessionId: localId,
       remoteWorkspaceId: remote.workspaceId,
       anchor,
-      lastSeq: session.seq,
+      lastSeq: snapshot.cursor,
       updatedAt: new Date().toISOString(),
     }
     this.#state.sessions[ref] = record
@@ -476,24 +569,24 @@ export class RemoteMirrorService {
         runtime.record.remoteSessionId,
         this.#config.mirrorMaxEvents,
       )
-      if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > local.seq) {
+      if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > runtime.record.lastSeq) {
         runtime.lastError = 'remote log grew past the mirror window'
         runtime.stopped = true
         return
       }
       let sawEnd = false
       for (const event of snapshot.events) {
-        if (event.seq < local.seq) continue
-        if (event.seq !== local.seq) {
-          throw new Error(`remote event gap at ${event.seq}, local ${local.seq}`)
+        if (event.seq < runtime.record.lastSeq) continue
+        if (event.seq !== runtime.record.lastSeq) {
+          throw new Error(`remote event gap at ${event.seq}, mirror ${runtime.record.lastSeq}`)
         }
-        appendRemoteEvent(local, event, runtime)
+        if (!isMirrorNoise(event.type)) appendRemoteEvent(local, event, runtime)
+        runtime.record.lastSeq = event.seq + 1
         if (event.type === 'turn/end') sawEnd = true
       }
-      runtime.record.lastSeq = local.seq
       runtime.record.updatedAt = new Date().toISOString()
       if (sawEnd) this.#setRunning(runtime, false)
-      if (!snapshot.live && local.seq >= snapshot.cursor) {
+      if (!snapshot.live && runtime.record.lastSeq >= snapshot.cursor) {
         runtime.stopped = true
       }
       await this.#save()
@@ -560,6 +653,13 @@ export class RemoteMirrorService {
   }
 }
 
+function isMirrorNoise(type: string): boolean {
+  // Inbox splices are projections of the remote pending-input state. Replaying
+  // them into a local Session with a custom Agent has no local inbox owner and
+  // can fail projection validation; the transcript does not need them.
+  return type === 'agent/inbox/spliced'
+}
+
 function appendRemoteEvent(
   session: Session,
   event: RemoteSessionEvent,
@@ -601,14 +701,24 @@ function messageData(message: unknown): unknown {
   }
 }
 
-function toSeedEvent(event: RemoteSessionEvent): SessionEvent {
+function toSeedEvent(event: RemoteSessionEvent, seq: number, map: ReadonlyMap<number, number>): SessionEvent {
+  const surfaceOp = typeof event.surfaceOp === 'object'
+    ? {
+        op: 'replace' as const,
+        startSeq: map.get(event.surfaceOp.startSeq) ?? 0,
+        endSeq: map.get(event.surfaceOp.endSeq) ?? 0,
+      }
+    : event.surfaceOp
+  const sourceEventSeqs = event.sourceEventSeqs
+    ?.map(source => map.get(source))
+    .filter((source): source is number => source !== undefined)
   return {
-    seq: event.seq,
+    seq,
     type: event.type,
     time: event.time,
     data: event.data,
-    ...event.surfaceOp === undefined ? {} : { surfaceOp: event.surfaceOp },
-    ...event.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: event.sourceEventSeqs },
+    ...surfaceOp === undefined ? {} : { surfaceOp },
+    ...sourceEventSeqs === undefined || sourceEventSeqs.length === 0 ? {} : { sourceEventSeqs },
   } as unknown as SessionEvent
 }
 
@@ -660,6 +770,14 @@ function contentText(message: unknown): string {
     }
   }
   return texts.join('\n').trim()
+}
+
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 function key(hostId: string, sessionId: string): string {

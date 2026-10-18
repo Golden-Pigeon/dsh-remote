@@ -280,24 +280,4 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
     },
   }))
 
-  ctx.tools.register(defineTool({
-    name: 'remote_web_url',
-    description: 'Resolve the remote DSH Web UI URL through the host tunnel. Opening it gives the full remote UI for sessions that are not yet B-native in the local client.',
-    parameters: {
-      hostId: { type: 'string', required: true, description: 'Connected remote host id.' },
-    },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          url: { type: 'string', required: true },
-        },
-      },
-      render: renderJson,
-    },
-    async execute(args) {
-      return service.webUrl(args.hostId)
-    },
-  }))
 }

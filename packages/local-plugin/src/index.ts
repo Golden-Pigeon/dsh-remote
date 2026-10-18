@@ -13,6 +13,9 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import { Config, resolveConfig, type Config as LocalConfig } from './config.ts'
 import { registerHostApi } from './host-api/handler.ts'
 import { RemoteMirrorService } from './mirror/service.ts'
+import { installRemoteWorkspaceFiles } from './remote/files.ts'
+import { RemoteTerminals } from './remote/terminal.ts'
+import { registerTerminalApi } from './host-api/terminal.ts'
 import { RemoteHostsService } from './service.ts'
 import { registerRemoteTools } from './tools.ts'
 
@@ -43,6 +46,11 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   await service.start()
   const mirrors = new RemoteMirrorService(ctx, service, resolved)
   await mirrors.start()
+  const terminals = new RemoteTerminals(ctx, service, mirrors)
+  ctx.effect(() => registerTerminalApi(ctx, terminals), 'dsh-remote-local: remote terminal route')
+  ctx.inject(['workspaceFiles'], child => {
+    installRemoteWorkspaceFiles(child, mirrors, service)
+  })
 
   ctx.effect(
     () => {
@@ -58,6 +66,7 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
 
   ctx.effect(
     () => () => {
+      terminals.dispose()
       void mirrors.dispose()
       void service.dispose()
     },

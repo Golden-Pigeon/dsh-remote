@@ -40,6 +40,10 @@ export type HostApiEndpoint =
   | 'host/session/prompt'
   | 'host/session/cancel'
   | 'host/web-url'
+  | 'host/files/list'
+  | 'host/files/read'
+  | 'host/files/stat'
+  | 'host/files/bytes'
 
 /** Browser-safe state snapshot. */
 export interface RemoteHostsState {
@@ -73,6 +77,11 @@ export interface SessionsResult {
 export interface HostCreateSessionResult extends CreateSessionResult {
   /** Local mirror session that opens in the ordinary Conversation UI. */
   readonly localSessionId?: string
+}
+
+export interface MirrorFileResult {
+  readonly mirrored: boolean
+  readonly value?: unknown
 }
 
 /** Result of resolving the remote Web UI. */
@@ -130,6 +139,10 @@ export interface HostApiPayloads {
   }
   'host/session/cancel': { hostId: string; sessionId: string }
   'host/web-url': { hostId: string }
+  'host/files/list': { sessionId: string; path: string }
+  'host/files/read': { sessionId: string; path: string; offset?: number; limit?: number }
+  'host/files/stat': { sessionId: string; path: string }
+  'host/files/bytes': { sessionId: string; path: string; offset?: number; length?: number }
 }
 
 /** Values returned by each endpoint. */
@@ -150,6 +163,10 @@ export interface HostApiValues {
   'host/session/prompt': AcceptedResult
   'host/session/cancel': AcceptedResult
   'host/web-url': WebUrlResult
+  'host/files/list': MirrorFileResult
+  'host/files/read': MirrorFileResult
+  'host/files/stat': MirrorFileResult
+  'host/files/bytes': MirrorFileResult
 }
 
 /** Informational type for the Settings page. */

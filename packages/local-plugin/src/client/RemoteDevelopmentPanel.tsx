@@ -204,15 +204,7 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
     }
   }
 
-  async function openWeb(hostId: string): Promise<void> {
-    await run(`web:${hostId}`, async () => {
-      const { url } = await api.webUrl(hostId)
-      const opened = window.open(url, '_blank', 'noopener,noreferrer')
-      if (opened === null) {
-        setNotice(`浏览器拦截了弹窗；远端地址：${url}`)
-      }
-    })
-  }
+
 
   async function onRemove(host: HostView): Promise<void> {
     if (!window.confirm(`删除主机「${host.label}」？远端文件与会话不会被删除。`)) return
@@ -314,14 +306,6 @@ export function RemoteDevelopmentPanel({ api }: PanelProps) {
                 {host.phase === 'connected'
                   ? (
                     <>
-                      <button
-                        type="button"
-                        className="dshr-button dshr-button-primary"
-                        disabled={busy !== null}
-                        onClick={() => { void openWeb(host.id) }}
-                      >
-                        开始使用
-                      </button>
                       <button
                         type="button"
                         className="dshr-button"

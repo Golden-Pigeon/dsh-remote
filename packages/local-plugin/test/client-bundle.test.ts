@@ -43,6 +43,7 @@ describe('client bundle artifact', () => {
     let registration: { name: string; id: string; label: string; order: number; inject: () => { api: unknown } } | undefined
     let component: unknown
     const ctx = {
+      inject: (_keys: string[], callback: (ctx: unknown) => void) => callback(ctx),
       slots: {
         inject: (_key: string, callback: () => () => void) => callback(),
         register: (options: typeof registration, entry: unknown) => {
