@@ -1,3 +1,9 @@
+# The remote host is driven by the local native UI; the remote browser
+# Remote-Event carrier would otherwise claim approval waterfalls before the
+# approval bridge. Keep the host services, disable that client carrier.
+- id: api-remotes
+  disabled: true
+
 # dsh-remote-agent is a host-only bundle. The row is inserted above the
 # dsh-base layer and is addressable by id from a later profile patch layer.
 - insert:

@@ -7,10 +7,13 @@
  * @module dsh-remote-agent/service
  */
 
+import { EventEmitter } from 'node:events'
 import { hostname } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
+import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
+import type { ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types'
 import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
@@ -18,6 +21,7 @@ import {
   PROTOCOL_VERSION,
   RemoteProtocolError,
   type AcceptedResult,
+  type RemoteApprovalRequest,
   type CreateSessionRequest,
   type CreateSessionResult,
   type CreateWorkspaceRequest,
@@ -62,6 +66,11 @@ const COLD_SCAN_PAGE = 500
 /** Safety ceiling while scanning a cold log without event-count metadata. */
 const COLD_SCAN_LIMIT = 100_000
 
+interface PendingApproval {
+  readonly request: RemoteApprovalRequest
+  resolve(outcome: ApprovalOutcome): void
+}
+
 /** Service returned by the plugin and consumed by the HTTP adapter. */
 export class RemoteAgentService {
   readonly ctx: Context
@@ -71,6 +80,9 @@ export class RemoteAgentService {
   readonly dshVersion: string
 
   #state: AgentState
+  readonly #approvalEvents = new EventEmitter()
+  readonly #pendingApprovals = new Map<string, PendingApproval>()
+  readonly #approvalScopes = new Map<string, () => void>()
 
   private constructor(ctx: Context, config: ResolvedConfig, state: AgentState, token: string, dshVersion: string) {
     this.ctx = ctx
@@ -90,6 +102,7 @@ export class RemoteAgentService {
       dshVersion,
     })
     const service = new RemoteAgentService(ctx, resolved, opened.state, opened.token, dshVersion)
+    service.#bindApprovals()
     await service.#bindListener()
     ctx.logger.info(
       'dsh-remote-agent: listening on %s (state: %s)',
@@ -137,6 +150,8 @@ export class RemoteAgentService {
         'session.create',
         'session.prompt',
         'session.cancel',
+        'approval.follow',
+        'approval.answer',
         'web.url',
       ],
       workspaceCount: this.ctx.workspaceRegistry.list().length,
@@ -254,6 +269,66 @@ export class RemoteAgentService {
       content: [{ type: 'text', text }],
     }, new AbortController().signal)
     return { accepted: true }
+  }
+
+  /** Pending approval questions, replayed when a follower connects. */
+  approvalRequests(): RemoteApprovalRequest[] {
+    return [...this.#pendingApprovals.values()].map(entry => entry.request)
+  }
+
+  /** Subscribe to new approval questions. */
+  onApprovalRequest(listener: (request: RemoteApprovalRequest) => void): () => void {
+    this.#approvalEvents.on('request', listener)
+    return () => { this.#approvalEvents.off('request', listener) }
+  }
+
+  /** Answer one pending approval. */
+  answerApproval(id: string, outcome: ApprovalOutcome): AcceptedResult {
+    const pending = this.#pendingApprovals.get(id)
+    if (pending === undefined) {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: `approval ${id} is not pending` })
+    }
+    pending.resolve(outcome)
+    return { accepted: true }
+  }
+
+  #bindApprovals(): void {
+    this.ctx.effect(
+      () => this.ctx.on('approval/request', async (request: ApprovalRequestEvent) => this.#askApproval(request)),
+      'dsh-remote-agent: approval bridge',
+    )
+  }
+
+  #askApproval(request: ApprovalRequestEvent): Promise<ApprovalOutcome> {
+    const id = randomUUID()
+    const projected: RemoteApprovalRequest = {
+      id,
+      sessionId: String(request.agent.id),
+      toolName: request.toolName,
+      ...request.callId === undefined ? {} : { callId: String(request.callId) },
+      ...request.reason === undefined ? {} : { reason: request.reason },
+      ...request.displayReason === undefined ? {} : { displayReason: request.displayReason },
+    }
+    return new Promise<ApprovalOutcome>(resolve => {
+      let settled = false
+      const finish = (outcome: ApprovalOutcome): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        request.signal?.removeEventListener('abort', onAbort)
+        this.#pendingApprovals.delete(id)
+        resolve(outcome)
+      }
+      const onAbort = (): void => { finish('cancelled') }
+      const timer = setTimeout(() => { finish('unavailable') }, 10 * 60_000)
+      if (request.signal?.aborted === true) {
+        finish('cancelled')
+        return
+      }
+      request.signal?.addEventListener('abort', onAbort, { once: true })
+      this.#pendingApprovals.set(id, { request: projected, resolve: finish })
+      this.#approvalEvents.emit('request', projected)
+    })
   }
 
   /** Cancel the active turn of one remote session. */

@@ -17,6 +17,8 @@ export const AGENT_ROUTES = {
   workspaces: `${AGENT_API_PREFIX}/workspaces`,
   sessions: `${AGENT_API_PREFIX}/sessions`,
   webUrl: `${AGENT_API_PREFIX}/web-url`,
+  approvalEvents: `${AGENT_API_PREFIX}/approvals/events`,
+  approvalAnswer: `${AGENT_API_PREFIX}/approvals/answer`,
 } as const
 
 /** One decoded agent route. */
@@ -31,6 +33,8 @@ export type AgentRoute =
   | { readonly kind: 'session-cancel'; readonly sessionId: string }
   | { readonly kind: 'workspace-sessions'; readonly workspaceId: string }
   | { readonly kind: 'web-url' }
+  | { readonly kind: 'approval-events' }
+  | { readonly kind: 'approval-answer' }
 
 /** Path of the session list for one workspace. */
 export function workspaceSessionsPath(workspaceId: string): string {
@@ -87,6 +91,10 @@ export function matchAgentRoute(pathname: string): AgentRoute | undefined {
       return { kind: 'sessions' }
     case AGENT_ROUTES.webUrl:
       return { kind: 'web-url' }
+    case AGENT_ROUTES.approvalEvents:
+      return { kind: 'approval-events' }
+    case AGENT_ROUTES.approvalAnswer:
+      return { kind: 'approval-answer' }
   }
 
   if (pathname.startsWith(SESSION_PREFIX)) {

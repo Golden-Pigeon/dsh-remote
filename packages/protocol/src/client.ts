@@ -22,6 +22,8 @@ import {
 import { parseSseStream } from './sse.ts'
 import type {
   AcceptedResult,
+  ApprovalOutcome,
+  RemoteApprovalFrame,
   CreateSessionRequest,
   CreateSessionResult,
   CreateWorkspaceRequest,
@@ -39,6 +41,7 @@ import type {
 } from './types.ts'
 import {
   isAcceptedResult,
+  isRemoteApprovalFrame,
   isApiFailure,
   isCreateSessionResult,
   isHostInfoValue,
@@ -183,6 +186,36 @@ export class RemoteAgentClient {
     await this.#request(sessionCancelPath(sessionId), isAcceptedResult, {
       method: 'POST',
       body: {},
+    })
+  }
+
+  /** Follow the remote approval question stream. */
+  async *followApprovals(signal: AbortSignal): AsyncGenerator<RemoteApprovalFrame> {
+    const response = await this.#openStream(AGENT_ROUTES.approvalEvents, signal)
+    const body = response.body
+    if (body === null) {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent returned an empty approval stream' })
+    }
+    for await (const message of parseSseStream(body)) {
+      if (message.data === '') continue
+      let frame: unknown
+      try {
+        frame = JSON.parse(message.data)
+      } catch (error) {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent sent malformed approval JSON', cause: error })
+      }
+      if (!isRemoteApprovalFrame(frame)) {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent sent an unknown approval frame' })
+      }
+      yield frame
+    }
+  }
+
+  /** Answer one pending remote approval. */
+  answerApproval(id: string, outcome: ApprovalOutcome): Promise<AcceptedResult> {
+    return this.#request(AGENT_ROUTES.approvalAnswer, isAcceptedResult, {
+      method: 'POST',
+      body: { id, outcome },
     })
   }
 

@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { ApprovalOutcome } from '@dsh-remote/protocol'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   AGENT_API_PREFIX,
@@ -120,6 +121,9 @@ async function handleAgentRequest(
         case 'session-cancel':
           sendJson(res, service.cancelSession(route.sessionId))
           return
+        case 'approval-answer':
+          sendJson(res, asApprovalAnswer(body, service))
+          return
         default:
           throw new RemoteProtocolError({
             code: 'request/invalid',
@@ -136,6 +140,10 @@ async function handleAgentRequest(
       })
     }
 
+    if (route.kind === 'approval-events') {
+      streamApprovals(service, req, res)
+      return
+    }
     const hostId = parseHostId(req)
     switch (route.kind) {
       case 'health':
@@ -174,6 +182,7 @@ async function handleAgentRequest(
         return
       case 'session-prompt':
       case 'session-cancel':
+      case 'approval-answer':
         throw new RemoteProtocolError({ code: 'request/invalid', message: 'POST is required', httpStatus: 405 })
     }
   } catch (error) {
@@ -293,6 +302,21 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+function asApprovalAnswer(value: unknown, service: RemoteAgentService): { accepted: true } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  if (typeof body.id !== 'string' || body.id === '') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'id must be a non-empty string' })
+  }
+  const outcomes: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+  if (typeof body.outcome !== 'string' || !outcomes.includes(body.outcome as ApprovalOutcome)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'outcome is invalid' })
+  }
+  return service.answerApproval(body.id, body.outcome as ApprovalOutcome)
+}
+
 function asWorkspaceRequest(value: unknown): { path: string; title?: string } {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
@@ -347,6 +371,32 @@ function asPromptRequest(value: unknown): { text: string; mode?: 'queue' | 'stee
     ...typeof body.model === 'string' ? { model: body.model } : {},
     ...typeof body.reasoningEffort === 'string' ? { reasoningEffort: body.reasoningEffort } : {},
   }
+}
+
+function streamApprovals(service: RemoteAgentService, req: IncomingMessage, res: ServerResponse): void {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  const write = (event: string, data: unknown): void => {
+    if (res.writableEnded) return
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+  write('ready', { type: 'ready' })
+  for (const request of service.approvalRequests()) write('request', { type: 'request', request })
+  const off = service.onApprovalRequest(request => {
+    write('request', { type: 'request', request })
+  })
+  const heartbeat = setInterval(() => { write('heartbeat', {}) }, 15_000)
+  const close = (): void => {
+    clearInterval(heartbeat)
+    off()
+    if (!res.writableEnded) res.end()
+  }
+  req.on('close', close)
+  req.on('error', close)
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

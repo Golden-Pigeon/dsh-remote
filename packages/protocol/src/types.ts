@@ -24,6 +24,8 @@ export type AgentCapability =
   | 'session.create'
   | 'session.prompt'
   | 'session.cancel'
+  | 'approval.follow'
+  | 'approval.answer'
   | 'web.url'
 
 /** Identity and environment of the remote DSH host serving the agent API. */
@@ -50,6 +52,30 @@ export interface HostInfo {
   readonly capabilities: readonly AgentCapability[]
   /** Number of registered remote workspaces at the instant of the call. */
   readonly workspaceCount: number
+}
+
+/** Closed approval outcomes understood by the remote and local approval seams. */
+export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+
+/** One approval question raised by a remote tool call. */
+export interface RemoteApprovalRequest {
+  readonly id: string
+  readonly sessionId: string
+  readonly toolName: string
+  readonly callId?: string
+  readonly reason?: string
+  readonly displayReason?: Readonly<Record<string, string>>
+}
+
+/** Approval stream frame: ready, then one request per pending decision. */
+export type RemoteApprovalFrame =
+  | { readonly type: 'ready' }
+  | { readonly type: 'request'; readonly request: RemoteApprovalRequest }
+
+/** One approval answer submitted to the remote agent. */
+export interface RemoteApprovalAnswer {
+  readonly id: string
+  readonly outcome: ApprovalOutcome
 }
 
 /** One workspace projected from `ctx.workspaceRegistry`. */

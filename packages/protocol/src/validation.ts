@@ -18,6 +18,8 @@ import type {
   HostInfo,
   ListSessionsResult,
   ListWorkspacesResult,
+  RemoteApprovalFrame,
+  RemoteApprovalRequest,
   RemoteFailure,
   RemoteSessionEvent,
   RemoteSessionSummary,
@@ -58,6 +60,23 @@ function isHostInfo(value: unknown): value is HostInfo {
     && Array.isArray(value.capabilities)
     && value.capabilities.every(isString)
     && typeof value.workspaceCount === 'number'
+}
+
+function isApprovalRequest(value: unknown): value is RemoteApprovalRequest {
+  if (!isRecord(value)) return false
+  return isString(value.id)
+    && isString(value.sessionId)
+    && isString(value.toolName)
+    && (value.callId === undefined || isString(value.callId))
+    && (value.reason === undefined || isString(value.reason))
+    && (value.displayReason === undefined
+      || (isRecord(value.displayReason) && Object.values(value.displayReason).every(isString)))
+}
+
+export function isRemoteApprovalFrame(value: unknown): value is RemoteApprovalFrame {
+  if (!isRecord(value)) return false
+  if (value.type === 'ready') return true
+  return value.type === 'request' && isApprovalRequest(value.request)
 }
 
 export function isRemoteWorkspace(value: unknown): value is RemoteWorkspace {

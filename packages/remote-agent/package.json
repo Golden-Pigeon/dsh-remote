@@ -34,7 +34,8 @@
     }
   },
   "devDependencies": {
-    "@dsh-remote/protocol": "workspace:*"
+    "@dsh-remote/protocol": "workspace:*",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
@@ -43,7 +44,8 @@
     "@deepseek-ai/dsh-session-persistence": ">=0.2.1-rc.1 <0.3.0-0",
     "@deepseek-ai/dsh-workspace": ">=0.2.1-rc.1 <0.3.0-0",
     "@deepseek-ai/schemastery": ">=3.18.0 <4.0.0",
-    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-rc.1 <0.3.0-0"
+    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-user-approval": ">=0.2.1-rc.1 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -65,6 +67,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-api-session-controller": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-user-approval": {
       "optional": true
     }
   },

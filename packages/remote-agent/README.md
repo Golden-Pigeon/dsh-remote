@@ -11,8 +11,9 @@ A remote DSH plugin that exposes the remote host's workspaces and sessions to th
 - Creates workspaces, creates sessions, submits text prompts with optional model selection, and cancels active turns.
 - Writes its live port into the state file so the local plugin can discover it over SSH.
 
-It does not expose arbitrary shell execution, file contents, terminal input, or approvals. The full
-remote UI is available separately through the same tunnel.
+It does not expose arbitrary shell execution, file contents, terminal input, or terminal control.
+Approval questions are forwarded through the agent approval stream so the native local UI can answer
+them. The remote browser UI is intentionally not exposed by default.
 
 ## Install
 
@@ -29,8 +30,8 @@ dsh web --host 127.0.0.1 --port 0 --no-open
 
 Read and write routes are documented in [`docs/protocol.md`](../../docs/protocol.md):
 
-- `GET /health`, `/host`, `/workspaces`, `/sessions`, `/sessions/:id`, `/sessions/:id/events`, `/web-url`
-- `POST /workspaces`, `/sessions`, `/sessions/:id/prompt`, `/sessions/:id/cancel`
+- `GET /health`, `/host`, `/workspaces`, `/sessions`, `/sessions/:id`, `/sessions/:id/events`, `/web-url`, `/approvals/events`
+- `POST /workspaces`, `/sessions`, `/sessions/:id/prompt`, `/sessions/:id/cancel`, `/approvals/answer`
 
 ## Configuration
 
