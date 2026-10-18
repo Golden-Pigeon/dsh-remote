@@ -1,3 +1,9 @@
+> **Historical note:** this document describes an early two-repository plan. The proposed
+> `dsh-remote-client` patch/fork repository was built as a prototype and has been removed; it was
+> never part of the runtime or user installation. The shipped implementation is the single
+> `dsh-remote` repository: `local-plugin` + `terminal-controller` + `remote-agent` + `installer`.
+> References to `dsh-remote-client` below are retained only as design history.
+
 > **Implementation note:** this is an early design note. The implemented plugin now mirrors remote
 > sessions into the native conversation UI, bridges approvals/files/terminal traffic, and defaults to a
 > direct model key in the remote service environment (`credentialProxy: true` keeps it local). See the

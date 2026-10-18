@@ -259,7 +259,7 @@ A cursor is the next expected `seq`. `EventCursor` (in `@dsh-remote/protocol`) p
 - `duplicate` when `seq < cursor` (ignore);
 - `gap` when `seq > cursor` (snapshot repair required).
 
-The same rules are implemented by `HostScopedSessionStore` in `dsh-remote-client`.
+The local mirror applies the same cursor rules when it replays remote events.
 
 ## Web URL
 
