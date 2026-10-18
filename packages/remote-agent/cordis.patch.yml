@@ -1,0 +1,17 @@
+# dsh-remote-agent is a host-only bundle. The row is inserted above the
+# dsh-base layer and is addressable by id from a later profile patch layer.
+- insert:
+    - id: dsh-remote-agent
+      name: dsh-remote-agent
+      config:
+        # Empty means $DSH_HOME/remote-agent/agent.json.
+        stateFile: ''
+        # Empty means "reuse the state file's token, or mint one on first run".
+        token: ''
+        # The agent is reachable through an SSH tunnel only. Keep this true
+        # unless a trusted reverse proxy terminates authentication in front of
+        # this DSH host.
+        loopbackOnly: true
+        defaultSnapshotEvents: 500
+        maxSnapshotEvents: 2000
+        heartbeatMs: 15000
