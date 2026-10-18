@@ -1,0 +1,102 @@
+/**
+ * Route table and path builder/parser shared by the agent and client.
+ *
+ * Keeping paths in one module makes a route rename a compile-time change on
+ * both sides and prevents the client from hard-coding a path the agent does
+ * not serve.
+ *
+ * @module @dsh-remote/protocol/routes
+ */
+
+import { AGENT_API_PREFIX } from './version.ts'
+
+/** Fixed agent routes. */
+export const AGENT_ROUTES = {
+  health: `${AGENT_API_PREFIX}/health`,
+  host: `${AGENT_API_PREFIX}/host`,
+  workspaces: `${AGENT_API_PREFIX}/workspaces`,
+  sessions: `${AGENT_API_PREFIX}/sessions`,
+  webUrl: `${AGENT_API_PREFIX}/web-url`,
+} as const
+
+/** One decoded agent route. */
+export type AgentRoute =
+  | { readonly kind: 'health' }
+  | { readonly kind: 'host' }
+  | { readonly kind: 'workspaces' }
+  | { readonly kind: 'sessions' }
+  | { readonly kind: 'session'; readonly sessionId: string }
+  | { readonly kind: 'session-events'; readonly sessionId: string }
+  | { readonly kind: 'workspace-sessions'; readonly workspaceId: string }
+  | { readonly kind: 'web-url' }
+
+/** Path of the session list for one workspace. */
+export function workspaceSessionsPath(workspaceId: string): string {
+  return `${AGENT_API_PREFIX}/workspaces/${encodeURIComponent(workspaceId)}/sessions`
+}
+
+/** Path of one session snapshot. */
+export function sessionPath(sessionId: string): string {
+  return `${AGENT_API_PREFIX}/sessions/${encodeURIComponent(sessionId)}`
+}
+
+/** Path of one session's live event stream. */
+export function sessionEventsPath(sessionId: string, cursor?: number): string {
+  const base = `${sessionPath(sessionId)}/events`
+  return cursor === undefined ? base : `${base}?cursor=${encodeURIComponent(String(cursor))}`
+}
+
+/** Encode a path segment after validating it is not empty. */
+function segment(value: string): string | undefined {
+  if (value === '') return undefined
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return undefined
+  }
+}
+
+const SESSION_PREFIX = `${AGENT_API_PREFIX}/sessions/`
+const WORKSPACE_PREFIX = `${AGENT_API_PREFIX}/workspaces/`
+
+/**
+ * Match a pathname (without query string) against the agent route table.
+ * Returns undefined for unknown paths so the caller can answer 404.
+ */
+export function matchAgentRoute(pathname: string): AgentRoute | undefined {
+  switch (pathname) {
+    case AGENT_ROUTES.health:
+      return { kind: 'health' }
+    case AGENT_ROUTES.host:
+      return { kind: 'host' }
+    case AGENT_ROUTES.workspaces:
+      return { kind: 'workspaces' }
+    case AGENT_ROUTES.sessions:
+      return { kind: 'sessions' }
+    case AGENT_ROUTES.webUrl:
+      return { kind: 'web-url' }
+  }
+
+  if (pathname.startsWith(SESSION_PREFIX)) {
+    const rest = pathname.slice(SESSION_PREFIX.length)
+    const parts = rest.split('/')
+    if (parts.length === 1) {
+      const sessionId = segment(parts[0] ?? '')
+      return sessionId === undefined ? undefined : { kind: 'session', sessionId }
+    }
+    if (parts.length === 2 && parts[1] === 'events') {
+      const sessionId = segment(parts[0] ?? '')
+      return sessionId === undefined ? undefined : { kind: 'session-events', sessionId }
+    }
+    return undefined
+  }
+
+  if (pathname.startsWith(WORKSPACE_PREFIX) && pathname.endsWith('/sessions')) {
+    const rest = pathname.slice(WORKSPACE_PREFIX.length, -'/sessions'.length)
+    if (rest === '' || rest.includes('/')) return undefined
+    const workspaceId = segment(rest)
+    return workspaceId === undefined ? undefined : { kind: 'workspace-sessions', workspaceId }
+  }
+
+  return undefined
+}
