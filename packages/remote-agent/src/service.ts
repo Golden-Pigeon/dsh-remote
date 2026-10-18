@@ -9,7 +9,7 @@
 
 import { EventEmitter } from 'node:events'
 import { hostname } from 'node:os'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
@@ -157,6 +157,9 @@ export class RemoteAgentService {
       workspaceCount: this.ctx.workspaceRegistry.list().length,
       modelBaseUrl: process.env.DEEPSEEK_BASE_URL ?? null,
       modelKeyConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
+      modelKeyFingerprint: process.env.DEEPSEEK_API_KEY === undefined || process.env.DEEPSEEK_API_KEY === ''
+        ? null
+        : createHash('sha256').update(process.env.DEEPSEEK_API_KEY).digest('hex'),
     }
   }
 

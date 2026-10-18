@@ -183,6 +183,7 @@ export class RemoteMirrorService {
   #registrations = new Map<string, () => void>()
   #approvalStreams = new Map<string, AbortController>()
   #syncing = false
+  #saveQueue: Promise<void> = Promise.resolve()
   #timer: NodeJS.Timeout | undefined
   #disposed = false
 
@@ -713,11 +714,16 @@ export class RemoteMirrorService {
   }
 
   async #save(): Promise<void> {
-    const path = join(this.#config.stateDir, 'mirrors.json')
-    const temp = `${path}.${process.pid}.tmp`
-    await mkdir(this.#config.stateDir, { recursive: true })
-    await writeFile(temp, `${JSON.stringify(this.#state, null, 2)}\n`, { mode: 0o600 })
-    await rename(temp, path)
+    const snapshot = `${JSON.stringify(this.#state, null, 2)}\n`
+    const task = this.#saveQueue.then(async () => {
+      await mkdir(this.#config.stateDir, { recursive: true })
+      const path = join(this.#config.stateDir, 'mirrors.json')
+      const temp = `${path}.${randomUUID()}.tmp`
+      await writeFile(temp, snapshot, { mode: 0o600 })
+      await rename(temp, path)
+    })
+    this.#saveQueue = task.then(() => undefined, () => undefined)
+    return task
   }
 }
 

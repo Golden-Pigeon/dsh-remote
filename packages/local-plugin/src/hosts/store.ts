@@ -41,6 +41,8 @@ export function isHostRecord(value: unknown): value is HostRecord {
     && (record.sshPort === null || (typeof record.sshPort === 'number' && Number.isInteger(record.sshPort)))
     && (record.remoteAgentPort === null || (typeof record.remoteAgentPort === 'number' && Number.isInteger(record.remoteAgentPort)))
     && (record.token === null || (typeof record.token === 'string' && record.token.length >= 16))
+    && (record.proxyToken === undefined || record.proxyToken === null
+      || (typeof record.proxyToken === 'string' && record.proxyToken.length >= 16))
     && typeof record.autoConnect === 'boolean'
     && typeof record.createdAt === 'string'
     && typeof record.updatedAt === 'string'

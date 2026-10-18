@@ -62,6 +62,7 @@ function isHostInfo(value: unknown): value is HostInfo {
     && typeof value.workspaceCount === 'number'
     && (value.modelBaseUrl === undefined || value.modelBaseUrl === null || isString(value.modelBaseUrl))
     && (value.modelKeyConfigured === undefined || typeof value.modelKeyConfigured === 'boolean')
+    && (value.modelKeyFingerprint === undefined || value.modelKeyFingerprint === null || isString(value.modelKeyFingerprint))
 }
 
 function isApprovalRequest(value: unknown): value is RemoteApprovalRequest {

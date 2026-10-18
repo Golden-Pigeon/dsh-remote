@@ -44,6 +44,7 @@ describe('client bundle artifact', () => {
     let component: unknown
     const ctx = {
       effect: (callback: () => unknown) => callback(),
+      on: () => () => undefined,
       locale: {
         register: () => () => undefined,
         bind: () => (key: string) => key,

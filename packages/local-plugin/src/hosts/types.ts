@@ -32,6 +32,8 @@ export interface HostRecord {
   readonly remoteAgentPort: number | null
   /** Bearer token issued by the remote agent. Secret. */
   readonly token: string | null
+  /** Per-host placeholder accepted by the local credential proxy. Secret. */
+  readonly proxyToken?: string | null
   readonly autoConnect: boolean
   readonly createdAt: string
   readonly updatedAt: string

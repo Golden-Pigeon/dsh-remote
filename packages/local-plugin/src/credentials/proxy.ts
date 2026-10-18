@@ -1,10 +1,10 @@
 /**
  * Local model credential proxy.
  *
- * The remote DSH process is configured with a placeholder key and a base URL
- * that points at a reverse SSH tunnel. Requests arrive here over the tunnel,
- * the proxy injects the real local API key, and forwards to the provider.
- * The key never leaves the local machine.
+ * The remote DSH process is configured with a per-host proxy token and a base
+ * URL that points at a reverse SSH tunnel. Requests arrive here over the
+ * tunnel after token validation; the proxy then injects the real local API
+ * key and forwards to the provider. The key never leaves the local machine.
  *
  * The proxy binds loopback only. The reverse tunnel exposes it only on the
  * remote host's loopback interface while the SSH connection is up.
@@ -27,6 +27,8 @@ export interface CredentialProxyOptions {
   readonly host?: string
   /** Per-request upstream idle timeout. */
   readonly timeoutMs?: number
+  /** Whether a caller-supplied placeholder is one of this profile's proxy tokens. */
+  readonly isTokenValid: (token: string) => boolean
 }
 
 /** Started proxy. */
@@ -41,6 +43,7 @@ export class ModelCredentialProxy {
   readonly #upstream: URL
   readonly #host: string
   readonly #timeoutMs: number
+  readonly #isTokenValid: (token: string) => boolean
   #server: Server | undefined
 
   constructor(options: CredentialProxyOptions) {
@@ -52,6 +55,7 @@ export class ModelCredentialProxy {
     }
     this.#host = options.host ?? '127.0.0.1'
     this.#timeoutMs = options.timeoutMs ?? 300_000
+    this.#isTokenValid = options.isTokenValid
   }
 
   /** Start on an ephemeral loopback port. */
@@ -79,6 +83,17 @@ export class ModelCredentialProxy {
   }
 
   #forward(req: IncomingMessage, res: ServerResponse): void {
+    const presented = presentedToken(req)
+    let authorized = false
+    try {
+      authorized = presented !== undefined && this.#isTokenValid(presented)
+    } catch {
+      authorized = false
+    }
+    if (!authorized) {
+      writeError(res, 401, 'credential proxy authorization required')
+      return
+    }
     let incoming: URL
     try {
       incoming = new URL(req.url ?? '/', 'http://credential-proxy.invalid')
@@ -127,6 +142,17 @@ export class ModelCredentialProxy {
     req.on('aborted', () => upstream.destroy())
     req.pipe(upstream)
   }
+}
+
+function presentedToken(req: IncomingMessage): string | undefined {
+  const authorization = req.headers.authorization
+  if (typeof authorization === 'string') {
+    const match = /^Bearer[ \t]+(.+)$/iu.exec(authorization.trim())
+    if (match?.[1] !== undefined) return match[1].trim()
+  }
+  const apiKey = req.headers['x-api-key']
+  if (typeof apiKey === 'string' && apiKey.trim() !== '') return apiKey.trim()
+  return undefined
 }
 
 function writeError(res: ServerResponse, status: number, message: string): void {

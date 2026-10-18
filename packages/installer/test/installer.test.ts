@@ -104,6 +104,8 @@ describe('bootstrap rendering', () => {
     const script = fromOptions(options, '/tmp/agent.tgz')
     assert.match(script, /set -euo pipefail/)
     assert.match(script, /AUTO_INSTALL_NODE=1/)
+    assert.match(script, /umask 077/)
+    assert.match(script, /chmod 600 "\$UNIT_DIR\/dsh-remote-agent\.service"/)
     assert.match(script, /NODE_VERSION='22\.19\.0'/)
     assert.match(script, /install_node\(\)/)
     assert.match(script, /SHASUMS256\.txt/)

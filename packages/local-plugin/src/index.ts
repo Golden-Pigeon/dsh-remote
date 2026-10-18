@@ -17,7 +17,7 @@ import { installRemoteWorkspaceFiles } from './remote/files.ts'
 import { RemoteTerminals } from './remote/terminal.ts'
 import { registerTerminalApi } from './host-api/terminal.ts'
 import { RemoteHostsService } from './service.ts'
-import { registerRemoteTools } from './tools.ts'
+import { installRemoteToolGuards, registerRemoteTools } from './tools.ts'
 
 export const name = 'dsh-remote-local'
 
@@ -60,6 +60,7 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
     'dsh-remote-local: authenticated host API',
   )
 
+  installRemoteToolGuards(ctx)
   ctx.inject(['tools'], child => {
     registerRemoteTools(child, service)
   })

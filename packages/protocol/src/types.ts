@@ -56,6 +56,8 @@ export interface HostInfo {
   readonly modelBaseUrl?: string | null
   /** Whether a model API key is present in the remote process environment. */
   readonly modelKeyConfigured?: boolean
+  /** SHA-256 of the configured model key, used only to detect drift; never the key itself. */
+  readonly modelKeyFingerprint?: string | null
 }
 
 /** Closed approval outcomes understood by the remote and local approval seams. */

@@ -24,6 +24,28 @@ function toJsonObject(value: unknown): JsonObject {
   return JSON.parse(JSON.stringify(value)) as JsonObject
 }
 
+/** Host-writing tools that may connect over SSH or provision a remote runtime. */
+const HOST_WRITE_TOOLS = new Set(['remote_host_add', 'remote_host_connect', 'remote_host_provision'])
+
+/**
+ * Require an explicit approval before model-facing host writes. These tools can
+ * start SSH connections and, in direct-key mode, copy the local model key into
+ * the remote service environment.
+ */
+export function installRemoteToolGuards(ctx: Context): void {
+  ctx.effect(() => ctx.on('tools/pre-execute', (exec, next) => {
+    if (!HOST_WRITE_TOOLS.has(exec.name)) return next()
+    return Promise.resolve({
+      kind: 'ask' as const,
+      reason: `remote host write: ${exec.name}`,
+      displayReason: {
+        en: 'Allow this remote-host operation? It may open an SSH connection and copy the local model credential to the remote host.',
+        zh: '允许这次远程主机操作吗？它可能通过 SSH 连接，并把本地模型凭据复制到远端主机。',
+      },
+    })
+  }), 'dsh-remote-local: host-write tool approvals')
+}
+
 /** Register the remote-development tool family. */
 export function registerRemoteTools(ctx: Context, service: RemoteHostsService): void {
   ctx.tools.register(defineTool({
@@ -59,7 +81,7 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
       label: { type: 'string', description: 'Display label; defaults to the hostname.' },
       token: { type: 'string', description: 'Optional remote agent bearer token. Prefer discovery.' },
       remoteAgentPort: { type: 'number', description: 'Optional remote agent port when discovery is unavailable.' },
-      autoConnect: { type: 'boolean', description: 'Connect immediately (default true).' },
+      autoConnect: { type: 'boolean', description: 'Connect immediately. Agent tool calls default to false and require approval.' },
     },
     output: {
       schema: {
@@ -72,7 +94,7 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
       render: renderJson,
     },
     async execute(args) {
-      return { host: toJsonObject(await service.add(args)) }
+      return { host: toJsonObject(await service.add({ ...args, autoConnect: args.autoConnect ?? false })) }
     },
   }))
 

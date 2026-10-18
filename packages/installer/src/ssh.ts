@@ -179,6 +179,7 @@ export function runRemoteScript(
     })
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
+    let bytes = 0
     let settled = false
     const timer = setTimeout(() => {
       if (settled) return
@@ -187,13 +188,22 @@ export function runRemoteScript(
     }, options.timeoutMs)
     timer.unref?.()
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout.push(chunk)
+    const append = (target: Buffer[], chunk: Buffer): void => {
+      bytes += chunk.length
+      if (bytes > 4 * 1024 * 1024) {
+        child.kill('SIGKILL')
+        return
+      }
+      target.push(chunk)
       if (options.verbose) process.stderr.write(chunk)
-    })
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr.push(chunk)
-      if (options.verbose) process.stderr.write(chunk)
+    }
+    child.stdout.on('data', (chunk: Buffer) => append(stdout, chunk))
+    child.stderr.on('data', (chunk: Buffer) => append(stderr, chunk))
+    child.stdin.on('error', error => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(error)
     })
     child.once('error', error => {
       if (settled) return

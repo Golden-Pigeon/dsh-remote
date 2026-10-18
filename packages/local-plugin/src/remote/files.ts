@@ -41,19 +41,23 @@ try:
         st = os.stat(path)
         if not os.path.isfile(path):
             raise IsADirectoryError(path)
-        data = open(path, 'rb').read()
-        text = data.decode('utf-8')
+        offset = max(1, int(req.get('offset', 1)))
+        limit = max(1, min(int(req.get('limit', 200)), 2000))
+        page = []
+        with open(path, 'r', encoding='utf-8') as handle:
+            for index, line in enumerate(handle, 1):
+                if index < offset:
+                    continue
+                page.append(line.rstrip('\n'))
+                if len(page) > limit:
+                    break
+        eof = len(page) <= limit
+        page = page[:limit]
+        text = '\n'.join(page)
         if '\x00' in text:
             raise ValueError('NUL')
-        lines = text.split('\n')
-        if text.endswith('\n'):
-            lines = lines[:-1]
-        offset = max(1, int(req.get('offset', 1)))
-        limit = max(1, int(req.get('limit', 200)))
-        page = lines[offset - 1: offset - 1 + limit]
-        eof = offset - 1 >= len(lines) or offset - 1 + len(page) >= len(lines)
         out = stat_payload(st)
-        out.update({'offset': offset, 'lines': len(page), 'text': '\n'.join(page), 'eof': eof})
+        out.update({'offset': offset, 'lines': len(page), 'text': text, 'eof': eof})
         print(json.dumps(out))
     elif action == 'list':
         entries = []
@@ -73,12 +77,13 @@ try:
         entries.sort(key=lambda item: item['name'])
         print(json.dumps({'path': req.get('relative', ''), 'entries': entries, 'truncated': len(entries) > 2000}))
     elif action == 'bytes':
-        data = open(path, 'rb').read()
-        offset = max(0, int(req.get('offset', 0)))
-        length = int(req.get('length', len(data)))
-        window = data[offset: offset + length]
         st = os.stat(path)
-        print(json.dumps({**stat_payload(st), 'offset': offset, 'data': base64.b64encode(window).decode('ascii'), 'eof': offset + len(window) >= len(data)}))
+        offset = max(0, int(req.get('offset', 0)))
+        length = max(0, min(int(req.get('length', 5_000_000)), 5_000_000))
+        with open(path, 'rb') as handle:
+            handle.seek(offset)
+            window = handle.read(length)
+        print(json.dumps({**stat_payload(st), 'offset': offset, 'data': base64.b64encode(window).decode('ascii'), 'eof': offset + len(window) >= st.st_size}))
     else:
         raise ValueError('unknown action')
 except FileNotFoundError:

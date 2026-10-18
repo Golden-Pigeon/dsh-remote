@@ -9,6 +9,7 @@
  * @module dsh-remote-local/service
  */
 
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   PROTOCOL_VERSION,
@@ -45,6 +46,10 @@ import { RemoteProvisioner } from './remote/provisioner.ts'
 import { discoverAgent } from './ssh/probe.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
 import { Tunnel } from './ssh/tunnel.ts'
+
+function fingerprintKey(value: string): string {
+  return createHash('sha256').update(value).digest('hex')
+}
 
 /** Snapshot returned to the Settings page. */
 export interface HostsState {
@@ -264,6 +269,7 @@ export class RemoteHostsService {
     this.#clearReconnect(id)
     await this.#stopTransport(id)
     const proxy = await this.#ensureModelProxy()
+    const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
     const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
     this.#setRuntime(id, {
       ...idleRuntime(),
@@ -274,7 +280,7 @@ export class RemoteHostsService {
     })
     try {
       await this.#provisioner.ensureInstalled(target, {
-        ...this.#modelEnvironment(proxy, direct),
+        ...this.#modelEnvironment(proxy, proxyToken, direct),
         onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
       })
     } catch (error) {
@@ -445,6 +451,7 @@ export class RemoteHostsService {
 
     const target = parseSshTarget(record.sshTarget)
     const proxy = await this.#ensureModelProxy()
+    const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
     const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
     this.#setRuntime(id, {
       ...this.#runtimeFor(id),
@@ -475,7 +482,7 @@ export class RemoteHostsService {
         })
         try {
           await this.#provisioner.ensureInstalled(target, {
-            ...this.#modelEnvironment(proxy, direct),
+            ...this.#modelEnvironment(proxy, proxyToken, direct),
             onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
           })
           const discovery = await this.#discover(target)
@@ -534,7 +541,7 @@ export class RemoteHostsService {
         hostId: id,
       })
       const health = await client.health()
-      if (await this.#reconcileModelEnvironment(id, target, health, proxy, direct, tunnel)) {
+      if (await this.#reconcileModelEnvironment(id, target, health, proxy, proxyToken, direct, tunnel)) {
         return this.#doConnect(id)
       }
       this.#tunnels.set(id, tunnel)
@@ -554,8 +561,9 @@ export class RemoteHostsService {
   async #reconcileModelEnvironment(
     id: string,
     target: ParsedSshTarget,
-    health: { readonly modelBaseUrl?: string | null; readonly modelKeyConfigured?: boolean },
+    health: { readonly modelBaseUrl?: string | null; readonly modelKeyConfigured?: boolean; readonly modelKeyFingerprint?: string | null },
     proxy: CredentialProxyAddress | undefined,
+    proxyToken: string | undefined,
     direct: { readonly baseUrl: string; readonly apiKey: string } | undefined,
     tunnel: Tunnel,
   ): Promise<boolean> {
@@ -564,8 +572,10 @@ export class RemoteHostsService {
       : `http://127.0.0.1:${this.config.credentialProxyRemotePort}`
     if (desired === undefined) return false
     const current = health.modelBaseUrl?.replace(/\/+$/u, '') ?? null
+    const expectedKey = proxy === undefined ? direct?.apiKey : proxyToken
     const matches = current === desired.replace(/\/+$/u, '')
-      && (proxy === undefined ? health.modelKeyConfigured === true : health.modelKeyConfigured !== false)
+      && expectedKey !== undefined
+      && health.modelKeyFingerprint === fingerprintKey(expectedKey)
     if (matches) {
       this.#modelReconciled.delete(id)
       return false
@@ -589,7 +599,7 @@ export class RemoteHostsService {
     await tunnel.stop()
     try {
       await this.#provisioner.ensureInstalled(target, {
-        ...this.#modelEnvironment(proxy, direct),
+        ...this.#modelEnvironment(proxy, proxyToken, direct),
         onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
       })
     } catch (error) {
@@ -620,16 +630,37 @@ export class RemoteHostsService {
 
   #modelEnvironment(
     proxy: CredentialProxyAddress | undefined,
+    proxyToken: string | undefined,
     direct: { readonly baseUrl: string; readonly apiKey: string } | undefined,
   ): { modelBaseUrl?: string; modelApiKey?: string } {
     if (proxy !== undefined) {
+      if (proxyToken === undefined) throw new LocalError('internal', 'credential proxy token is unavailable')
       return {
         modelBaseUrl: `http://127.0.0.1:${this.config.credentialProxyRemotePort}`,
-        modelApiKey: 'dsh-remote-proxy',
+        modelApiKey: proxyToken,
       }
     }
     if (direct !== undefined) return { modelBaseUrl: direct.baseUrl, modelApiKey: direct.apiKey }
     return {}
+  }
+
+  async #ensureProxyToken(id: string): Promise<string> {
+    const record = this.#requireRecord(id)
+    if (typeof record.proxyToken === 'string' && record.proxyToken.length >= 16) return record.proxyToken
+    const token = randomBytes(32).toString('hex')
+    await this.#saveRecord(id, { proxyToken: token })
+    return token
+  }
+
+  #isProxyToken(token: string): boolean {
+    const presented = Buffer.from(token, 'utf8')
+    for (const record of this.#records.values()) {
+      const expected = record.proxyToken
+      if (typeof expected !== 'string') continue
+      const candidate = Buffer.from(expected, 'utf8')
+      if (candidate.length === presented.length && timingSafeEqual(candidate, presented)) return true
+    }
+    return false
   }
 
   async #ensureModelProxy(): Promise<CredentialProxyAddress | undefined> {
@@ -650,6 +681,7 @@ export class RemoteHostsService {
       const proxy = new ModelCredentialProxy({
         apiKey: key,
         upstreamBaseUrl: this.config.credentialProxyUpstream,
+        isTokenValid: token => this.#isProxyToken(token),
       })
       const address = await proxy.start()
       this.#proxy = proxy

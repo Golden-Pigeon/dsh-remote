@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-agent",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH remote agent: loopback HTTP/SSE companion that exposes host, workspace, session, and session-event data to dsh-remote-local-plugin.",
   "keywords": [
     "dsh",

@@ -288,8 +288,10 @@ function renderStartBlock(options: BootstrapOptions): string {
   const unit = renderSystemdUnit(options)
   return `UNIT_DIR="$HOME/.config/systemd/user"
 mkdir -p "$UNIT_DIR"
+umask 077
 cat > "$UNIT_DIR/dsh-remote-agent.service" <<DSH_REMOTE_UNIT
 ${unit}DSH_REMOTE_UNIT
+chmod 600 "$UNIT_DIR/dsh-remote-agent.service"
 
 if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
   if systemctl --user enable dsh-remote-agent.service >/dev/null 2>&1 \

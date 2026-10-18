@@ -24,9 +24,13 @@ interface TerminalRecord {
   readonly queue: TerminalFrame[]
   waiters: Array<(frame: IteratorResult<TerminalFrame>) => void>
   sequence: number
+  bufferedBytes: number
   title: string
   exited: boolean
 }
+
+/** Bound retained terminal output so a noisy remote process cannot exhaust local memory. */
+const MAX_BUFFERED_BYTES = 512 * 1024
 
 /** One host-side terminal manager. */
 export class RemoteTerminals {
@@ -52,7 +56,7 @@ export class RemoteTerminals {
     return {
       cwd: context?.remoteRoot ?? '/',
       maxInputBytes: 64 * 1024,
-      maxBufferedBytes: 512 * 1024,
+      maxBufferedBytes: MAX_BUFFERED_BYTES,
       maxCols: 240,
       maxRows: 80,
       scrollback: 4_000,
@@ -99,7 +103,7 @@ export class RemoteTerminals {
     }
     const runtime: TerminalRecord = {
       id, sessionId, info, child, queue: [], waiters: [],
-      sequence: 0, title: info.title, exited: false,
+      sequence: 0, bufferedBytes: 0, title: info.title, exited: false,
     }
     this.#terminals.set(id, runtime)
     child.stdout.setEncoding('utf8')
@@ -159,13 +163,23 @@ export class RemoteTerminals {
     }
     while (!signal.aborted) {
       if (runtime.queue.length > 0) {
-        yield runtime.queue.shift()!
+        const frame = runtime.queue.shift()!
+        runtime.bufferedBytes = Math.max(0, runtime.bufferedBytes - frameSize(frame))
+        yield frame
         continue
       }
       if (runtime.exited) return
       const next = await new Promise<IteratorResult<TerminalFrame>>(resolve => {
-        runtime.waiters.push(resolve)
-        signal.addEventListener('abort', () => resolve({ done: true, value: undefined }), { once: true })
+        let settled = false
+        const finish = (result: IteratorResult<TerminalFrame>): void => {
+          if (settled) return
+          settled = true
+          signal.removeEventListener('abort', onAbort)
+          resolve(result)
+        }
+        const onAbort = (): void => finish({ done: true, value: undefined })
+        runtime.waiters.push(finish)
+        signal.addEventListener('abort', onAbort, { once: true })
       })
       if (next.done) return
       yield next.value
@@ -193,13 +207,39 @@ export class RemoteTerminals {
 
   #push(runtime: TerminalRecord, frame: TerminalFrame): void {
     const waiter = runtime.waiters.shift()
-    if (waiter !== undefined) waiter({ done: false, value: frame })
-    else runtime.queue.push(frame)
+    if (waiter !== undefined) {
+      waiter({ done: false, value: frame })
+      return
+    }
+
+    let normalized = frame
+    let bytes = frameSize(frame)
+    if (bytes > MAX_BUFFERED_BYTES) {
+      if (frame.type === 'output') {
+        const marker = '\n[dsh-remote: terminal output truncated]\n'
+        const limit = Math.max(0, MAX_BUFFERED_BYTES - Buffer.byteLength(marker))
+        normalized = { ...frame, data: `${frame.data.slice(0, limit)}${marker}` }
+        bytes = frameSize(normalized)
+      } else {
+        runtime.queue.length = 0
+        runtime.bufferedBytes = 0
+      }
+    }
+    while (runtime.queue.length > 0 && runtime.bufferedBytes + bytes > MAX_BUFFERED_BYTES) {
+      const dropped = runtime.queue.shift()!
+      runtime.bufferedBytes = Math.max(0, runtime.bufferedBytes - frameSize(dropped))
+    }
+    runtime.queue.push(normalized)
+    runtime.bufferedBytes += bytes
   }
 
   #closeWaiters(runtime: TerminalRecord): void {
     for (const waiter of runtime.waiters.splice(0)) waiter({ done: true, value: undefined })
   }
+}
+
+function frameSize(frame: TerminalFrame): number {
+  return Buffer.byteLength(JSON.stringify(frame))
 }
 
 function shellQuote(value: string): string {

@@ -27,7 +27,8 @@ function routeTerminal(original) {
     const sessionId = String(args[0])
     if (!await isMirror(sessionId)) return original[name](...args)
     const value = await terminalPost({ action: name, sessionId, ...terminalPayload(name, args) })
-    return value === undefined ? original[name](...args) : { ok: true, value }
+    if (value === undefined) throw new Error('remote terminal is unavailable; refusing to fall back to the local terminal')
+    return { ok: true, value }
   }
   return {
     ...original,

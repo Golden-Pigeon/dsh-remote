@@ -165,8 +165,10 @@ SHA-256 checksum, and uses it without root. This needs `curl` or `wget`, `tar`, 
   workspace/session create, prompt, and cancel. Prompts can make the remote DSH use its own tools under
   the remote sandbox and approval policy.
 - In the default direct mode, the resolved model key is written to the remote systemd/nohup
-  environment. Use this only on a trusted remote account. Set `credentialProxy: true` to keep the key
-  local and proxy model traffic through the reverse SSH tunnel.
+  environment. Use this only on a trusted remote account; the systemd unit is written with mode 0600.
+  Set `credentialProxy: true` to keep the key local and proxy model traffic through the reverse SSH
+  tunnel. Proxy requests require a per-host token, so unrelated local users on the remote host cannot
+  reuse the tunneled credential endpoint.
 - Browser requests use DSH Connection's authenticated `/api` Fetch route. Tokens/credentials are stored
   in `0600` files and never returned to the browser.
 - File-tree, preview, and terminal traffic also stays inside the authenticated SSH tunnel.
