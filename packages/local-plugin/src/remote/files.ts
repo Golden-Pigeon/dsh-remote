@@ -43,16 +43,46 @@ try:
             raise IsADirectoryError(path)
         offset = max(1, int(req.get('offset', 1)))
         limit = max(1, min(int(req.get('limit', 200)), 2000))
+        max_line = 32 * 1024
+        max_page = 1024 * 1024
         page = []
-        with open(path, 'r', encoding='utf-8') as handle:
-            for index, line in enumerate(handle, 1):
-                if index < offset:
-                    continue
-                page.append(line.rstrip('\n'))
-                if len(page) > limit:
+        page_bytes = 0
+        saw_more = False
+        with open(path, 'rb') as handle:
+            index = 0
+            while True:
+                line = handle.readline(max_line + 1)
+                if not line:
                     break
-        eof = len(page) <= limit
-        page = page[:limit]
+                index += 1
+                if index < offset:
+                    if len(line) > max_line and not line.endswith(b'\n'):
+                        while True:
+                            rest = handle.readline(64 * 1024)
+                            if not rest or rest.endswith(b'\n'):
+                                break
+                    continue
+                if len(page) >= limit or page_bytes + len(line) > max_page:
+                    saw_more = True
+                    break
+                truncated = len(line) > max_line
+                if truncated and not line.endswith(b'\n'):
+                    while True:
+                        rest = handle.readline(64 * 1024)
+                        if not rest or rest.endswith(b'\n'):
+                            break
+                if truncated:
+                    line = line[:max_line]
+                text = line.rstrip(b'\r\n').decode('utf-8', errors='replace' if truncated else 'strict')
+                if truncated:
+                    text += '… [line truncated]'
+                page.append(text)
+                page_bytes += len(line)
+                if len(page) >= limit:
+                    if handle.read(1):
+                        saw_more = True
+                    break
+        eof = not saw_more
         text = '\n'.join(page)
         if '\x00' in text:
             raise ValueError('NUL')

@@ -41,7 +41,7 @@ cd "$ROOT/packages/local-plugin"
 pnpm pack >/dev/null
 cd "$ROOT/packages/terminal-controller"
 pnpm pack >/dev/null
-TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.7.15.tgz"
+TARBALL="$ROOT/packages/local-plugin/dsh-remote-local-plugin-0.7.16.tgz"
 FORK_TARBALL="$ROOT/packages/terminal-controller/dsh-remote-terminal-controller-0.1.2.tgz"
 if [ ! -f "$TARBALL" ]; then
   printf 'install-local: plugin tarball was not produced at %s\n' "$TARBALL" >&2
