@@ -213,16 +213,36 @@ function targetOf(
 ): RemoteFileTarget | undefined {
   const context = mirrors.remoteFileContext(workspaceRoot)
   if (context === undefined) return undefined
-  const localPath = isAbsolute(path) ? resolve(path) : resolve(workspaceRoot, path)
-  const rel = relative(workspaceRoot, localPath)
-  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
-    const remotePath = rel === '' ? context.remoteRoot : join(context.remoteRoot, rel)
+  const anchor = resolve(workspaceRoot)
+  const remoteRoot = resolve(context.remoteRoot)
+  const candidate = isAbsolute(path) ? resolve(path) : resolve(anchor, path)
+  const contains = (root: string, value: string): boolean => {
+    const rel = relative(root, value)
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+  }
+
+  // Tool cards and transcript links use the remote absolute path. The sidebar
+  // uses the local anchor. Accept both and normalize to the remote workspace.
+  if (isAbsolute(path) && contains(remoteRoot, candidate)) {
+    const rel = relative(remoteRoot, candidate)
     return {
       hostId: context.hostId,
-      localPath: localPath === '' ? workspaceRoot : localPath,
+      localPath: rel === '' ? anchor : resolve(anchor, rel),
+      remotePath: candidate,
+      relativePath: rel.split(sep).join('/'),
+      workspaceRoot: anchor,
+    }
+  }
+
+  if (contains(anchor, candidate)) {
+    const rel = relative(anchor, candidate)
+    const remotePath = rel === '' ? remoteRoot : join(remoteRoot, rel)
+    return {
+      hostId: context.hostId,
+      localPath: candidate,
       remotePath,
       relativePath: rel.split(sep).join('/'),
-      workspaceRoot,
+      workspaceRoot: anchor,
     }
   }
   return undefined
