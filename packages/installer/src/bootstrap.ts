@@ -91,6 +91,7 @@ DSH_VERSION=${shellLiteral(options.dshVersion)}
 PNPM_VERSION=${shellLiteral(options.pnpmVersion)}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
 STATE_FILE="$DSH_HOME/remote-agent/agent.json"
+WAIT_FOR_STATE=${options.start === 'none' ? 0 : 1}
 
 export DSH_HOME
 mkdir -p "$INSTALL_DIR" "$DSH_HOME/remote-agent"
@@ -131,16 +132,18 @@ echo "dsh-remote: adding plugin to profile $PROFILE"
 
 ${startBlock}
 
-i=0
-while [ "$i" -lt 60 ]; do
-  if [ -s "$STATE_FILE" ]; then break; fi
-  sleep 1
-  i=$((i + 1))
-done
+if [ "$WAIT_FOR_STATE" -eq 1 ]; then
+  i=0
+  while [ "$i" -lt 60 ]; do
+    if [ -s "$STATE_FILE" ]; then break; fi
+    sleep 1
+    i=$((i + 1))
+  done
+fi
 
 echo "dsh-remote: installed"
 echo "dsh-remote: state file $STATE_FILE"
-if [ -s "$STATE_FILE" ]; then
+if [ "$WAIT_FOR_STATE" -eq 1 ] && [ -s "$STATE_FILE" ]; then
   PORT_VALUE=$(sed -n 's/.*"port": *\\([0-9][0-9]*\\).*/\\1/p' "$STATE_FILE" | head -1)
   echo "dsh-remote: remote agent port \${PORT_VALUE:-unknown}"
 else

@@ -282,8 +282,8 @@ export class RemoteHostsService {
   async dispose(): Promise<void> {
     if (this.#disposed) return
     this.#disposed = true
-    for (const id of this.#healthTimers.keys()) this.#clearHealth(id)
-    for (const id of this.#reconnectTimers.keys()) this.#clearReconnect(id)
+    for (const id of [...this.#healthTimers.keys()]) this.#clearHealth(id)
+    for (const id of [...this.#reconnectTimers.keys()]) this.#clearReconnect(id)
     await Promise.all([...this.#tunnels.keys()].map(id => this.#stopTransport(id)))
     this.#records.clear()
     this.#runtime.clear()

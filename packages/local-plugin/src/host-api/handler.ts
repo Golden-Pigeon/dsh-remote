@@ -44,7 +44,7 @@ async function handleHostApi(service: RemoteHostsService, request: Request): Pro
         message: 'request body must be JSON',
         details: {},
       },
-    }, error)
+    })
   }
 
   if (typeof body !== 'object' || body === null || typeof body.endpoint !== 'string') {
@@ -129,11 +129,7 @@ async function dispatch(
   }
 }
 
-function jsonResult(result: HostApiResult<unknown>, cause?: unknown): Response {
-  if (cause !== undefined) {
-    // Keep the response shape stable; the caller only sees the protocol error.
-    void cause
-  }
+function jsonResult(result: HostApiResult<unknown>): Response {
   return Response.json(result, {
     status: 200,
     headers: { 'cache-control': 'no-store' },
