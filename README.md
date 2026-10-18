@@ -12,7 +12,7 @@ Local DSH                                         Remote host
 │ normal sidebar + Conversation UI     │          │ dsh web (installed by plugin)│
 │  local mirror Session + Agent façade │  SSH     │ dsh-remote-agent             │
 │  host registry / auto provisioning   │◀────────▶│  workspace/session write     │
-│  local credential proxy  ◀──reverse──┼──────────│  remote tools + model calls  │
+│  direct key or local key proxy        │          │  remote tools + model calls  │
 │  authenticated /api route            │  tunnel  │                              │
 └──────────────────────────────────────┘          └──────────────────────────────┘
 ```
@@ -65,7 +65,6 @@ Reopen DSH. **Settings → 远程开发** appears.
    connected host and enter an existing remote directory (for example `/tmp`), then **创建并打开**.
    The remote workspace appears in the normal left sidebar as `my-host · tmp`. Choose
    **本地新建工作区** to keep the native local directory flow.
-
 4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
    Conversation UI**. The workspace row's **New session** action uses the same remote path.
 5. Type in the usual composer. The remote DSH runs the turn; the local transcript updates live. Tool

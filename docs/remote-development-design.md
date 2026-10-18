@@ -1,3 +1,8 @@
+> **Implementation note:** this is an early design note. The implemented plugin now mirrors remote
+> sessions into the native conversation UI, bridges approvals/files/terminal traffic, and defaults to a
+> direct model key in the remote service environment (`credentialProxy: true` keeps it local). See the
+> root README and `docs/operations.md` for the current behavior.
+>
 > This is a repository copy of `../../docs/remote-development-design.md` from the umbrella
 > workspace, kept with the implementation so the design intent travels with the code. The
 > `remote-dev-kit/` references in the original are not part of this repository.
@@ -50,7 +55,7 @@ DSH（DeepSeek Harness）是插件化的 agent harness。DSH Desktop 目前是�
 - **UX**：远程 workspace 与本地 workspace 出现在同一个列表；远程 session 在同一个主区域打开；不使用 iframe 作为最终形态。
 - **Session 归属**：session、agent loop、工具执行、终端、文件都在远端 runtime；本地只做 UI 和连接。
 - **连接**：先 SSH（零入站端口、复用现有认证），后续支持 outbound WebSocket relay。
-- **凭据**：模型 API Key 优先留在本地，通过反向隧道注入；远端只拿占位 token。
+- **凭据**：默认把解析到的模型 key 写入远端 service 环境；可选本地代理模式，通过反向隧道注入，远端只拿占位 token。
 - **多 host**：一个客户端管理多台机器；每个 workspace/session 有明确的 host 归属。
 - **可恢复**：断线重连、attach/resume、审批不丢、终端可重连。
 
@@ -284,10 +289,10 @@ DSH 客户端目前是单 Host。B-native 需要改这些层：
 
 优先方案（推荐）：
 
-- 模型 API Key 只存在本地；
+- 默认直连模式下模型 API Key 存在于远端 service 环境；代理模式下只存在本地；
 - 本地起一个反向代理/隧道端点；
-- 远端 runtime 使用占位 token，请求经隧道回到本地代理，由本地注入真实 key；
-- 远端磁盘上不落真实 key。
+- 代理模式下远端 runtime 使用占位 token，请求经隧道回到本地代理，由本地注入真实 key；
+- 代理模式下远端磁盘上不落真实 key；直连模式会写入远端 service 环境。
 
 备选：
 

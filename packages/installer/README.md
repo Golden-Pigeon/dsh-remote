@@ -20,4 +20,6 @@ The bootstrap script:
 4. starts `dsh web` on `127.0.0.1` using a systemd user unit or `nohup`;
 5. waits for the agent state file and prints the port.
 
-It never copies model API keys. See [`docs/operations.md`](../../docs/operations.md).
+The installer itself does not resolve credentials. The local plugin's default direct mode passes the
+resolved key to the remote service environment; set `credentialProxy: true` to keep it local. See
+[`docs/operations.md`](../../docs/operations.md).

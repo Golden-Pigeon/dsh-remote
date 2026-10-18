@@ -1,8 +1,6 @@
 # Example: remote agent profile patch
-
-The bundle already inserts the row; use this patch only to override defaults.
-
-```yaml
+#
+# The bundle already inserts the row; use this patch only to override defaults.
 - id: dsh-remote-agent
   config:
     stateFile: ''
@@ -11,4 +9,3 @@ The bundle already inserts the row; use this patch only to override defaults.
     defaultSnapshotEvents: 500
     maxSnapshotEvents: 2000
     heartbeatMs: 15000
-```
