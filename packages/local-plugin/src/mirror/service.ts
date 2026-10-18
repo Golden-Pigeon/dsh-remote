@@ -77,6 +77,7 @@ interface MirrorRuntime {
   readonly agent: MirrorAgent
   readonly session: Session
   timer: NodeJS.Timeout | undefined
+  stream: AbortController | undefined
   running: boolean
   stopped: boolean
   lastError: string | null
@@ -209,6 +210,7 @@ export class RemoteMirrorService {
     for (const runtime of this.#runtimes.values()) {
       runtime.stopped = true
       if (runtime.timer !== undefined) clearTimeout(runtime.timer)
+      runtime.stream?.abort()
     }
     for (const dispose of this.#registrations.values()) dispose()
     this.#registrations.clear()
@@ -536,12 +538,14 @@ export class RemoteMirrorService {
       const runtime = this.#runtimes.get(existing.localSessionId)
       if (live !== undefined && runtime !== undefined && !runtime.stopped) {
         await this.#attach(workspace, live.id)
+        if (remote.live) this.#startStream(runtime)
         return existing
       }
       const stalled = this.#runtimes.get(existing.localSessionId)
       if (stalled !== undefined) {
         stalled.stopped = true
         if (stalled.timer !== undefined) clearTimeout(stalled.timer)
+        stalled.stream?.abort()
         this.#runtimes.delete(existing.localSessionId)
       }
       const registration = this.#registrations.get(existing.localSessionId)
@@ -605,6 +609,7 @@ export class RemoteMirrorService {
       agent: null as unknown as MirrorAgent,
       session,
       timer: undefined,
+      stream: undefined,
       running: false,
       stopped: false,
       lastError: null,
@@ -618,6 +623,7 @@ export class RemoteMirrorService {
     this.#registrations.set(localId, this.#agents.enter(agent as never, undefined))
     await this.#save()
     this.#schedule(runtime)
+    if (remote.live) this.#startStream(runtime)
     this.#ctx.logger.info(
       'dsh-remote-local: mirrored remote session %s as local %s',
       remote.sessionId,
@@ -637,6 +643,7 @@ export class RemoteMirrorService {
       const local = this.#sessions.get(runtime.session.id)
       if (local === undefined) {
         runtime.stopped = true
+        runtime.stream?.abort()
         return
       }
       const snapshot = await this.#hosts.snapshot(
@@ -647,6 +654,7 @@ export class RemoteMirrorService {
       if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > runtime.record.lastSeq) {
         runtime.lastError = 'remote log grew past the mirror window'
         runtime.stopped = true
+        runtime.stream?.abort()
         return
       }
       let sawEnd = false
@@ -663,8 +671,10 @@ export class RemoteMirrorService {
       if (sawEnd) this.#setRunning(runtime, false)
       if (!snapshot.live && runtime.record.lastSeq >= snapshot.cursor) {
         runtime.stopped = true
+        runtime.stream?.abort()
       }
       await this.#save()
+      if (snapshot.live && !runtime.stopped) this.#startStream(runtime)
     } catch (error) {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       this.#ctx.logger.warn(
@@ -674,6 +684,49 @@ export class RemoteMirrorService {
       )
     }
     this.#schedule(runtime)
+  }
+
+  #startStream(runtime: MirrorRuntime): void {
+    if (runtime.stopped || this.#disposed || runtime.stream !== undefined) return
+    const controller = new AbortController()
+    runtime.stream = controller
+    void this.#followStream(runtime, controller.signal).finally(() => {
+      if (runtime.stream === controller) runtime.stream = undefined
+    })
+  }
+
+  async #followStream(runtime: MirrorRuntime, signal: AbortSignal): Promise<void> {
+    try {
+      for await (const frame of this.#hosts.followSessionEvents(
+        runtime.record.hostId,
+        runtime.record.remoteSessionId,
+        runtime.record.lastSeq,
+        signal,
+      )) {
+        if (runtime.stopped || this.#disposed || signal.aborted) return
+        if (frame.type === 'end') return
+        if (frame.type !== 'event') continue
+        const event = frame.event
+        if (event.seq < runtime.record.lastSeq) continue
+        if (event.seq !== runtime.record.lastSeq) {
+          runtime.lastError = `remote event gap at ${event.seq}, mirror ${runtime.record.lastSeq}`
+          return
+        }
+        if (!isMirrorNoise(event.type)) appendRemoteEvent(runtime.session, event, runtime)
+        runtime.record.lastSeq = event.seq + 1
+        runtime.record.updatedAt = new Date().toISOString()
+        if (event.type === 'turn/end') this.#setRunning(runtime, false)
+        await this.#save()
+      }
+    } catch (error) {
+      if (signal.aborted || runtime.stopped || this.#disposed) return
+      runtime.lastError = error instanceof Error ? error.message : String(error)
+      this.#ctx.logger.warn(
+        'dsh-remote-local: mirror stream %s failed: %s',
+        runtime.record.remoteSessionId,
+        runtime.lastError,
+      )
+    }
   }
 
   #setRunning(runtime: MirrorRuntime, running: boolean): void {

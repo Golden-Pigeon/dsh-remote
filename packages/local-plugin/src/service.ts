@@ -27,6 +27,7 @@ import {
   type PromptDeliveryMode,
   type RemoteWorkspace,
   type SessionSnapshot,
+  type SessionStreamFrame,
   type WebUrlResult,
 } from '@dsh-remote/protocol'
 import type { ResolvedConfig } from './config.ts'
@@ -310,6 +311,22 @@ export class RemoteHostsService {
       const sessions = await client.listSessions(workspaceId)
       return { sessions }
     } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Follow a live remote session from a cursor as an SSE-backed stream. */
+  async *followSessionEvents(
+    id: string,
+    sessionId: string,
+    cursor: number,
+    signal: AbortSignal,
+  ): AsyncGenerator<SessionStreamFrame> {
+    const client = this.#requireClient(id)
+    try {
+      yield* client.followSession(sessionId, cursor, signal)
+    } catch (error) {
+      if (signal.aborted) return
       throw this.#remoteFailure(id, error)
     }
   }
