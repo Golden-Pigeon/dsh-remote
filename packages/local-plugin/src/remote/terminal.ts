@@ -162,6 +162,7 @@ export class RemoteTerminals {
       writable: !runtime.exited,
     }
     while (!signal.aborted) {
+      if (signal.aborted) return
       if (runtime.queue.length > 0) {
         const frame = runtime.queue.shift()!
         runtime.bufferedBytes = Math.max(0, runtime.bufferedBytes - frameSize(frame))
@@ -175,6 +176,8 @@ export class RemoteTerminals {
           if (settled) return
           settled = true
           signal.removeEventListener('abort', onAbort)
+          const index = runtime.waiters.indexOf(finish)
+          if (index >= 0) runtime.waiters.splice(index, 1)
           resolve(result)
         }
         const onAbort = (): void => finish({ done: true, value: undefined })
