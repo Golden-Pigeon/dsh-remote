@@ -269,6 +269,13 @@ export class RemoteMirrorService {
     return undefined
   }
 
+  /** Local workspace ids that represent remote workspaces. */
+  localWorkspaceIds(): string[] {
+    return Object.values(this.#state.workspaces)
+      .map(workspace => workspace.localWorkspaceId)
+      .filter((id): id is string => typeof id === 'string' && id !== '')
+  }
+
   /** Whether the test-only manifest excludes this remote workspace from UI listings. */
   isTestHidden(remoteWorkspaceId: string, remotePath: string): boolean {
     return isTestHidden(remotePath, remoteWorkspaceId, this.#testVisibility)

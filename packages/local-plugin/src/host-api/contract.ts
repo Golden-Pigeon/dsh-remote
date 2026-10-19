@@ -53,6 +53,8 @@ export type HostApiEndpoint =
 export interface RemoteHostsState {
   readonly protocolVersion: number
   readonly hosts: readonly HostView[]
+  /** Local workspace ids whose Session creation is owned by a remote host. */
+  readonly mirroredWorkspaceIds: readonly string[]
 }
 
 /** Result of parsing a destination. */

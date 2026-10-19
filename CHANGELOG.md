@@ -14,6 +14,8 @@
 - Keep a typed trailing slash in the workspace folder picker while navigating into a subdirectory.
 - Publish a local `agent/error` when a mirrored prompt cannot reach the remote host instead of only
   logging the failure.
+- Never fall back to creating a local Session when the native New Session action targets a
+  mirrored remote workspace and the host is unavailable; show an error instead.
 
 ## 0.8.8
 

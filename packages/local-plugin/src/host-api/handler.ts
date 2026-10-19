@@ -92,7 +92,7 @@ async function dispatch(
 ): Promise<HostApiValues[HostApiEndpoint]> {
   switch (endpoint as HostApiEndpoint) {
     case 'state':
-      return service.state()
+      return { ...service.state(), mirroredWorkspaceIds: mirrors?.localWorkspaceIds() ?? [] }
     case 'target/validate':
       return service.validateTarget(requireStringField(payload, 'sshTarget'))
     case 'host/add': {
