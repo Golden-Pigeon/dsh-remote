@@ -132,7 +132,7 @@ function messageIdentity(message: unknown): unknown {
   return typeof message === 'object' && message !== null ? (message as { id?: unknown }).id : undefined
 }
 
-function createMirrorInbox(): MirrorInbox {
+function createMirrorInbox(session: Session): MirrorInbox {
   const nextTurn: unknown[] = []
   const nextStep: unknown[] = []
   const locate = (id: unknown): { target: 'next-turn' | 'next-step'; index: number } | undefined => {
@@ -142,6 +142,18 @@ function createMirrorInbox(): MirrorInbox {
       if (index >= 0) return { target, index }
     }
     return undefined
+  }
+  const append = (target: 'next-turn' | 'next-step', start: number, inserted: unknown[], removedCount = 0): void => {
+    try {
+      ;(session as unknown as { append(type: string, data: unknown): unknown }).append('agent/inbox/spliced', {
+        target,
+        start,
+        ...removedCount === 0 ? {} : { removedCount },
+        inserted,
+      })
+    } catch {
+      // The local Session may be disposing; the in-memory queue remains usable.
+    }
   }
   const inbox: MirrorInbox = {
     'next-turn': nextTurn,
@@ -154,6 +166,7 @@ function createMirrorInbox(): MirrorInbox {
       if (found === undefined) return false
       const list = found.target === 'next-turn' ? nextTurn : nextStep
       list.splice(found.index, 1)
+      append(found.target, found.index, [], 1)
       return true
     },
     replace(id, message) {
@@ -161,15 +174,26 @@ function createMirrorInbox(): MirrorInbox {
       if (found === undefined) return false
       const list = found.target === 'next-turn' ? nextTurn : nextStep
       list.splice(found.index, 1, message)
+      append(found.target, found.index, [message], 1)
       return true
     },
     splice(target, start, deleteCount, inserted) {
       const list = target === 'next-turn' ? nextTurn : nextStep
-      return list.splice(start, deleteCount, ...inserted)
+      const removed = list.splice(start, deleteCount, ...inserted)
+      append(target === 'next-turn' ? 'next-turn' : 'next-step', start, inserted, removed.length)
+      return removed
     },
     clear() {
-      nextTurn.length = 0
-      nextStep.length = 0
+      if (nextStep.length > 0) {
+        const count = nextStep.length
+        nextStep.length = 0
+        append('next-step', 0, [], count)
+      }
+      if (nextTurn.length > 0) {
+        const count = nextTurn.length
+        nextTurn.length = 0
+        append('next-turn', 0, [], count)
+      }
     },
   }
   return inbox
@@ -181,7 +205,7 @@ class RemoteMirrorAgent implements MirrorAgent {
   readonly session: Session
   readonly options: MirrorAgent['options']
   readonly ctx: Context
-  readonly inbox = createMirrorInbox()
+  readonly inbox: MirrorInbox
   #runtime: MirrorRuntime
   #mirror: RemoteMirrorService
 
@@ -192,6 +216,7 @@ class RemoteMirrorAgent implements MirrorAgent {
     this.session = runtime.session
     this.ctx = ctx
     this.options = options
+    this.inbox = createMirrorInbox(runtime.session)
   }
 
   get status(): 'idle' | 'running' {
@@ -219,7 +244,7 @@ class RemoteMirrorAgent implements MirrorAgent {
 
   followup(message: unknown): void {
     if (this.#runtime.running) {
-      this.inbox.nextTurn.push(message)
+      this.inbox.splice('next-turn', this.inbox.nextTurn.length, 0, [message])
       return
     }
     this.#mirror.prompt(this.#runtime, message, 'queue')
@@ -336,20 +361,6 @@ export class RemoteMirrorService {
       }
     }
     return undefined
-  }
-
-  /** Diagnostic snapshot for integration/debug endpoints. */
-  debugState(): unknown {
-    return [...this.#runtimes.values()].map(runtime => ({
-      localSessionId: runtime.record.localSessionId,
-      remoteSessionId: runtime.record.remoteSessionId,
-      hostId: runtime.record.hostId,
-      running: runtime.running,
-      stopped: runtime.stopped,
-      lastSeq: runtime.record.lastSeq,
-      lastError: runtime.lastError,
-      pendingUsers: runtime.pendingUsers.length,
-    }))
   }
 
   /** Local workspace ids that represent remote workspaces. */
@@ -859,9 +870,13 @@ export class RemoteMirrorService {
     let session: Session
     try {
       const seed = filtered.map((event, index) => toSeedEvent(event, index, seqMap))
+      const remoteCreatedAt = Date.parse(remote.createdAt)
       session = this.#sessions.create(localId as SessionId, {
         ...seed.length === 0 ? {} : { seed },
-        meta: { cwd: anchor },
+        meta: {
+          cwd: anchor,
+          ...Number.isFinite(remoteCreatedAt) ? { createdAt: remoteCreatedAt } : {},
+        },
       })
     } catch (error) {
       this.#ctx.logger.warn('dsh-remote-local: could not seed mirror for %s: %s', remote.sessionId, String(error))
@@ -1087,8 +1102,11 @@ export class RemoteMirrorService {
       if (reason === 'aborted') {
         runtime.agent.inbox.clear()
       } else if (runtime.agent.inbox.hasPending) {
-        const next = runtime.agent.inbox.nextTurn.shift()
-        if (next !== undefined) this.prompt(runtime, next, 'queue')
+        const next = runtime.agent.inbox.nextTurn[0]
+        if (next !== undefined) {
+          runtime.agent.inbox.remove(messageIdentity(next))
+          this.prompt(runtime, next, 'queue')
+        }
       }
     }
   }

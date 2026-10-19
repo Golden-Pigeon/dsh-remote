@@ -18,12 +18,17 @@
   mirrored remote workspace and the host is unavailable; show an error instead.
 - Read normalized image metadata from the attachment reference returned by `readImage` (`ref.mediaType`),
   fixing remote image prompts being rejected as an invalid content part.
+- Map Assistant stream `startedAfterSeq` from remote to local sequence numbers instead of dropping it;
+  the client needs the local boundary to settle the final Assistant message.
 - Remap `developer/message.headerSeq` from remote to local sequence numbers; a stale header reference
   previously stopped the mirror mid-turn and left the UI waiting forever.
 - Keep queued/steer messages in the mirror Agent's local pending inbox while a remote turn is
   running. Pressing Enter no longer forwards them immediately; edit/delete and the steer arrow are
   resolved by the local inbox, and queued next-turn messages are forwarded when the remote turn
   completes. Aborting a turn clears the pending inbox.
+- Preserve each remote Session's original `createdAt` when recreating its local mirror Session after a
+  restart, so the sidebar no longer shows every restored remote session as "now" and time ordering
+  remains stable.
 
 ## 0.8.8
 
