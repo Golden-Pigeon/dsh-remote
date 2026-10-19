@@ -11,6 +11,7 @@
   while its remote turn is active exposes steering instead of a disabled submit control.
 - Start the remote workspace folder picker at the account's home directory (`~`) instead of the
   remote DSH home (`.dsh`).
+- Keep a typed trailing slash in the workspace folder picker while navigating into a subdirectory.
 
 ## 0.8.8
 

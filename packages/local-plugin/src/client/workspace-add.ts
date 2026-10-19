@@ -485,13 +485,13 @@ async function openDirectoryBrowser(
     }
   }
 
-  const load = async (path: string): Promise<void> => {
+  const load = async (path: string, preserveInput = false): Promise<void> => {
     const listing = await fetchListing(path)
     if (listing === undefined) return
     current = listing.path
     parent = listing.parent
     currentEntries = listing.entries
-    pathInput.value = listing.path
+    if (!preserveInput) pathInput.value = listing.path
     status.textContent = flow.t('dialog.selectFolder')
     render(listing.entries)
   }
@@ -502,8 +502,9 @@ async function openDirectoryBrowser(
     const dir = slash < 0 ? current : (raw.slice(0, slash + 1) || '/')
     const query = slash < 0 ? raw : raw.slice(slash + 1)
     if (query === '') {
-      // A trailing slash is an explicit directory navigation.
-      await load(raw)
+      // A trailing slash is an explicit directory navigation. Keep the user's
+      // typed value so the next path segment can be typed after it.
+      await load(raw, true)
       return
     }
     const normalizedCurrent = current.replace(/\/+$/u, '') || '/'
