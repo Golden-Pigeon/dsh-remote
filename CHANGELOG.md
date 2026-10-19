@@ -12,6 +12,8 @@
 - Start the remote workspace folder picker at the account's home directory (`~`) instead of the
   remote DSH home (`.dsh`).
 - Keep a typed trailing slash in the workspace folder picker while navigating into a subdirectory.
+- Publish a local `agent/error` when a mirrored prompt cannot reach the remote host instead of only
+  logging the failure.
 
 ## 0.8.8
 

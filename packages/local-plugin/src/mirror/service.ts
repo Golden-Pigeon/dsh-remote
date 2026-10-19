@@ -338,6 +338,15 @@ export class RemoteMirrorService {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       runtime.pendingUsers.shift()
       this.#ctx.logger.warn('dsh-remote-local: remote prompt failed: %s', runtime.lastError)
+      try {
+        const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
+        emit.call(this.#ctx, 'agent/error', {
+          agent: runtime.agent,
+          error: error instanceof Error ? error : new Error(String(error)),
+        })
+      } catch (emitError) {
+        this.#ctx.logger.warn('dsh-remote-local: prompt error notification failed: %s', String(emitError))
+      }
       this.#setRunning(runtime, false)
     })
   }
