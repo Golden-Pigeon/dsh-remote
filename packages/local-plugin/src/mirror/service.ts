@@ -269,6 +269,20 @@ export class RemoteMirrorService {
     return undefined
   }
 
+  /** Diagnostic snapshot for integration/debug endpoints. */
+  debugState(): unknown {
+    return [...this.#runtimes.values()].map(runtime => ({
+      localSessionId: runtime.record.localSessionId,
+      remoteSessionId: runtime.record.remoteSessionId,
+      hostId: runtime.record.hostId,
+      running: runtime.running,
+      stopped: runtime.stopped,
+      lastSeq: runtime.record.lastSeq,
+      lastError: runtime.lastError,
+      pendingUsers: runtime.pendingUsers.length,
+    }))
+  }
+
   /** Local workspace ids that represent remote workspaces. */
   localWorkspaceIds(): string[] {
     return Object.values(this.#state.workspaces)
@@ -366,15 +380,24 @@ export class RemoteMirrorService {
         continue
       }
       const attachments = this.#ctx.get('attachments') as unknown as {
-        readImage(ref: unknown): Promise<{ data: Uint8Array; mediaType: string }>
+        readImage(ref: unknown): Promise<{
+          data: Uint8Array
+          mediaType?: unknown
+          ref?: { mediaType?: unknown; name?: unknown }
+        }>
       } | undefined
       if (attachments === undefined) throw new Error('本地附件服务不可用')
       const stored = await attachments.readImage(part.attachment)
+      const mediaType = typeof stored.mediaType === 'string'
+        ? stored.mediaType
+        : typeof stored.ref?.mediaType === 'string' ? stored.ref.mediaType : undefined
+      if (mediaType === undefined) throw new Error('图片缺少 mediaType')
+      const name = part.name ?? (typeof stored.ref?.name === 'string' ? stored.ref.name : undefined)
       content.push({
         type: 'image',
         data: Buffer.from(stored.data).toString('base64'),
-        mediaType: stored.mediaType,
-        ...part.name === undefined ? {} : { name: part.name },
+        mediaType,
+        ...name === undefined ? {} : { name },
       })
     }
     const text = content

@@ -16,6 +16,8 @@
   logging the failure.
 - Never fall back to creating a local Session when the native New Session action targets a
   mirrored remote workspace and the host is unavailable; show an error instead.
+- Read normalized image metadata from the attachment reference returned by `readImage` (`ref.mediaType`),
+  fixing remote image prompts being rejected as an invalid content part.
 
 ## 0.8.8
 
