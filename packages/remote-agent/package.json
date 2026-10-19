@@ -1,6 +1,6 @@
 {
   "name": "@goldenpigeon/dsh-remote-agent",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "DSH remote agent: loopback HTTP/SSE companion for the dsh-remote-local-plugin.",
   "keywords": [
     "dsh",
