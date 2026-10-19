@@ -277,11 +277,21 @@ export class RemoteAgentService {
     return { accepted: true }
   }
 
-  /** Send a text prompt to one remote session. */
+  /** Send a prompt to one remote session. */
   async promptSession(sessionId: string, request: PromptSessionRequest): Promise<AcceptedResult> {
     const text = request.text.trim()
-    if (text === '') {
-      throw new RemoteProtocolError({ code: 'request/invalid', message: 'prompt text must not be empty' })
+    const content = request.content === undefined || request.content.length === 0
+      ? text === '' ? [] : [{ type: 'text' as const, text }]
+      : request.content.map(part => part.type === 'image'
+        ? {
+            type: 'image' as const,
+            data: part.data,
+            mediaType: part.mediaType,
+            ...part.name === undefined ? {} : { name: part.name },
+          }
+        : { type: 'text' as const, text: part.text })
+    if (content.length === 0) {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: 'prompt content must not be empty' })
     }
     if (request.provider !== undefined && request.model !== undefined) {
       await this.ctx.sessionController.selectModel({
@@ -297,7 +307,7 @@ export class RemoteAgentService {
       requestId: randomUUID() as never,
       sessionId: sessionId as SessionId,
       mode: request.mode ?? 'queue',
-      content: [{ type: 'text', text }],
+      content: content as never,
     }, new AbortController().signal)
     return { accepted: true }
   }

@@ -27,7 +27,7 @@
 | 组件 | 测试版本 |
 |---|---|
 | [DSH Desktop / 官方客户端](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
-| 插件 | [**0.8.8**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| 插件 | [**0.8.9**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | 远端 DSH 运行时 | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
 | 远端 Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | 远端操作系统 | Linux 或 macOS |

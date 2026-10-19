@@ -480,12 +480,14 @@ export class RemoteHostsService {
     text: string,
     mode?: PromptDeliveryMode,
     selection?: { provider: string; model: string; reasoningEffort?: string },
+    content?: readonly import('@dsh-remote/protocol').PromptContentPart[],
   ): Promise<AcceptedResult> {
     const client = this.#requireClient(id)
     try {
       await client.promptSession(sessionId, {
         text,
         ...mode === undefined ? {} : { mode },
+        ...content === undefined ? {} : { content },
         ...selection === undefined ? {} : selection,
       })
       return { accepted: true }

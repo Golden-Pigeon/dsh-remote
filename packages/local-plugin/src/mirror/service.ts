@@ -30,6 +30,7 @@ import type {
   RemoteSessionSummary,
   SessionSnapshot,
   RemoteWorkspace,
+  PromptContentPart,
   PromptDeliveryMode,
 } from '@dsh-remote/protocol'
 import type { ResolvedConfig } from '../config.ts'
@@ -309,8 +310,8 @@ export class RemoteMirrorService {
 
   /** Route one prompt from the local Agent façade to the remote session. */
   prompt(runtime: MirrorRuntime, message: unknown, mode: PromptDeliveryMode): void {
-    const text = contentText(message)
-    if (text === '') return
+    const parts = promptParts(message)
+    if (parts.length === 0) return
     runtime.pendingUsers.push(message)
     if (!runtime.running) {
       runtime.awaitingTurn = runtime.latestTurn + 1
@@ -326,18 +327,47 @@ export class RemoteMirrorService {
     }
     const selection = this.#selectionFor(runtime)
     if (selection !== undefined) Object.assign(runtime.agent.options, selection)
-    void this.#hosts.promptSession(
+    void this.#promptContent(message).then(({ text, content }) => this.#hosts.promptSession(
       runtime.record.hostId,
       runtime.record.remoteSessionId,
       text,
       mode,
       selection,
-    ).catch(error => {
+      content,
+    )).catch(error => {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       runtime.pendingUsers.shift()
       this.#ctx.logger.warn('dsh-remote-local: remote prompt failed: %s', runtime.lastError)
       this.#setRunning(runtime, false)
     })
+  }
+
+  async #promptContent(message: unknown): Promise<{ text: string; content: PromptContentPart[] }> {
+    const content: PromptContentPart[] = []
+    for (const part of promptParts(message)) {
+      if (part.type === 'text') {
+        content.push({ type: 'text', text: part.text })
+        continue
+      }
+      const attachments = this.#ctx.get('attachments') as unknown as {
+        readImage(ref: unknown): Promise<{ data: Uint8Array; mediaType: string }>
+      } | undefined
+      if (attachments === undefined) throw new Error('本地附件服务不可用')
+      const stored = await attachments.readImage(part.attachment)
+      content.push({
+        type: 'image',
+        data: Buffer.from(stored.data).toString('base64'),
+        mediaType: stored.mediaType,
+        ...part.name === undefined ? {} : { name: part.name },
+      })
+    }
+    const text = content
+      .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+      .map(part => part.text)
+      .join('\n')
+      .trim()
+    if (content.length === 0) throw new Error('消息内容为空')
+    return { text, content }
   }
 
   /** Route cancellation to the remote session only after the remote accepts it. */
@@ -917,6 +947,7 @@ export class RemoteMirrorService {
     if (typeof turn !== 'number') return
     if (event.type === 'turn/start') {
       runtime.latestTurn = Math.max(runtime.latestTurn, turn)
+      this.#setRunning(runtime, true)
       return
     }
     if (event.type !== 'turn/end') return
@@ -1276,6 +1307,27 @@ function latestRemoteSandboxMode(events: readonly RemoteSessionEvent[]): 'read-o
     if (mode === 'read-only' || mode === 'workspace-write' || mode === 'danger-full-access') return mode
   }
   return undefined
+}
+
+function promptParts(message: unknown): Array<{ type: 'text'; text: string } | { type: 'image'; attachment: unknown; name?: string }> {
+  if (typeof message !== 'object' || message === null) return []
+  const content = (message as { content?: unknown }).content
+  if (!Array.isArray(content)) return []
+  const parts: Array<{ type: 'text'; text: string } | { type: 'image'; attachment: unknown; name?: string }> = []
+  for (const part of content) {
+    if (typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'text') {
+      const text = (part as { text?: unknown }).text
+      if (typeof text === 'string' && text.trim() !== '') parts.push({ type: 'text', text })
+      continue
+    }
+    if (typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'image') {
+      const attachment = (part as { attachment?: unknown }).attachment
+      if (attachment === undefined) continue
+      const name = (attachment as { name?: unknown }).name
+      parts.push({ type: 'image', attachment, ...typeof name === 'string' ? { name } : {} })
+    }
+  }
+  return parts
 }
 
 function contentText(message: unknown): string {

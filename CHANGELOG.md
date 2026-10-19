@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.9
+
+- Forward image attachments from a mirrored prompt to the remote Session, including ordered text
+  and image content. The remote agent admits the images through the remote DSH attachment store.
+- Allow the remote file adapter to open any absolute remote path, not only paths under the mirrored
+  workspace; remote transcript links and editor paths can now read arbitrary host files.
+- Increase the remote prompt request body bound for normalized image payloads.
+- Publish the mirror Agent as running as soon as a remote `turn/start` arrives, so a session opened
+  while its remote turn is active exposes steering instead of a disabled submit control.
+
 ## 0.8.8
 
 - Forward a mirrored Session's `sandbox/mode` change to its remote Session instead of only updating

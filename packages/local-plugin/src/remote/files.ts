@@ -247,6 +247,20 @@ function targetOf(
       workspaceRoot: anchor,
     }
   }
+  // Remote transcript links and editor paths are not confined to the
+  // workspace root. A mirrored workspace identifies the host; an absolute
+  // path is then read over that host's SSH connection rather than falling back
+  // to the local filesystem.
+  if (isAbsolute(path)) {
+    return {
+      hostId: context.hostId,
+      localPath: path,
+      remotePath: path,
+      relativePath: path,
+      workspaceRoot: anchor,
+    }
+  }
+
   throw Object.assign(
     new Error(`remote file path is outside the mirrored workspace: ${path}`),
     { code: 'workspace-file/not-found' },

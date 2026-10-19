@@ -260,9 +260,22 @@ export interface SetSandboxModeRequest {
   readonly mode: RemoteSandboxMode
 }
 
-/** Request to send a text prompt to a remote session. */
+/** One image part forwarded with a remote prompt. */
+export interface PromptImagePart {
+  readonly type: 'image'
+  readonly data: string
+  readonly mediaType: string
+  readonly name?: string
+}
+
+/** Ordered prompt content sent to a remote session. */
+export type PromptContentPart = { readonly type: 'text'; readonly text: string } | PromptImagePart
+
+/** Request to send a prompt to a remote session. */
 export interface PromptSessionRequest {
   readonly text: string
+  /** Ordered content; when omitted the agent uses `text` alone. */
+  readonly content?: readonly PromptContentPart[]
   readonly mode?: PromptDeliveryMode
   /** Optional model selection to install on the remote session before prompting. */
   readonly provider?: string

@@ -28,6 +28,8 @@ import {
   parseProtocolHeader,
   type ApiFailure,
   type ApiSuccess,
+  type PromptContentPart,
+  type PromptSessionRequest,
   type SessionStreamFrame,
 } from '@dsh-remote/protocol'
 import { parseBearer, tokensEqual } from './auth.ts'
@@ -107,7 +109,7 @@ async function handleAgentRequest(
 
     // Write routes. Everything else is read-only GET.
     if (method === 'POST') {
-      const body = await readJsonBody(req)
+      const body = await readJsonBody(req, route.kind === 'session-prompt' ? 12 * 1024 * 1024 : 256 * 1024)
       switch (route.kind) {
         case 'workspaces':
           sendJson(res, await service.createWorkspace(asWorkspaceRequest(body)))
@@ -328,14 +330,14 @@ function writeStreamEnd(res: ServerResponse, reason: 'error' | 'server-shutdown'
   }
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+async function readJsonBody(req: IncomingMessage, maxBytes = 256 * 1024): Promise<unknown> {
   const chunks: Buffer[] = []
   let bytes = 0
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     bytes += buffer.length
-    if (bytes > 256 * 1024) {
-      throw new RemoteProtocolError({ code: 'request/too-large', message: 'request body exceeds 256 KiB' })
+    if (bytes > maxBytes) {
+      throw new RemoteProtocolError({ code: 'request/too-large', message: `request body exceeds ${Math.round(maxBytes / 1024)} KiB` })
     }
     chunks.push(buffer)
   }
@@ -424,24 +426,52 @@ function asSelectModelRequest(value: unknown): { provider: string; model: string
   }
 }
 
-function asPromptRequest(value: unknown): { text: string; mode?: 'queue' | 'steer' } {
+function asPromptRequest(value: unknown): PromptSessionRequest {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
   }
   const body = value as Record<string, unknown>
-  if (typeof body.text !== 'string' || body.text.trim() === '') {
-    throw new RemoteProtocolError({ code: 'request/invalid', message: 'text must be a non-empty string' })
+  const content = Array.isArray(body.content) ? body.content : undefined
+  const hasImage = content?.some(part => typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'image') === true
+  if ((typeof body.text !== 'string' || body.text.trim() === '') && !hasImage) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'text must be a non-empty string or content must include an image' })
   }
   if (body.mode !== undefined && body.mode !== 'queue' && body.mode !== 'steer') {
     throw new RemoteProtocolError({ code: 'request/invalid', message: 'mode must be queue or steer' })
   }
-  for (const key of ['provider', 'model', 'reasoningEffort'] as const) {
+  for (const key of ['text', 'provider', 'model', 'reasoningEffort'] as const) {
     if (body[key] !== undefined && typeof body[key] !== 'string') {
       throw new RemoteProtocolError({ code: 'request/invalid', message: `${key} must be a string` })
     }
   }
+  const parts: PromptContentPart[] = []
+  for (const part of content ?? []) {
+    if (typeof part !== 'object' || part === null || Array.isArray(part)) {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: 'content parts must be objects' })
+    }
+    const record = part as Record<string, unknown>
+    if (record.type === 'text') {
+      if (typeof record.text !== 'string') throw new RemoteProtocolError({ code: 'request/invalid', message: 'text content part is invalid' })
+      parts.push({ type: 'text', text: record.text })
+      continue
+    }
+    if (record.type === 'image') {
+      if (typeof record.data !== 'string' || typeof record.mediaType !== 'string') {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'image content part is invalid' })
+      }
+      parts.push({
+        type: 'image',
+        data: record.data,
+        mediaType: record.mediaType,
+        ...typeof record.name === 'string' ? { name: record.name } : {},
+      })
+      continue
+    }
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'unsupported content part' })
+  }
   return {
-    text: body.text,
+    text: typeof body.text === 'string' ? body.text : '',
+    ...parts.length === 0 ? {} : { content: parts },
     ...body.mode === undefined ? {} : { mode: body.mode },
     ...typeof body.provider === 'string' ? { provider: body.provider } : {},
     ...typeof body.model === 'string' ? { model: body.model } : {},
