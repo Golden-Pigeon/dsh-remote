@@ -20,8 +20,10 @@
   fixing remote image prompts being rejected as an invalid content part.
 - Remap `developer/message.headerSeq` from remote to local sequence numbers; a stale header reference
   previously stopped the mirror mid-turn and left the UI waiting forever.
-- Append the local `user/message` only after the remote agent accepts the prompt, and deduplicate the
-  remote echo; the composer settles after acceptance without marking a rejected prompt as sent.
+- Keep queued/steer messages in the mirror Agent's local pending inbox while a remote turn is
+  running. Pressing Enter no longer forwards them immediately; edit/delete and the steer arrow are
+  resolved by the local inbox, and queued next-turn messages are forwarded when the remote turn
+  completes. Aborting a turn clears the pending inbox.
 
 ## 0.8.8
 

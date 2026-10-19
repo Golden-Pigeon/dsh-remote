@@ -105,7 +105,7 @@ interface MirrorAgent {
   readonly session: Session
   readonly options: { provider: string; model: string; reasoningEffort?: string }
   readonly ctx: Context
-  readonly inbox: Record<string, unknown[]>
+  readonly inbox: MirrorInbox
   readonly status: 'idle' | 'running'
   cancel(cause?: unknown): void
   whenIdle(): Promise<void>
@@ -116,13 +116,72 @@ interface MirrorAgent {
   inject(message: unknown): void
 }
 
+interface MirrorInbox {
+  readonly 'next-turn': unknown[]
+  readonly 'next-step': unknown[]
+  readonly nextTurn: unknown[]
+  readonly nextStep: unknown[]
+  readonly hasPending: boolean
+  remove(id: unknown): boolean
+  replace(id: unknown, message: unknown): boolean
+  splice(target: string, start: number, deleteCount: number, inserted: unknown[]): unknown[]
+  clear(): void
+}
+
+function messageIdentity(message: unknown): unknown {
+  return typeof message === 'object' && message !== null ? (message as { id?: unknown }).id : undefined
+}
+
+function createMirrorInbox(): MirrorInbox {
+  const nextTurn: unknown[] = []
+  const nextStep: unknown[] = []
+  const locate = (id: unknown): { target: 'next-turn' | 'next-step'; index: number } | undefined => {
+    for (const target of ['next-turn', 'next-step'] as const) {
+      const list = target === 'next-turn' ? nextTurn : nextStep
+      const index = list.findIndex(message => messageIdentity(message) === id)
+      if (index >= 0) return { target, index }
+    }
+    return undefined
+  }
+  const inbox: MirrorInbox = {
+    'next-turn': nextTurn,
+    'next-step': nextStep,
+    nextTurn,
+    nextStep,
+    get hasPending() { return nextTurn.length > 0 || nextStep.length > 0 },
+    remove(id) {
+      const found = locate(id)
+      if (found === undefined) return false
+      const list = found.target === 'next-turn' ? nextTurn : nextStep
+      list.splice(found.index, 1)
+      return true
+    },
+    replace(id, message) {
+      const found = locate(id)
+      if (found === undefined) return false
+      const list = found.target === 'next-turn' ? nextTurn : nextStep
+      list.splice(found.index, 1, message)
+      return true
+    },
+    splice(target, start, deleteCount, inserted) {
+      const list = target === 'next-turn' ? nextTurn : nextStep
+      return list.splice(start, deleteCount, ...inserted)
+    },
+    clear() {
+      nextTurn.length = 0
+      nextStep.length = 0
+    },
+  }
+  return inbox
+}
+
 /** One custom Agent façade backed by the remote agent's session. */
 class RemoteMirrorAgent implements MirrorAgent {
   readonly id: SessionId
   readonly session: Session
   readonly options: MirrorAgent['options']
   readonly ctx: Context
-  readonly inbox = { 'next-turn': [], 'next-step': [], nextTurn: [], nextStep: [] }
+  readonly inbox = createMirrorInbox()
   #runtime: MirrorRuntime
   #mirror: RemoteMirrorService
 
@@ -140,6 +199,7 @@ class RemoteMirrorAgent implements MirrorAgent {
   }
 
   cancel(): void {
+    this.inbox.clear()
     this.#mirror.cancel(this.#runtime)
   }
 
@@ -153,11 +213,15 @@ class RemoteMirrorAgent implements MirrorAgent {
   }
 
   send(message: unknown, _target?: unknown, wakeup = false): void {
-    if (wakeup) this.followup(message)
+    if (wakeup || this.#runtime.running) this.followup(message)
     else this.#mirror.prompt(this.#runtime, message, 'queue')
   }
 
   followup(message: unknown): void {
+    if (this.#runtime.running) {
+      this.inbox.nextTurn.push(message)
+      return
+    }
     this.#mirror.prompt(this.#runtime, message, 'queue')
   }
 
@@ -1017,6 +1081,15 @@ export class RemoteMirrorService {
       runtime.awaitingTurn = null
       runtime.awaitingStarted = false
       this.#setRunning(runtime, false)
+      const reason = typeof event.data === 'object' && event.data !== null
+        ? (event.data as { reason?: { kind?: unknown } }).reason?.kind
+        : undefined
+      if (reason === 'aborted') {
+        runtime.agent.inbox.clear()
+      } else if (runtime.agent.inbox.hasPending) {
+        const next = runtime.agent.inbox.nextTurn.shift()
+        if (next !== undefined) this.prompt(runtime, next, 'queue')
+      }
     }
   }
 
