@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.7
+
+- Hide remote subagent Sessions from the Workspaces sidebar and remote session picker. The remote
+  agent now projects `origin: "subagent"` / `parentSession`, and the local mirror archives any
+  subagent sessions created by earlier releases. Remote subagent data and logs are left intact.
+
 ## 0.8.6
 
 - Automatically migrate a legacy `dsh-remote-agent` entry out of the remote DSH profile during
@@ -17,6 +23,8 @@
 - Keep the bundled agent artifact under the installer's persistent artifacts directory instead of a
   temporary `/tmp` path, so later plugin installations cannot break on a missing file dependency.
 - Retain remote-only plugins such as `dsh-mnemon` when updating the remote agent.
+- Hide remote subagent Sessions from mirrored workspaces and the remote session picker; existing
+  subagent mirrors are archived during the next sync.
 
 ## 0.8.4
 

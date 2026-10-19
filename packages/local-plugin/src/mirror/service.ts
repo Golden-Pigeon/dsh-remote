@@ -292,14 +292,14 @@ export class RemoteMirrorService {
     const workspaces = await this.#hosts.workspaces(hostId)
     for (const workspace of workspaces) {
       if (isTestHidden(workspace.path, workspace.workspaceId, this.#testVisibility)) continue
-      const sessions = await this.#hosts.sessions(hostId, workspace.workspaceId)
+      const sessions = await this.#hosts.sessions(hostId, workspace.workspaceId, true)
       const summary = sessions.sessions.find(item => item.sessionId === remoteSessionId)
       if (summary === undefined) continue
       const localWorkspace = await this.#ensureWorkspace(host, workspace)
       const record = await this.#ensureMirror(host, summary, localWorkspace, workspace.path)
       return record?.localSessionId
     }
-    const all = await this.#hosts.sessions(hostId)
+    const all = await this.#hosts.sessions(hostId, undefined, true)
     const summary = all.sessions.find(item => item.sessionId === remoteSessionId)
     if (summary === undefined) return undefined
     if (summary.cwd !== null && isTestHidden(summary.cwd, '', this.#testVisibility)) return undefined
@@ -382,24 +382,31 @@ export class RemoteMirrorService {
     await this.#reconcileTestHidden(host)
     const workspaces = await this.#hosts.workspaces(host.id)
     const covered = new Set<string>()
+    const subagents = new Set<string>()
     const byPath = new Map<string, { workspace: Workspace; anchor: string }>()
     for (const workspace of workspaces) {
       if (isTestHidden(workspace.path, workspace.workspaceId, this.#testVisibility)) {
-        const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId)
+        const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId, true)
         for (const summary of sessions.sessions) covered.add(summary.sessionId)
         continue
       }
       const local = await this.#ensureWorkspace(host, workspace)
       byPath.set(workspace.path, { workspace: local, anchor: this.#anchorFor(local) })
-      const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId)
+      const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId, true)
       for (const summary of sessions.sessions) {
         covered.add(summary.sessionId)
+        if (summary.origin === 'subagent') {
+          subagents.add(summary.sessionId)
+          continue
+        }
         await this.#ensureMirror(host, summary, local, workspace.path)
       }
     }
-    const all = await this.#hosts.sessions(host.id)
+    const all = await this.#hosts.sessions(host.id, undefined, true)
     for (const summary of all.sessions) {
+      if (summary.origin === 'subagent') subagents.add(summary.sessionId)
       if (covered.has(summary.sessionId)) continue
+      if (summary.origin === 'subagent') continue
       if (summary.cwd !== null && isTestHidden(summary.cwd, '', this.#testVisibility)) continue
       const workspace = summary.cwd === null ? undefined : byPath.get(summary.cwd)
       if (workspace !== undefined) {
@@ -409,9 +416,50 @@ export class RemoteMirrorService {
       const ungrouped = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
       await this.#ensureMirror(host, summary, ungrouped.workspace, ungrouped.anchor)
     }
+    await this.#pruneMirroredSubagents(host.id, subagents)
+  }
+
+  /** Remove local mirrors for remote subagent Sessions, including stale rows. */
+  async #pruneMirroredSubagents(hostId: string, subagents: ReadonlySet<string>): Promise<void> {
+    let changed = false
+    for (const [ref, record] of Object.entries(this.#state.sessions)) {
+      if (record.hostId !== hostId || !subagents.has(record.remoteSessionId)) continue
+      const runtime = this.#runtimes.get(record.localSessionId)
+      if (runtime !== undefined) {
+        runtime.stopped = true
+        if (runtime.timer !== undefined) clearTimeout(runtime.timer)
+        runtime.stream?.abort()
+        runtime.assistant?.abort()
+        this.#runtimes.delete(record.localSessionId)
+      }
+      const registration = this.#registrations.get(record.localSessionId)
+      if (registration !== undefined) {
+        registration()
+        this.#registrations.delete(record.localSessionId)
+      }
+      await this.#archive(record.localSessionId as SessionId)
+      delete this.#state.sessions[ref]
+      changed = true
+    }
+    if (!changed) return
+    for (const [ref, workspace] of Object.entries(this.#state.workspaces)) {
+      if (workspace.hostId !== hostId || workspace.remoteWorkspaceId !== null) continue
+      const used = Object.values(this.#state.sessions).some(
+        session => session.hostId === hostId && session.anchor === workspace.anchor,
+      )
+      if (used) continue
+      try {
+        await this.#workspaceRegistry.delete(workspace.localWorkspaceId as WorkspaceId)
+      } catch {
+        // The local row may already be gone; dropping the mirror record is enough.
+      }
+      delete this.#state.workspaces[ref]
+    }
+    await this.#save()
   }
 
   /**
+   * Apply the test-only manifest to already-mirrored workspaces. Hidden entries  /**
    * Apply the test-only manifest to already-mirrored workspaces. Hidden entries
    * archive local Sessions and remove the local workspace row; removing an
    * entry unarchives the Sessions and lets the normal sync rebuild the row.

@@ -105,6 +105,10 @@ export interface RemoteSessionSummary {
   readonly live: boolean
   /** Persisted logical event count when cheaply available. */
   readonly eventCount: number | null
+  /** DSH session origin; subagent sessions are not user workspaces. */
+  readonly origin?: 'subagent'
+  /** Parent session for a subagent session. */
+  readonly parentSession?: string
 }
 
 /** One persisted DSH session event, reduced to its JSON-safe frame fields. */

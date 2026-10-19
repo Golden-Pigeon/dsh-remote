@@ -22,7 +22,7 @@ Normally the local plugin installs this package for you when you add a host. For
 ```sh
 node packages/installer/lib/cli.js install --target user@host
 # or
-dsh plugin --profile web add @goldenpigeon/dsh-remote-agent@0.2.3
+dsh plugin --profile web add @goldenpigeon/dsh-remote-agent@0.2.4
 dsh web --host 127.0.0.1 --port 0 --no-open
 ```
 

@@ -364,11 +364,19 @@ export class RemoteHostsService {
   }
 
   /** List remote sessions, optionally within one workspace. */
-  async sessions(id: string, workspaceId?: string): Promise<ListSessionsResult> {
+  async sessions(
+    id: string,
+    workspaceId?: string,
+    includeSubagents = false,
+  ): Promise<ListSessionsResult> {
     const client = this.#requireClient(id)
     try {
       const sessions = await client.listSessions(workspaceId)
-      return { sessions }
+      return {
+        sessions: includeSubagents
+          ? sessions
+          : sessions.filter(session => session.origin !== 'subagent'),
+      }
     } catch (error) {
       throw this.#remoteFailure(id, error)
     }

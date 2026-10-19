@@ -29,6 +29,8 @@ export interface SessionHeaderLike {
   readonly id: string
   readonly createdAt: number
   readonly cwd?: string
+  readonly origin?: 'subagent'
+  readonly parentSession?: string
 }
 
 /** Project one workspace record. */
@@ -73,6 +75,8 @@ export function projectSession(input: {
     createdAt: new Date(input.header.createdAt).toISOString(),
     live: input.live,
     eventCount: input.eventCount,
+    ...input.header.origin === undefined ? {} : { origin: input.header.origin },
+    ...input.header.parentSession === undefined ? {} : { parentSession: input.header.parentSession },
   }
 }
 

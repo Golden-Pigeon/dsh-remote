@@ -156,6 +156,15 @@ describe('projection', () => {
     assert.equal(summary.sessionId, 's1')
     assert.equal(summary.workspaceId, 'w1')
     assert.equal(summary.live, true)
+
+    const subagent = projectSession({
+      header: { id: 's2', createdAt: 2, cwd: '/srv/project', origin: 'subagent', parentSession: 's1' },
+      live: true,
+      eventCount: 1,
+      workspaceId: 'w1',
+    })
+    assert.equal(subagent.origin, 'subagent')
+    assert.equal(subagent.parentSession, 's1')
   })
 
   it('takes the newest tail and converts events without reshaping data', () => {

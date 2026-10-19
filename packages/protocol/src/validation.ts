@@ -100,6 +100,8 @@ function isRemoteSession(value: unknown): value is RemoteSessionSummary {
     && isIsoString(value.createdAt)
     && typeof value.live === 'boolean'
     && (value.eventCount === null || typeof value.eventCount === 'number')
+    && (value.origin === undefined || value.origin === 'subagent')
+    && (value.parentSession === undefined || isString(value.parentSession))
 }
 
 function isRemoteEvent(value: unknown): value is RemoteSessionEvent {

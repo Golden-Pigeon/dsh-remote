@@ -603,6 +603,8 @@ function toHeaderLike(header: SessionHeader): SessionHeaderLike {
     id: String(header.id),
     createdAt: header.createdAt,
     ...header.cwd === undefined ? {} : { cwd: header.cwd },
+    ...header.origin === undefined ? {} : { origin: header.origin },
+    ...header.parentSession === undefined ? {} : { parentSession: header.parentSession },
   }
 }
 
