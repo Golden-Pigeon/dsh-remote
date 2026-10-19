@@ -9,6 +9,8 @@
 - Increase the remote prompt request body bound for normalized image payloads.
 - Publish the mirror Agent as running as soon as a remote `turn/start` arrives, so a session opened
   while its remote turn is active exposes steering instead of a disabled submit control.
+- Start the remote workspace folder picker at the account's home directory (`~`) instead of the
+  remote DSH home (`.dsh`).
 
 ## 0.8.8
 

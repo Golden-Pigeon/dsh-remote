@@ -254,7 +254,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
         .finally(() => { addFolder.disabled = false })
       return
     }
-    const initial = destination.host.hostInfo?.home ?? '~'
+    const initial = '~'
     openDirectoryBrowser(flow, destination, initial, path => {
       selectedPath = path
       update()
