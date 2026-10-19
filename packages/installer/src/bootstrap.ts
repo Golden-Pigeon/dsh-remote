@@ -211,6 +211,8 @@ PNPM_VERSION=${shellLiteral(options.pnpmVersion)}
 NODE_VERSION=${shellLiteral(options.nodeVersion)}
 AUTO_INSTALL_NODE=${options.autoInstallNode ? '1' : '0'}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
+AGENT_ARTIFACT_DIR="$INSTALL_DIR/artifacts"
+AGENT_ARTIFACT="$AGENT_ARTIFACT_DIR/$(basename "$AGENT_TARBALL")"
 MODEL_BASE_URL=${options.modelBaseUrl === undefined ? "''" : shellLiteral(options.modelBaseUrl)}
 MODEL_API_KEY=${options.modelApiKey === undefined ? "''" : shellLiteral(options.modelApiKey)}
 PROXY_URL=${options.proxyUrl === undefined ? "''" : shellLiteral(options.proxyUrl)}
@@ -326,7 +328,9 @@ if [ ! -x "$DSH_BIN" ]; then
 fi
 
 echo "dsh-remote: adding plugin to profile $PROFILE"
-"$DSH_BIN" plugin --profile "$PROFILE" add "$AGENT_TARBALL"
+mkdir -p "$AGENT_ARTIFACT_DIR"
+cp -f "$AGENT_TARBALL" "$AGENT_ARTIFACT"
+"$DSH_BIN" plugin --profile "$PROFILE" add "$AGENT_ARTIFACT"
 
 echo "dsh-remote: starting dsh web"
 ${startBlock}
