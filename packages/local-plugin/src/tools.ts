@@ -25,7 +25,7 @@ function toJsonObject(value: unknown): JsonObject {
 }
 
 /** Host-writing tools that may connect over SSH or provision a remote runtime. */
-const HOST_WRITE_TOOLS = new Set(['remote_host_add', 'remote_host_connect', 'remote_host_provision'])
+const HOST_WRITE_TOOLS = new Set(['remote_host_add', 'remote_host_connect', 'remote_host_provision', 'remote_host_restart'])
 
 /**
  * Require an explicit approval before model-facing host writes. These tools can
@@ -135,6 +135,25 @@ export function registerRemoteTools(ctx: Context, service: RemoteHostsService): 
     },
     async execute(args) {
       return { host: toJsonObject(await service.provision(args.hostId)) }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'remote_host_restart',
+    description: 'Restart the remote DSH service without reinstalling it, preserving installed remote plugins, then reconnect. Requires the installer-owned systemd user unit; use remote_host_provision for nohup installs.',
+    parameters: {
+      hostId: { type: 'string', required: true, description: 'Registered host id.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { host: { type: 'object', additionalProperties: true, required: true } },
+      },
+      render: renderJson,
+    },
+    async execute(args) {
+      return { host: toJsonObject(await service.restart(args.hostId)) }
     },
   }))
 

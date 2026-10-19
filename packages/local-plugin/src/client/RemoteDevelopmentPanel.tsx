@@ -31,6 +31,7 @@ const DETAIL_KEYS: Record<string, CopyKey> = {
   '正在远端安装 DSH 与 dsh-remote-agent，首次约 1–3 分钟…': 'detail.installing',
   '正在建立 SSH 隧道并校验远端 agent…': 'detail.connecting',
   '正在重新安装远端 agent…': 'detail.reprovisioning',
+  '正在重启远端 DSH…': 'detail.restarting',
   'SSH 隧道断开，等待重连…': 'detail.reconnecting',
   '正在准备远端安装环境…': 'detail.preparing',
   '正在配置远端安装代理…': 'detail.proxyPreparing',
@@ -387,6 +388,14 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                       </button>
                     </>
                   )}
+                <button
+                  type="button"
+                  className="dshr-button"
+                  disabled={busy !== null || host.phase === 'installing'}
+                  onClick={() => { void run(`restart:${host.id}`, async () => { await api.restart(host.id) }) }}
+                >
+                  {busy === `restart:${host.id}` ? t('settings.restarting') : t('settings.restart')}
+                </button>
                 <button
                   type="button"
                   className="dshr-button"

@@ -32,6 +32,7 @@ export type HostApiEndpoint =
   | 'host/disconnect'
   | 'host/refresh'
   | 'host/provision'
+  | 'host/restart'
   | 'host/workspaces'
   | 'host/workspace/create'
   | 'host/directory/list'
@@ -126,6 +127,7 @@ export interface HostApiPayloads {
   'host/disconnect': { hostId: string }
   'host/refresh': { hostId: string }
   'host/provision': { hostId: string }
+  'host/restart': { hostId: string }
   'host/workspaces': { hostId: string }
   'host/workspace/create': { hostId: string; path: string; title?: string }
   'host/directory/list': { hostId: string; path?: string }
@@ -161,6 +163,7 @@ export interface HostApiValues {
   'host/disconnect': HostView
   'host/refresh': HostView
   'host/provision': HostView
+  'host/restart': HostView
   'host/workspaces': WorkspacesResult
   'host/workspace/create': RemoteWorkspace
   'host/directory/list': { path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }

@@ -43,6 +43,7 @@ export interface HostsApi {
   readonly disconnect: (hostId: string) => Promise<HostView>
   readonly refresh: (hostId: string) => Promise<HostView>
   readonly provision: (hostId: string) => Promise<HostView>
+  readonly restart: (hostId: string) => Promise<HostView>
   readonly workspaces: (hostId: string) => Promise<WorkspacesResult>
   readonly listDirectories: (hostId: string, path?: string) => Promise<{ path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }>
   readonly listLocalDirectories: (path?: string) => Promise<{ path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }>
@@ -72,6 +73,7 @@ export function createHostsApi(ctx: Context): HostsApi {
     disconnect: hostId => call('host/disconnect', { hostId }),
     refresh: hostId => call('host/refresh', { hostId }),
     provision: hostId => call('host/provision', { hostId }),
+    restart: hostId => call('host/restart', { hostId }),
     workspaces: hostId => call('host/workspaces', { hostId }),
     listDirectories: (hostId, path) => call('host/directory/list', { hostId, ...path === undefined ? {} : { path } }),
     listLocalDirectories: path => call('local/directory/list', { ...path === undefined ? {} : { path } }),

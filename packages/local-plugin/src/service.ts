@@ -22,6 +22,7 @@ import {
   type CreateSessionRequest,
   type CreateSessionResult,
   type CreateWorkspaceRequest,
+  isAgentLive,
   type HostInfo,
   type ListSessionsResult,
   type ListWorkspacesResult,
@@ -46,6 +47,7 @@ import {
 } from './hosts/types.ts'
 import { RemoteProvisioner } from './remote/provisioner.ts'
 import { discoverAgent } from './ssh/probe.ts'
+import { restartRemoteAgent } from './remote/restart.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
 import { Tunnel } from './ssh/tunnel.ts'
 
@@ -291,6 +293,62 @@ export class RemoteHostsService {
       throw failure
     }
     return this.connect(id)
+  }
+
+  /** Restart the remote DSH service and reconnect without reinstalling. */
+  async restart(id: string): Promise<HostView> {
+    this.#assertAlive()
+    const record = this.#requireRecord(id)
+    const target = parseSshTarget(record.sshTarget)
+    this.#manualDisconnect.delete(id)
+    this.#clearReconnect(id)
+    await this.#stopTransport(id)
+    this.#setRuntime(id, {
+      ...this.#runtimeFor(id),
+      phase: 'connecting',
+      localPort: null,
+      localUrl: null,
+      hostInfo: null,
+      connectedAt: null,
+      error: null,
+      errorCode: null,
+      detail: '正在重启远端 DSH…',
+    })
+    try {
+      await restartRemoteAgent(target, {
+        sshBinary: this.config.sshBinary,
+        strictHostKeyChecking: this.config.strictHostKeyChecking,
+      })
+    } catch (error) {
+      const failure = this.#markError(id, error, 'agent/unavailable')
+      throw failure
+    }
+
+    const deadline = Date.now() + 90_000
+    let lastError: unknown
+    while (Date.now() < deadline) {
+      try {
+        const discovery = await this.#discover(target)
+        if (isAgentLive(discovery.state)) {
+          await this.#saveRecord(id, {
+            remoteAgentPort: discovery.state.port,
+            token: discovery.state.token,
+          })
+          return this.connect(id)
+        }
+      } catch (error) {
+        lastError = error
+      }
+      await new Promise(resolve => setTimeout(resolve, 1_000))
+    }
+    const failure = new LocalError('agent/unavailable', '远端 DSH 重启后未能在 90 秒内就绪', {
+      details: {
+        host: target.canonical,
+        reason: lastError instanceof Error ? lastError.message : String(lastError ?? 'state file not ready'),
+      },
+      retryable: true,
+    })
+    throw this.#markError(id, failure, 'agent/unavailable')
   }
 
   /** List remote workspaces. */

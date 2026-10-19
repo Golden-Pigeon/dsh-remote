@@ -122,6 +122,8 @@ async function dispatch(
       return service.refresh(requireStringField(payload, 'hostId'))
     case 'host/provision':
       return service.provision(requireStringField(payload, 'hostId'))
+    case 'host/restart':
+      return service.restart(requireStringField(payload, 'hostId'))
     case 'host/workspaces': {
       const hostId = requireStringField(payload, 'hostId')
       const workspaces = await service.workspaces(hostId)
