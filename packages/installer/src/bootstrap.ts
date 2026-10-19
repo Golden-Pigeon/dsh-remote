@@ -330,6 +330,48 @@ if [ ! -x "$DSH_BIN" ]; then
   exit 24
 fi
 
+PROFILE_DIR="$DSH_HOME/profiles/$PROFILE"
+LEGACY_CHANGED=0
+if [ -f "$PROFILE_DIR/package.json" ]; then
+  if node - "$PROFILE_DIR/package.json" <<'DSH_REMOTE_MIGRATE'
+const fs = require('node:fs')
+const file = process.argv[2]
+const raw = fs.readFileSync(file, 'utf8')
+const data = JSON.parse(raw)
+let changed = false
+if (data.dependencies !== undefined && Object.hasOwn(data.dependencies, 'dsh-remote-agent')) {
+  delete data.dependencies['dsh-remote-agent']
+  changed = true
+}
+const bundles = data.dsh?.profile?.bundles
+if (Array.isArray(bundles)) {
+  const next = bundles.filter(name => name !== 'dsh-remote-agent')
+  if (next.length !== bundles.length) {
+    data.dsh.profile.bundles = next
+    changed = true
+  }
+}
+if (!changed) process.exit(1)
+fs.writeFileSync(file + '.legacy-backup', raw)
+fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\\n')
+DSH_REMOTE_MIGRATE
+  then
+    LEGACY_CHANGED=1
+  else
+    MIGRATE_STATUS=$?
+    if [ "$MIGRATE_STATUS" -ne 1 ]; then
+      echo "dsh-remote: could not migrate the legacy remote-agent profile entry" >&2
+      exit 26
+    fi
+  fi
+fi
+if [ "$LEGACY_CHANGED" -eq 1 ]; then
+  if [ -f "$PROFILE_DIR/pnpm-lock.yaml" ]; then
+    mv "$PROFILE_DIR/pnpm-lock.yaml" "$PROFILE_DIR/pnpm-lock.yaml.legacy-backup"
+  fi
+  echo "dsh-remote: removed the legacy dsh-remote-agent profile entry"
+fi
+
 echo "dsh-remote: adding plugin to profile $PROFILE"
 mkdir -p "$AGENT_ARTIFACT_DIR"
 cp -f "$AGENT_TARBALL" "$AGENT_ARTIFACT"

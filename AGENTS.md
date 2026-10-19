@@ -7,7 +7,7 @@ This repository is intended to be public on GitHub.
 - Preserve the existing commit author identity; do not rewrite history or authors.
 - Keep test hostnames, personal paths, tokens, and screenshots out of committed files.
 - Local logs, screenshots, and test state may contain real values; only staged content matters.
-- Do not bump the version for test-only tooling or documentation. The current release is 0.8.5.
+- Do not bump the version for test-only tooling or documentation. The current release is 0.8.6.
 
 ## Verification commands
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.6
+
+- Automatically migrate a legacy `dsh-remote-agent` entry out of the remote DSH profile during
+  Reinstall. The installer backs up `package.json` and the stale lockfile, removes the old dependency
+  and bundle entry, then installs the scoped npm agent. Existing remote plugins such as `dsh-mnemon`
+  are preserved; no manual SSH profile editing is required.
+
 ## 0.8.5
 
 - Add a **Restart remote DSH** host action and `remote_host_restart` agent tool. It restarts the

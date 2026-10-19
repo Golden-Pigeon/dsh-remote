@@ -148,6 +148,14 @@ describe('bootstrap rendering', () => {
     assert.match(script, /npm agent unavailable; installing the bundled agent/)
   })
 
+  it('migrates legacy agent profile entries before installing', () => {
+    const script = fromOptions(parseArgs(baseArgs), '/tmp/agent.tgz')
+    assert.match(script, /DSH_REMOTE_MIGRATE/)
+    assert.match(script, /delete data.dependencies\['dsh-remote-agent'\]/)
+    assert.match(script, /removed the legacy dsh-remote-agent profile entry/)
+    assert.match(script, /pnpm-lock.yaml.legacy-backup/)
+  })
+
   it('supports nohup and none start modes', () => {
     const nohup = fromOptions(parseArgs(['plan', '--target', 'example-host', '--start', 'nohup']), '/tmp/agent.tgz')
     assert.match(nohup, /nohup "\$DSH_BIN" web/)
