@@ -18,6 +18,8 @@
   mirrored remote workspace and the host is unavailable; show an error instead.
 - Read normalized image metadata from the attachment reference returned by `readImage` (`ref.mediaType`),
   fixing remote image prompts being rejected as an invalid content part.
+- Remap `developer/message.headerSeq` from remote to local sequence numbers; a stale header reference
+  previously stopped the mirror mid-turn and left the UI waiting forever.
 
 ## 0.8.8
 
