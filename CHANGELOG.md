@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.5
+
+- Add a **Restart remote DSH** host action and `remote_host_restart` agent tool. It restarts the
+  installer-owned systemd unit, waits for the agent state file, and reconnects without reinstalling
+  DSH or overwriting the remote profile. Nohup deployments still use Reinstall or a manual restart.
+- Publish the remote agent as `@goldenpigeon/dsh-remote-agent` and install it from npm before falling
+  back to the bundled tarball.
+- Keep the bundled agent artifact under the installer's persistent artifacts directory instead of a
+  temporary `/tmp` path, so later plugin installations cannot break on a missing file dependency.
+- Retain remote-only plugins such as `dsh-mnemon` when updating the remote agent.
+
 ## 0.8.4
 
 - Keep mirrored Session identity stable across plugin reloads and ended turns; reattach the runtime
