@@ -141,6 +141,13 @@ describe('bootstrap rendering', () => {
     assert.match(script, /remote-agent\/agent\.json/)
   })
 
+  it('prefers the scoped npm agent and keeps the bundled fallback', () => {
+    const script = fromOptions({ ...parseArgs(baseArgs), agentPackageSpec: '@goldenpigeon/dsh-remote-agent@0.2.2' }, '/tmp/agent.tgz')
+    assert.match(script, /AGENT_NPM_SPEC='@goldenpigeon\/dsh-remote-agent@0\.2\.2'/)
+    assert.match(script, /plugin --profile "\$PROFILE" add "\$AGENT_NPM_SPEC"/)
+    assert.match(script, /npm agent unavailable; installing the bundled agent/)
+  })
+
   it('supports nohup and none start modes', () => {
     const nohup = fromOptions(parseArgs(['plan', '--target', 'example-host', '--start', 'nohup']), '/tmp/agent.tgz')
     assert.match(nohup, /nohup "\$DSH_BIN" web/)

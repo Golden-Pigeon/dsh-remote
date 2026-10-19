@@ -24,6 +24,8 @@ export interface InstallerOptions {
   readonly autoInstallNode: boolean
   readonly start: StartMode
   readonly agentTarball: string | undefined
+  /** Exact npm spec for the remote agent, when the caller wants npm-first installation. */
+  readonly agentPackageSpec?: string
   readonly sshBinary: string
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
   readonly timeoutMs: number

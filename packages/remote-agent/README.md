@@ -1,4 +1,4 @@
-# dsh-remote-agent
+# @goldenpigeon/dsh-remote-agent
 
 A remote DSH plugin that exposes the remote host's workspaces and sessions to the local plugin.
 
@@ -22,7 +22,7 @@ Normally the local plugin installs this package for you when you add a host. For
 ```sh
 node packages/installer/lib/cli.js install --target user@host
 # or
-dsh plugin --profile web add ./dsh-remote-agent-0.2.0.tgz
+dsh plugin --profile web add @goldenpigeon/dsh-remote-agent@0.2.2
 dsh web --host 127.0.0.1 --port 0 --no-open
 ```
 

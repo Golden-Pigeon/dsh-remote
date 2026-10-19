@@ -21,6 +21,8 @@ export interface ProvisionRemoteOptions {
   readonly target: string
   /** Local packed dsh-remote-agent tarball. */
   readonly agentTarballPath: string
+  /** Exact npm spec used before the bundled tarball fallback. */
+  readonly agentPackageSpec?: string
   readonly sshBinary: string
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
   readonly profile: string
@@ -74,6 +76,7 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     agentTarball: remoteTarball,
     ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },
     ...options.modelApiKey === undefined ? {} : { modelApiKey: options.modelApiKey },
+    ...options.agentPackageSpec === undefined ? {} : { agentPackageSpec: options.agentPackageSpec },
     ...options.proxyUrl === undefined ? {} : { proxyUrl: options.proxyUrl },
     ...options.noProxy === undefined ? {} : { noProxy: options.noProxy },
   })

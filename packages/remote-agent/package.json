@@ -1,7 +1,7 @@
 {
-  "name": "dsh-remote-agent",
+  "name": "@goldenpigeon/dsh-remote-agent",
   "version": "0.2.2",
-  "description": "DSH remote agent: loopback HTTP/SSE companion that exposes host, workspace, session, and session-event data to dsh-remote-local-plugin.",
+  "description": "DSH remote agent: loopback HTTP/SSE companion for the dsh-remote-local-plugin.",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -77,5 +77,18 @@
     "build": "tsc -p tsconfig.build.json && node ../../scripts/build-host.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --import tsx --test test/*.test.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Golden-Pigeon/dsh-remote.git",
+    "directory": "packages/remote-agent"
+  },
+  "homepage": "https://github.com/Golden-Pigeon/dsh-remote#readme",
+  "bugs": {
+    "url": "https://github.com/Golden-Pigeon/dsh-remote/issues"
+  },
+  "author": "Golden-Pigeon <goldenpigeon2000@gmail.com>",
+  "publishConfig": {
+    "access": "public"
   }
 }

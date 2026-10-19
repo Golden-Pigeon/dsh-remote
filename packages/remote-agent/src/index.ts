@@ -17,7 +17,7 @@ import { Config, type Config as RemoteAgentConfig } from './config.ts'
 import { registerAgentRoutes } from './http.ts'
 import { RemoteAgentService } from './service.ts'
 
-export const name = 'dsh-remote-agent'
+export const name = '@goldenpigeon/dsh-remote-agent'
 
 /** Services that must be active before the agent can answer anything. */
 export const inject = ['webServer', 'workspaceRegistry', 'sessions', 'sessionPersistence', 'sessionController', 'agents']

@@ -23,6 +23,8 @@ export interface BootstrapOptions {
   readonly autoInstallNode: boolean
   readonly start: StartMode
   readonly agentTarball: string
+  /** Exact npm package spec for the remote agent, if it should be tried first. */
+  readonly agentPackageSpec?: string
   /** Remote DSH model endpoint; the local credential proxy URL when proxying. */
   readonly modelBaseUrl?: string
   /** Placeholder key for the local credential proxy; never the real key. */
@@ -211,6 +213,7 @@ PNPM_VERSION=${shellLiteral(options.pnpmVersion)}
 NODE_VERSION=${shellLiteral(options.nodeVersion)}
 AUTO_INSTALL_NODE=${options.autoInstallNode ? '1' : '0'}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
+AGENT_NPM_SPEC=${options.agentPackageSpec === undefined ? "''" : shellLiteral(options.agentPackageSpec)}
 AGENT_ARTIFACT_DIR="$INSTALL_DIR/artifacts"
 AGENT_ARTIFACT="$AGENT_ARTIFACT_DIR/$(basename "$AGENT_TARBALL")"
 MODEL_BASE_URL=${options.modelBaseUrl === undefined ? "''" : shellLiteral(options.modelBaseUrl)}
@@ -330,7 +333,12 @@ fi
 echo "dsh-remote: adding plugin to profile $PROFILE"
 mkdir -p "$AGENT_ARTIFACT_DIR"
 cp -f "$AGENT_TARBALL" "$AGENT_ARTIFACT"
-"$DSH_BIN" plugin --profile "$PROFILE" add "$AGENT_ARTIFACT"
+if [ -n "$AGENT_NPM_SPEC" ] && "$DSH_BIN" plugin --profile "$PROFILE" add "$AGENT_NPM_SPEC"; then
+  echo "dsh-remote: installed agent from npm"
+else
+  echo "dsh-remote: npm agent unavailable; installing the bundled agent" >&2
+  "$DSH_BIN" plugin --profile "$PROFILE" add "$AGENT_ARTIFACT"
+fi
 
 echo "dsh-remote: starting dsh web"
 ${startBlock}
@@ -412,6 +420,7 @@ export function fromOptions(options: InstallerOptions, agentTarball: string): st
     nodeVersion: options.nodeVersion,
     autoInstallNode: options.autoInstallNode,
     start: options.start,
+    ...options.agentPackageSpec === undefined ? {} : { agentPackageSpec: options.agentPackageSpec },
     agentTarball,
   })
 }

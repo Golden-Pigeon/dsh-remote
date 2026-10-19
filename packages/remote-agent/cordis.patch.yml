@@ -8,7 +8,7 @@
 # dsh-base layer and is addressable by id from a later profile patch layer.
 - insert:
     - id: dsh-remote-agent
-      name: dsh-remote-agent
+      name: "@goldenpigeon/dsh-remote-agent"
       config:
         # Empty means $DSH_HOME/remote-agent/agent.json.
         stateFile: ''

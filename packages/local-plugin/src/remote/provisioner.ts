@@ -45,6 +45,8 @@ export class RemoteProvisioner {
     } = {},
   ): Promise<void> {
     const tarball = findAgentTarball()
+    const version = /dsh-remote-agent-(.+)\.tgz$/u.exec(tarball)?.[1]
+    const agentPackageSpec = version === undefined ? undefined : `@goldenpigeon/dsh-remote-agent@${version}`
     options.onProgress?.('正在准备远端安装环境…')
     const proxyUrl = this.#config.remoteInstallProxy.trim() || undefined
     if (proxyUrl !== undefined) options.onProgress?.('正在配置远端安装代理…')
@@ -52,6 +54,7 @@ export class RemoteProvisioner {
       await provisionRemoteAgent({
         target: target.canonical,
         agentTarballPath: tarball,
+        ...agentPackageSpec === undefined ? {} : { agentPackageSpec },
         sshBinary: this.#config.sshBinary,
         strictHostKeyChecking: this.#config.strictHostKeyChecking,
         profile: 'web',

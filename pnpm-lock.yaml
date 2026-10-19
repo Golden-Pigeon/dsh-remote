@@ -135,7 +135,7 @@ importers:
       '@dsh-remote/protocol':
         specifier: workspace:*
         version: link:../protocol
-      dsh-remote-agent:
+      '@goldenpigeon/dsh-remote-agent':
         specifier: workspace:*
         version: link:../remote-agent
       dsh-remote-terminal-controller:

@@ -48,7 +48,23 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Stage npm tarball
+      - name: Check whether the remote agent version is already published
+        id: agent-published
+        run: |
+          VERSION="$(node -p "require('./packages/remote-agent/package.json').version")"
+          if npm view "@goldenpigeon/dsh-remote-agent@${VERSION}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Stage remote agent tarball
+        if: steps.agent-published.outputs.exists != 'true'
+        run: |
+          npm stage publish packages/local-plugin/assets/goldenpigeon-dsh-remote-agent-*.tgz --tag latest --access public --provenance
+          echo "::notice::Remote agent staged. Approve it with 2FA: npm stage list @goldenpigeon/dsh-remote-agent"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Stage local plugin tarball
         if: steps.published.outputs.exists != 'true'
         run: |
           npm stage publish packages/local-plugin/dsh-remote-local-plugin-*.tgz --tag latest --access public --provenance
@@ -59,4 +75,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: packages/local-plugin/dsh-remote-local-plugin-*.tgz
+          files: |
+            packages/local-plugin/dsh-remote-local-plugin-*.tgz
+            packages/local-plugin/assets/goldenpigeon-dsh-remote-agent-*.tgz

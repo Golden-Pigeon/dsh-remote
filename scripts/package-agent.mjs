@@ -16,7 +16,7 @@ const agentDir = join(root, 'packages', 'remote-agent')
 const assetsDir = join(root, 'packages', 'local-plugin', 'assets')
 
 if (!existsSync(join(agentDir, 'lib', 'index.js'))) {
-  throw new Error('dsh-remote-agent is not built; run `pnpm --filter dsh-remote-agent build` first')
+  throw new Error('dsh-remote-agent is not built; run `pnpm --filter @goldenpigeon/dsh-remote-agent build` first')
 }
 
 rmSync(assetsDir, { recursive: true, force: true })
