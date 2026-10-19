@@ -20,6 +20,8 @@
   fixing remote image prompts being rejected as an invalid content part.
 - Remap `developer/message.headerSeq` from remote to local sequence numbers; a stale header reference
   previously stopped the mirror mid-turn and left the UI waiting forever.
+- Append the optimistic local `user/message` before dispatching a mirrored prompt, so the composer
+  settles immediately instead of remaining in `Sending...` while the remote turn queues or steers it.
 
 ## 0.8.8
 

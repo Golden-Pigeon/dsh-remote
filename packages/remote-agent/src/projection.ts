@@ -98,13 +98,38 @@ export function toWireEvent(event: {
     readonly surfaceOp?: RemoteSessionEvent['surfaceOp']
     readonly sourceEventSeqs?: readonly number[]
   }
+  const data = event.type === 'developer/message'
+    && typeof event.data === 'object' && event.data !== null && !Array.isArray(event.data)
+    ? (() => {
+        // headerSeq refers to a request/header sequence in the remote log. A
+        // mirror renumbers events, so replaying that remote number makes the
+        // local Session reject the developer message. Tool-addition blocks
+        // also require the historical header. A mirror does not rebuild model
+        // tool state from these events, so keep any text and drop the
+        // tool-change blocks and header reference.
+        const copy = { ...(event.data as Record<string, unknown>) }
+        delete copy.headerSeq
+        const message = copy.message
+        if (typeof message === 'object' && message !== null && !Array.isArray(message)) {
+          const content = (message as { content?: unknown }).content
+          if (Array.isArray(content)) {
+            copy.message = {
+              ...(message as Record<string, unknown>),
+              content: content.filter(block => {
+                const type = typeof block === 'object' && block !== null ? (block as { type?: unknown }).type : undefined
+                return type !== 'tool-addition' && type !== 'tool-removal'
+              }),
+            }
+          }
+        }
+        return copy
+      })()
+    : event.data
   return {
     seq: event.seq,
     type: event.type,
     time: event.time,
-    // DSH commits lossless-JSON event bodies; the wire contract preserves them
-    // verbatim rather than reshaping event-specific payloads.
-    data: event.data as RemoteSessionEvent['data'],
+    data: data as RemoteSessionEvent['data'],
     ...surface.surfaceOp === undefined ? {} : { surfaceOp: surface.surfaceOp },
     ...surface.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surface.sourceEventSeqs },
   }

@@ -75,6 +75,11 @@ interface MirrorState {
   testHidden: string[]
 }
 
+interface PendingUser {
+  readonly message: unknown
+  readonly localSeq: number
+}
+
 interface MirrorRuntime {
   readonly record: MirrorRecord
   readonly agent: MirrorAgent
@@ -91,7 +96,7 @@ interface MirrorRuntime {
   running: boolean
   stopped: boolean
   lastError: string | null
-  pendingUsers: unknown[]
+  pendingUsers: PendingUser[]
   waiters: Array<() => void>
 }
 
@@ -333,7 +338,16 @@ export class RemoteMirrorService {
   prompt(runtime: MirrorRuntime, message: unknown, mode: PromptDeliveryMode): void {
     const parts = promptParts(message)
     if (parts.length === 0) return
-    runtime.pendingUsers.push(message)
+    const before = (runtime.session as unknown as { seq: number }).seq
+    try {
+      runtime.session.append('user/message', messageData(message) as never, { surfaceOp: 'append' } as never)
+    } catch (error) {
+      this.#ctx.logger.warn('dsh-remote-local: could not append optimistic user message: %s', String(error))
+    }
+    const localSeq = (runtime.session as unknown as { seq: number }).seq > before
+      ? (runtime.session as unknown as { seq: number }).seq - 1
+      : -1
+    runtime.pendingUsers.push({ message, localSeq })
     if (!runtime.running) {
       runtime.awaitingTurn = runtime.latestTurn + 1
       runtime.awaitingStarted = false
@@ -968,15 +982,19 @@ export class RemoteMirrorService {
   #appendEvent(runtime: MirrorRuntime, event: RemoteSessionEvent): void {
     const before = (runtime.session as unknown as { seq: number }).seq
     runtime.applyingRemote = true
+    let mappedSeq: number | undefined
     try {
       if (!isMirrorNoise(event.type)) {
-        appendRemoteEvent(runtime.session, remapRemoteEvent(event, runtime.remoteToLocalSeq), runtime)
+        mappedSeq = appendRemoteEvent(runtime.session, remapRemoteEvent(event, runtime.remoteToLocalSeq), runtime)
       }
     } finally {
       runtime.applyingRemote = false
     }
     const after = (runtime.session as unknown as { seq: number }).seq
-    if (after > before) {
+    if (mappedSeq !== undefined) {
+      runtime.remoteToLocalSeq.set(event.seq, mappedSeq)
+      this.#flushAssistantEnd(runtime, event.seq)
+    } else if (after > before) {
       runtime.remoteToLocalSeq.set(event.seq, after - 1)
       this.#flushAssistantEnd(runtime, event.seq)
     }
@@ -1246,18 +1264,15 @@ function appendRemoteEvent(
   session: Session,
   event: RemoteSessionEvent,
   runtime: MirrorRuntime,
-): void {
+): number | undefined {
   // The remote user message carries the remote request id. Reuse the local
   // optimistic message instead so the client settles its pending submission,
   // and keep the remote event's position in the turn.
   if (event.type === 'user/message' && runtime.pendingUsers.length > 0) {
     const source = (event.data as { source?: { kind?: unknown } }).source
     if (source?.kind === 'user') {
-      const message = runtime.pendingUsers.shift()
-      if (message !== undefined) {
-        session.append('user/message', messageData(message) as never, { surfaceOp: 'append' } as never)
-        return
-      }
+      const pending = runtime.pendingUsers.shift()
+      if (pending !== undefined && pending.localSeq >= 0) return pending.localSeq
     }
   }
   const append = session.append.bind(session) as (...args: unknown[]) => unknown
@@ -1270,6 +1285,7 @@ function appendRemoteEvent(
   } else {
     append(event.type, event.data)
   }
+  return undefined
 }
 
 function messageData(message: unknown): unknown {

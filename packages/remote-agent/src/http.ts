@@ -426,6 +426,15 @@ function asSelectModelRequest(value: unknown): { provider: string; model: string
   }
 }
 
+function inferImageMediaType(data: string): string | undefined {
+  const head = Buffer.from(data.slice(0, 64), 'base64')
+  if (head.length >= 8 && head.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png'
+  if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg'
+  if (head.length >= 6 && (head.subarray(0, 6).toString('ascii') === 'GIF87a' || head.subarray(0, 6).toString('ascii') === 'GIF89a')) return 'image/gif'
+  if (head.length >= 12 && head.subarray(0, 4).toString('ascii') === 'RIFF' && head.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp'
+  return undefined
+}
+
 function asPromptRequest(value: unknown): PromptSessionRequest {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
@@ -456,13 +465,19 @@ function asPromptRequest(value: unknown): PromptSessionRequest {
       continue
     }
     if (record.type === 'image') {
-      if (typeof record.data !== 'string' || typeof record.mediaType !== 'string') {
+      if (typeof record.data !== 'string') {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'image content part is invalid' })
+      }
+      const mediaType = typeof record.mediaType === 'string'
+        ? record.mediaType
+        : inferImageMediaType(record.data)
+      if (mediaType === undefined) {
         throw new RemoteProtocolError({ code: 'request/invalid', message: 'image content part is invalid' })
       }
       parts.push({
         type: 'image',
         data: record.data,
-        mediaType: record.mediaType,
+        mediaType,
         ...typeof record.name === 'string' ? { name: record.name } : {},
       })
       continue
