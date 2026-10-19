@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.8
+
+- Forward a mirrored Session's `sandbox/mode` change to its remote Session instead of only updating
+  the local projection, so switching a remote Session to `danger-full-access` takes effect on the
+  remote Bash/filesystem sandbox.
+- On reattach, compare the local and remote sandbox modes and repair a previously unsynchronized
+  mode once.
+- Add the remote agent `POST /sessions/:id/sandbox` endpoint with strict mode validation.
+
 ## 0.8.7
 
 - Hide remote subagent Sessions from the Workspaces sidebar and remote session picker. The remote

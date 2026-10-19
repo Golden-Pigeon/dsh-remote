@@ -782,6 +782,13 @@ export class RemoteMirrorService {
     runtime.agent = agent
     this.#runtimes.set(record.localSessionId, runtime)
     this.#registrations.set(record.localSessionId, this.#agents.enter(agent as never, undefined))
+    const localMode = this.#localSandboxMode(session)
+    const remoteMode = latestRemoteSandboxMode(snapshot.events)
+    if (localMode !== undefined && remoteMode !== undefined && localMode !== remoteMode) {
+      void this.#hosts.setSandboxMode(record.hostId, record.remoteSessionId, localMode).catch(error => {
+        this.#ctx.logger.warn('dsh-remote-local: initial sandbox mode failed: %s', String(error))
+      })
+    }
     await this.#save()
     this.#schedule(runtime)
     if (live) {
@@ -923,9 +930,18 @@ export class RemoteMirrorService {
 
   #onLocalSessionEvent(session: Session, event: SessionEvent): void {
     const candidate = event as unknown as { type?: string; data?: unknown }
-    if (candidate.type !== 'model/selection') return
+    if (candidate.type !== 'model/selection' && candidate.type !== 'sandbox/mode') return
     const runtime = [...this.#runtimes.values()].find(item => item.session.id === session.id)
     if (runtime === undefined || runtime.stopped || runtime.applyingRemote) return
+    if (candidate.type === 'sandbox/mode') {
+      const mode = (candidate.data as { mode?: unknown }).mode
+      if (mode !== 'read-only' && mode !== 'workspace-write' && mode !== 'danger-full-access') return
+      void this.#hosts.setSandboxMode(runtime.record.hostId, runtime.record.remoteSessionId, mode).catch(error => {
+        runtime.lastError = error instanceof Error ? error.message : String(error)
+        this.#ctx.logger.warn('dsh-remote-local: remote sandbox mode failed: %s', runtime.lastError)
+      })
+      return
+    }
     const record = candidate.data as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
     if (typeof record.provider !== 'string' || typeof record.model !== 'string') return
     const selection = {
@@ -938,6 +954,16 @@ export class RemoteMirrorService {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       this.#ctx.logger.warn('dsh-remote-local: remote model selection failed: %s', runtime.lastError)
     })
+  }
+
+  #localSandboxMode(session: Session): 'read-only' | 'workspace-write' | 'danger-full-access' | undefined {
+    const projections = this.#ctx.get('sessionProjections') as unknown as {
+      stateOf?: (session: Session, key: string) => unknown
+    } | undefined
+    const mode = projections?.stateOf?.(session, 'sandboxMode')
+    return mode === 'read-only' || mode === 'workspace-write' || mode === 'danger-full-access'
+      ? mode
+      : undefined
   }
 
   #defaultSelection(): { provider: string; model: string; reasoningEffort?: string } | undefined {
@@ -1238,6 +1264,16 @@ function latestSelection(session: Session): { provider: string; model: string; r
         ...typeof data.reasoningEffort === 'string' ? { reasoningEffort: data.reasoningEffort } : {},
       }
     }
+  }
+  return undefined
+}
+
+function latestRemoteSandboxMode(events: readonly RemoteSessionEvent[]): 'read-only' | 'workspace-write' | 'danger-full-access' | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event === undefined || event.type !== 'sandbox/mode') continue
+    const mode = (event.data as { mode?: unknown }).mode
+    if (mode === 'read-only' || mode === 'workspace-write' || mode === 'danger-full-access') return mode
   }
   return undefined
 }

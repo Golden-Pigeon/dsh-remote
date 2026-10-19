@@ -252,6 +252,14 @@ export interface SelectModelRequest {
   readonly reasoningEffort?: string
 }
 
+/** File-effect policy for a remote session. */
+export type RemoteSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+/** Request to set the sandbox mode for one remote session. */
+export interface SetSandboxModeRequest {
+  readonly mode: RemoteSandboxMode
+}
+
 /** Request to send a text prompt to a remote session. */
 export interface PromptSessionRequest {
   readonly text: string

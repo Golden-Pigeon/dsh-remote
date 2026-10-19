@@ -118,6 +118,9 @@ async function handleAgentRequest(
         case 'session-model':
           sendJson(res, await service.selectModel(route.sessionId, asSelectModelRequest(body)))
           return
+        case 'session-sandbox':
+          sendJson(res, await service.setSandboxMode(route.sessionId, asSandboxModeRequest(body)))
+          return
         case 'session-prompt':
           sendJson(res, await service.promptSession(route.sessionId, asPromptRequest(body)))
           return
@@ -388,6 +391,17 @@ function asCreateRequest(value: unknown): { workspaceId?: string; cwd?: string; 
     }
   }
   return result
+}
+
+function asSandboxModeRequest(value: unknown): 'read-only' | 'workspace-write' | 'danger-full-access' {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const mode = (value as Record<string, unknown>).mode
+  if (mode !== 'read-only' && mode !== 'workspace-write' && mode !== 'danger-full-access') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'mode is invalid' })
+  }
+  return mode
 }
 
 function asSelectModelRequest(value: unknown): { provider: string; model: string; reasoningEffort?: string } {

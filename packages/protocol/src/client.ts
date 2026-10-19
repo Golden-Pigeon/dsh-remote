@@ -16,6 +16,7 @@ import {
   sessionCancelPath,
   sessionEventsPath,
   sessionModelPath,
+  sessionSandboxModePath,
   sessionPath,
   sessionPromptPath,
   workspaceSessionsPath,
@@ -38,6 +39,7 @@ import type {
   RemoteSessionSummary,
   PromptSessionRequest,
   SelectModelRequest,
+  SetSandboxModeRequest,
   RemoteWorkspace,
   SessionSnapshot,
   SessionSnapshotOptions,
@@ -181,6 +183,14 @@ export class RemoteAgentClient {
   /** Select the model and reasoning effort for one remote session. */
   async selectModel(sessionId: string, request: SelectModelRequest): Promise<void> {
     await this.#request(sessionModelPath(sessionId), isAcceptedResult, {
+      method: 'POST',
+      body: request,
+    })
+  }
+
+  /** Set the file-effect sandbox mode for one remote session. */
+  async setSandboxMode(sessionId: string, request: SetSandboxModeRequest): Promise<void> {
+    await this.#request(sessionSandboxModePath(sessionId), isAcceptedResult, {
       method: 'POST',
       body: request,
     })

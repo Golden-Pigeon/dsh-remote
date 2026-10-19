@@ -382,6 +382,20 @@ export class RemoteHostsService {
     }
   }
 
+  /** Set the file-effect sandbox mode for one remote session. */
+  async setSandboxMode(
+    id: string,
+    sessionId: string,
+    mode: 'read-only' | 'workspace-write' | 'danger-full-access',
+  ): Promise<void> {
+    const client = this.#requireClient(id)
+    try {
+      await client.setSandboxMode(sessionId, { mode })
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
   /** Follow a live remote session from a cursor as an SSE-backed stream. */
   async *followSessionEvents(
     id: string,

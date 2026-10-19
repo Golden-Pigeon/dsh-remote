@@ -265,6 +265,18 @@ export class RemoteAgentService {
     return { accepted: true }
   }
 
+  /** Set the file-effect sandbox mode for one remote session. */
+  async setSandboxMode(
+    sessionId: string,
+    mode: 'read-only' | 'workspace-write' | 'danger-full-access',
+  ): Promise<AcceptedResult> {
+    const session = this.assertLiveSession(sessionId) as unknown as {
+      append(type: string, data: unknown): unknown
+    }
+    session.append('sandbox/mode', { mode })
+    return { accepted: true }
+  }
+
   /** Send a text prompt to one remote session. */
   async promptSession(sessionId: string, request: PromptSessionRequest): Promise<AcceptedResult> {
     const text = request.text.trim()
