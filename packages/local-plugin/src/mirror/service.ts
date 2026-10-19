@@ -77,7 +77,7 @@ interface MirrorState {
 
 interface PendingUser {
   readonly message: unknown
-  readonly localSeq: number
+  localSeq: number
 }
 
 interface MirrorRuntime {
@@ -338,16 +338,8 @@ export class RemoteMirrorService {
   prompt(runtime: MirrorRuntime, message: unknown, mode: PromptDeliveryMode): void {
     const parts = promptParts(message)
     if (parts.length === 0) return
-    const before = (runtime.session as unknown as { seq: number }).seq
-    try {
-      runtime.session.append('user/message', messageData(message) as never, { surfaceOp: 'append' } as never)
-    } catch (error) {
-      this.#ctx.logger.warn('dsh-remote-local: could not append optimistic user message: %s', String(error))
-    }
-    const localSeq = (runtime.session as unknown as { seq: number }).seq > before
-      ? (runtime.session as unknown as { seq: number }).seq - 1
-      : -1
-    runtime.pendingUsers.push({ message, localSeq })
+    const pending: PendingUser = { message, localSeq: -1 }
+    runtime.pendingUsers.push(pending)
     if (!runtime.running) {
       runtime.awaitingTurn = runtime.latestTurn + 1
       runtime.awaitingStarted = false
@@ -369,9 +361,21 @@ export class RemoteMirrorService {
       mode,
       selection,
       content,
-    )).catch(error => {
+    )).then(() => {
+      if (!runtime.pendingUsers.includes(pending)) return
+      const before = (runtime.session as unknown as { seq: number }).seq
+      try {
+        runtime.session.append('user/message', messageData(message) as never, { surfaceOp: 'append' } as never)
+        pending.localSeq = (runtime.session as unknown as { seq: number }).seq > before
+          ? (runtime.session as unknown as { seq: number }).seq - 1
+          : -1
+      } catch (error) {
+        this.#ctx.logger.warn('dsh-remote-local: could not append accepted user message: %s', String(error))
+      }
+    }).catch(error => {
       runtime.lastError = error instanceof Error ? error.message : String(error)
-      runtime.pendingUsers.shift()
+      const index = runtime.pendingUsers.indexOf(pending)
+      if (index >= 0) runtime.pendingUsers.splice(index, 1)
       this.#ctx.logger.warn('dsh-remote-local: remote prompt failed: %s', runtime.lastError)
       try {
         const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
