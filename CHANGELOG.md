@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Support mirroring remote Sessions longer than the remote snapshot window by seeding from the first
+  complete turn in the available tail. Local history starts from that turn; older remote history stays
+  in the remote Session.
+- Treat remote surface replacement events as local appends, both during seed and live mirroring. A
+  replacement range refers to the remote log and can target a node omitted from the local mirror,
+  which previously poisoned the local surface projection and made history fail to load.
+- When a poll finds the remote log has advanced past the mirror window, skip to the available tail and
+  continue mirroring instead of stopping the mirror.
+
 ## 0.8.9
 
 - Forward image attachments from a mirrored prompt to the remote Session, including ordered text

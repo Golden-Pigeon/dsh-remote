@@ -825,17 +825,25 @@ export class RemoteMirrorService {
     }
 
     const snapshot = await this.#hosts.snapshot(host.id, remote.sessionId, this.#config.mirrorMaxEvents)
-    if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > 0) {
-      this.#ctx.logger.warn(
-        'dsh-remote-local: remote session %s is too long to mirror (%d events); open it in the remote UI',
-        remote.sessionId,
-        snapshot.cursor,
-      )
-      return undefined
-    }
     const anchor = this.#anchorFor(workspace)
     await mkdir(anchor, { recursive: true })
-    const filtered = snapshot.events.filter(event => !isMirrorNoise(event.type))
+    // A long remote Session may only be available as a truncated tail. Seed
+    // from the first complete turn in that tail instead of refusing the mirror
+    // entirely; older remote history stays available in the remote UI.
+    let seedEvents = snapshot.events
+    let seedEndSeq = seedEvents.at(-1)?.seq
+    if (snapshot.truncated && (seedEvents[0]?.seq ?? 0) > 0) {
+      const firstTurn = seedEvents.findIndex(event => event.type === 'turn/start')
+      if (firstTurn > 0) {
+        let lastEnd = -1
+        for (let index = seedEvents.length - 1; index >= firstTurn; index -= 1) {
+          if (seedEvents[index]?.type === 'turn/end') { lastEnd = index; break }
+        }
+        seedEvents = lastEnd >= firstTurn ? seedEvents.slice(firstTurn, lastEnd + 1) : seedEvents.slice(firstTurn)
+        seedEndSeq = seedEvents.at(-1)?.seq
+      }
+    }
+    const filtered = seedEvents.filter(event => !isMirrorNoise(event.type))
     const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
     let latestTurn = 0
     for (const event of filtered) {
@@ -896,14 +904,14 @@ export class RemoteMirrorService {
           localSessionId: localId,
           remoteWorkspaceId: remote.workspaceId,
           anchor,
-          lastSeq: snapshot.cursor,
+          lastSeq: (seedEndSeq ?? snapshot.cursor - 1) + 1,
           updatedAt: new Date().toISOString(),
         }
       : {
           ...existing,
           remoteWorkspaceId: remote.workspaceId,
           anchor,
-          lastSeq: snapshot.cursor,
+          lastSeq: (seedEndSeq ?? snapshot.cursor - 1) + 1,
           updatedAt: new Date().toISOString(),
         }
     this.#state.sessions[ref] = record
@@ -984,11 +992,14 @@ export class RemoteMirrorService {
         this.#config.mirrorMaxEvents,
       )
       if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > runtime.record.lastSeq) {
-        runtime.lastError = 'remote log grew past the mirror window'
-        runtime.stopped = true
-        runtime.stream?.abort()
-        runtime.assistant?.abort()
-        return
+        const first = snapshot.events[0]?.seq
+        this.#ctx.logger.warn(
+          'dsh-remote-local: remote log for %s skipped ahead to seq %s (window %d)',
+          runtime.record.remoteSessionId,
+          String(first ?? snapshot.cursor),
+          this.#config.mirrorMaxEvents,
+        )
+        runtime.record.lastSeq = first ?? snapshot.cursor
       }
       for (const event of snapshot.events) {
         if (event.seq < runtime.record.lastSeq) continue
@@ -1331,20 +1342,21 @@ function remapRemoteEvent(
   event: RemoteSessionEvent,
   remoteToLocal: ReadonlyMap<number, number>,
 ): RemoteSessionEvent {
-  const sourceEventSeqs = event.sourceEventSeqs
-    ?.map(seq => remoteToLocal.get(seq))
-    .filter((seq): seq is number => seq !== undefined)
-  const surfaceOp = typeof event.surfaceOp === 'object'
-    ? {
-        op: 'replace' as const,
-        startSeq: remoteToLocal.get(event.surfaceOp.startSeq) ?? 0,
-        endSeq: remoteToLocal.get(event.surfaceOp.endSeq) ?? 0,
-      }
-    : event.surfaceOp
+  // Remote replacement ranges are defined in the remote log's sequence space.
+  // A mirror can omit events (prefix trimming, local-only optimistic messages,
+  // non-surface events), so replaying the original replacement can target a
+  // node that is no longer the current local surface. Append the replacement as
+  // a fresh surface event instead of risking the whole history projection.
+  const hadReplacement = typeof event.surfaceOp === 'object'
+  const sourceEventSeqs = hadReplacement
+    ? undefined
+    : event.sourceEventSeqs
+      ?.map(seq => remoteToLocal.get(seq))
+      .filter((seq): seq is number => seq !== undefined)
   return {
     ...event,
     ...sourceEventSeqs === undefined || sourceEventSeqs.length === 0 ? {} : { sourceEventSeqs },
-    ...surfaceOp === undefined ? {} : { surfaceOp },
+    ...hadReplacement ? { surfaceOp: 'append' as const } : event.surfaceOp === undefined ? {} : { surfaceOp: event.surfaceOp },
   } as RemoteSessionEvent
 }
 
@@ -1395,16 +1407,17 @@ function messageData(message: unknown): unknown {
 }
 
 function toSeedEvent(event: RemoteSessionEvent, seq: number, map: ReadonlyMap<number, number>): SessionEvent {
-  const surfaceOp = typeof event.surfaceOp === 'object'
-    ? {
-        op: 'replace' as const,
-        startSeq: map.get(event.surfaceOp.startSeq) ?? 0,
-        endSeq: map.get(event.surfaceOp.endSeq) ?? 0,
-      }
-    : event.surfaceOp
-  const sourceEventSeqs = event.sourceEventSeqs
-    ?.map(source => map.get(source))
-    .filter((source): source is number => source !== undefined)
+  // A seeded tail may start in the middle of a replacement chain. Replaying a
+  // remote replacement can then target a node that was dropped with the prefix
+  // and poison the whole local surface projection. Seed every result as its own
+  // surface append instead.
+  const hadReplacement = typeof event.surfaceOp === 'object'
+  const surfaceOp = event.surfaceOp === undefined || hadReplacement ? (hadReplacement ? 'append' : undefined) : event.surfaceOp
+  const sourceEventSeqs = hadReplacement
+    ? undefined
+    : event.sourceEventSeqs
+      ?.map(source => map.get(source))
+      .filter((source): source is number => source !== undefined)
   return {
     seq,
     type: event.type,
