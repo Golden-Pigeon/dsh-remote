@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.10
 
 - Support mirroring remote Sessions longer than the remote snapshot window by seeding from the first
   complete turn in the available tail. Local history starts from that turn; older remote history stays
