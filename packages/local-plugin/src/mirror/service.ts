@@ -34,6 +34,7 @@ import type {
   PromptDeliveryMode,
 } from '@dsh-remote/protocol'
 import type { ResolvedConfig } from '../config.ts'
+import { singleFlight } from './inflight.ts'
 import { isTestHidden, loadTestVisibility, type TestVisibility } from './test-visibility.ts'
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsService } from '../service.ts'
@@ -287,6 +288,7 @@ export class RemoteMirrorService {
   #runtimes = new Map<string, MirrorRuntime>()
   #registrations = new Map<string, () => void>()
   #approvalStreams = new Map<string, AbortController>()
+  #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
   #timer: NodeJS.Timeout | undefined
@@ -788,7 +790,29 @@ export class RemoteMirrorService {
     })
   }
 
+  /**
+   * Ensure exactly one local mirror per remote Session.
+   *
+   * Creation is check-then-act across several awaits (workspace and session
+   * discovery, snapshot fetch), so a periodic sync and an on-demand
+   * `host/session/create` can both observe no mapping and each create a local
+   * Session for the same remote Session. Coalesce every caller by remote
+   * identity: the first one creates, the others await and share its result.
+   */
   async #ensureMirror(
+    host: HostView,
+    remote: RemoteSessionSummary,
+    workspace: Workspace,
+    remotePath: string,
+  ): Promise<MirrorRecord | undefined> {
+    return singleFlight(
+      this.#mirrorsInFlight,
+      key(host.id, remote.sessionId),
+      () => this.#ensureMirrorOnce(host, remote, workspace, remotePath),
+    )
+  }
+
+  async #ensureMirrorOnce(
     host: HostView,
     remote: RemoteSessionSummary,
     workspace: Workspace,
