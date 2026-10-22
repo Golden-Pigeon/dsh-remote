@@ -1011,9 +1011,12 @@ export class RemoteMirrorService {
       }
       runtime.record.updatedAt = new Date().toISOString()
       if (!snapshot.live && runtime.record.lastSeq >= snapshot.cursor) {
-        runtime.stopped = true
-        runtime.stream?.abort()
-        runtime.assistant?.abort()
+        if (runtime.running) this.#closeAbandonedTurn(runtime)
+        if (!runtime.running) {
+          runtime.stopped = true
+          runtime.stream?.abort()
+          runtime.assistant?.abort()
+        }
       }
       await this.#save()
       if (snapshot.live && !runtime.stopped) {
@@ -1029,6 +1032,36 @@ export class RemoteMirrorService {
       )
     }
     this.#schedule(runtime)
+  }
+
+  /**
+   * Close a turn the remote Session opened but never ended, for example when the remote
+   * DSH host restarted mid-step. Without this the mirror keeps reporting `running`, queues
+   * every later prompt in its local inbox, and never follows the remote again.
+   */
+  #closeAbandonedTurn(runtime: MirrorRuntime): void {
+    const projections = this.#ctx.get('sessionProjections') as unknown as {
+      stateOf?: (session: Session, key: string) => unknown
+    } | undefined
+    const boundary = projections?.stateOf?.(runtime.session, 'turnBoundary') as
+      | { openTurnStartSeq?: unknown }
+      | undefined
+    // A prompt may be accepted before the remote appends its `turn/start`; only a turn the
+    // mirrored log actually opened can be closed here.
+    if (typeof boundary?.openTurnStartSeq !== 'number') return
+    try {
+      runtime.session.append('turn/end', {
+        turn: runtime.latestTurn,
+        reason: { kind: 'aborted', reason: { kind: 'disposed' } },
+      } as never)
+    } catch (error) {
+      this.#ctx.logger.warn(
+        'dsh-remote-local: could not close the abandoned turn of %s: %s',
+        runtime.record.remoteSessionId,
+        String(error),
+      )
+    }
+    this.#setRunning(runtime, false)
   }
 
   #startStream(runtime: MirrorRuntime): void {
