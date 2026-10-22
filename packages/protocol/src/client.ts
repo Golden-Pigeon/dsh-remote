@@ -220,6 +220,9 @@ export class RemoteAgentClient {
       throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent returned an empty approval stream' })
     }
     for await (const message of parseSseStream(body)) {
+      // The agent keeps this stream open with transport-level pings (`event: heartbeat`,
+      // `data: {}`) that carry no approval frame; they are not protocol violations.
+      if (message.event === 'heartbeat') continue
       if (message.data === '') continue
       let frame: unknown
       try {
