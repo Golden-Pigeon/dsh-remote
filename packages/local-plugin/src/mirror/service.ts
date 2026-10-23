@@ -35,6 +35,7 @@ import type {
 } from '@dsh-remote/protocol'
 import type { ResolvedConfig } from '../config.ts'
 import { isTestHidden, loadTestVisibility, type TestVisibility } from './test-visibility.ts'
+import { abandonedTurnEnd } from './recovery.ts'
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsService } from '../service.ts'
 
@@ -1046,14 +1047,10 @@ export class RemoteMirrorService {
     const boundary = projections?.stateOf?.(runtime.session, 'turnBoundary') as
       | { openTurnStartSeq?: unknown }
       | undefined
-    // A prompt may be accepted before the remote appends its `turn/start`; only a turn the
-    // mirrored log actually opened can be closed here.
-    if (typeof boundary?.openTurnStartSeq !== 'number') return
+    const event = abandonedTurnEnd(boundary, runtime.latestTurn)
+    if (event === undefined) return
     try {
-      runtime.session.append('turn/end', {
-        turn: runtime.latestTurn,
-        reason: { kind: 'aborted', reason: { kind: 'disposed' } },
-      } as never)
+      runtime.session.append('turn/end', event as never)
     } catch (error) {
       this.#ctx.logger.warn(
         'dsh-remote-local: could not close the abandoned turn of %s: %s',
