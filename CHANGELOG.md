@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.11
+
+- Stop mirroring internal remote context messages (`compact-checkpoint`, `agent-instructions`,
+  `runtime-context`, `skill-catalog`) as if they were user prompts. A large checkpoint previously
+  stalled the local mirror and left the live transcript behind.
+- Drop late Assistant stream chunks once the matching durable `assistant/message` has been appended.
+  The poll and stream channels can arrive out of order; injecting a late transient chunk after the
+  durable message made the client conversation assembler fail with `non-appended Match` and stop its
+  live event feed until the user switched Sessions.
+- Renumber forwarded Assistant chunks and their terminal index so the client's `nextIndex` matches
+  the end frame after transient `tool-call-delta` chunks are omitted.
+- Remove the turn-end synthetic Assistant settlement; durable step/turn boundaries are authoritative.
+
 ## 0.8.10
 
 - Support mirroring remote Sessions longer than the remote snapshot window by seeding from the first
