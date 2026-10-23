@@ -39,6 +39,7 @@ import { isTestHidden, loadTestVisibility, type TestVisibility } from './test-vi
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsService } from '../service.ts'
 
+
 const MIRROR_VERSION = 1
 const SURFACE_TYPES = new Set([
   'system/message',
@@ -90,6 +91,8 @@ interface MirrorRuntime {
   assistant: AbortController | undefined
   remoteToLocalSeq: Map<number, number>
   pendingAssistantEnds: Map<number, RemoteAssistantFrame>
+  assistantAttempt: { attemptId: string; revision: number; turn: number; step: number; index: number; ended: boolean; settled: boolean; emitted: boolean } | undefined
+  durableAssistantSteps: Set<string>
   latestTurn: number
   awaitingTurn: number | null
   awaitingStarted: boolean
@@ -867,7 +870,7 @@ export class RemoteMirrorService {
         seedEndSeq = seedEvents.at(-1)?.seq
       }
     }
-    const filtered = seedEvents.filter(event => !isMirrorNoise(event.type))
+    const filtered = seedEvents.filter(event => !isMirrorNoise(event))
     const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
     let latestTurn = 0
     for (const event of filtered) {
@@ -965,6 +968,8 @@ export class RemoteMirrorService {
       assistant: undefined,
       remoteToLocalSeq,
       pendingAssistantEnds: new Map(),
+      assistantAttempt: undefined,
+      durableAssistantSteps: new Set(),
       latestTurn,
       awaitingTurn: null,
       awaitingStarted: false,
@@ -1102,7 +1107,7 @@ export class RemoteMirrorService {
     runtime.applyingRemote = true
     let mappedSeq: number | undefined
     try {
-      if (!isMirrorNoise(event.type)) {
+      if (!isMirrorNoise(event)) {
         mappedSeq = appendRemoteEvent(runtime.session, remapRemoteEvent(event, runtime.remoteToLocalSeq), runtime)
       }
     } finally {
@@ -1115,6 +1120,15 @@ export class RemoteMirrorService {
     } else if (after > before) {
       runtime.remoteToLocalSeq.set(event.seq, after - 1)
       this.#flushAssistantEnd(runtime, event.seq)
+    }
+    if (event.type === 'assistant/message') {
+      const data = event.data as { turn?: unknown; step?: unknown }
+      if (typeof data.turn === 'number' && typeof data.step === 'number') {
+        runtime.durableAssistantSteps.add(`${data.turn}:${data.step}`)
+        if (runtime.assistantAttempt?.turn === data.turn && runtime.assistantAttempt.step === data.step) {
+          runtime.assistantAttempt.settled = true
+        }
+      }
     }
     const turn = typeof event.data === 'object' && event.data !== null
       ? (event.data as { turn?: unknown }).turn
@@ -1248,8 +1262,27 @@ export class RemoteMirrorService {
         if (frame.type === 'start') {
           runtime.awaitingStarted = true
           this.#setRunning(runtime, true)
-          const { startedAfterSeq: _startedAfterSeq, ...rest } = frame as RemoteAssistantFrame & { startedAfterSeq?: number }
-          this.#emitAssistant(runtime, rest as RemoteAssistantFrame)
+          const start = frame as RemoteAssistantFrame & { startedAfterSeq?: number }
+          const startedAfterSeq = typeof start.startedAfterSeq === 'number'
+            ? runtime.remoteToLocalSeq.get(start.startedAfterSeq) ?? Math.max(0, runtime.session.seq - 1)
+            : Math.max(0, runtime.session.seq - 1)
+          runtime.assistantAttempt = {
+            attemptId: start.attemptId,
+            revision: start.revision,
+            turn: start.turn ?? runtime.latestTurn,
+            step: start.step ?? 0,
+            index: 0,
+            ended: false,
+            settled: false,
+            emitted: false,
+          }
+          const stepKey = `${runtime.assistantAttempt.turn}:${runtime.assistantAttempt.step}`
+          if (runtime.durableAssistantSteps.has(stepKey)) {
+            runtime.assistantAttempt.settled = true
+            continue
+          }
+          runtime.assistantAttempt.emitted = true
+          this.#emitAssistant(runtime, { ...start, startedAfterSeq } as RemoteAssistantFrame)
           continue
         }
         if (frame.type === 'chunk') {
@@ -1258,22 +1291,39 @@ export class RemoteMirrorService {
           // leaves a second card stuck in "preparing" when the durable
           // settlement replaces only the first one.
           const chunkType = (frame.chunk as { type?: unknown } | undefined)?.type
-          if (chunkType !== 'tool-call-delta') this.#emitAssistant(runtime, frame)
+          if (chunkType !== 'tool-call-delta') {
+            const attempt = runtime.assistantAttempt
+            if (attempt === undefined) {
+              this.#emitAssistant(runtime, frame)
+              continue
+            }
+            if (!attempt.emitted || attempt.settled) continue
+            const forwarded = { ...frame, index: attempt.index } as RemoteAssistantFrame
+            attempt.index += 1
+            this.#emitAssistant(runtime, forwarded)
+          }
           continue
         }
         const outcome = frame.outcome
         if (outcome === undefined) return
+        let endFrame = frame
+        if (runtime.assistantAttempt?.attemptId === frame.attemptId) {
+          if (runtime.assistantAttempt.ended) continue
+          if (!runtime.assistantAttempt.emitted) continue
+          runtime.assistantAttempt.ended = true
+          endFrame = { ...frame, index: runtime.assistantAttempt.index } as RemoteAssistantFrame
+        }
         if (outcome.kind !== 'committed') {
-          this.#emitAssistant(runtime, frame)
+          this.#emitAssistant(runtime, endFrame)
           continue
         }
         const localSeq = runtime.remoteToLocalSeq.get(outcome.seq)
         if (localSeq === undefined) {
-          runtime.pendingAssistantEnds.set(outcome.seq, frame)
+          runtime.pendingAssistantEnds.set(outcome.seq, endFrame)
           continue
         }
         this.#emitAssistant(runtime, {
-          ...frame,
+          ...endFrame,
           outcome: { ...outcome, seq: localSeq },
         })
       }
@@ -1384,11 +1434,20 @@ function remapRemoteEvent(
   } as RemoteSessionEvent
 }
 
-function isMirrorNoise(type: string): boolean {
-  // Inbox splices are projections of the remote pending-input state. Replaying
-  // them into a local Session with a custom Agent has no local inbox owner and
-  // can fail projection validation; the transcript does not need them.
-  return type === 'agent/inbox/spliced'
+function isMirrorNoise(event: RemoteSessionEvent): boolean {
+  // Inbox splices are projections of remote pending input, and compaction
+  // events describe the remote context window, not the conversation. Neither
+  // has a local counterpart.
+  if (event.type === 'agent/inbox/spliced' || event.type.startsWith('compaction/')) return true
+  // Remote DSH injects context as user/message events with non-human sources
+  // (compaction checkpoint, instructions, runtime context, skill catalog).
+  // Replaying those into the local transcript corrupts its prompts and can
+  // stall the mirror on a large synthetic message.
+  if (event.type === 'user/message') {
+    const source = (event.data as { source?: { kind?: unknown } }).source
+    return source?.kind !== 'user'
+  }
+  return false
 }
 
 function appendRemoteEvent(

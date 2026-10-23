@@ -6,7 +6,7 @@
  * This keeps the DSH plugin-page install to one package name while allowing
  * the terminal fork to remain a separately maintainable workspace package.
  */
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -60,7 +60,7 @@ try {
   if (packOutput === undefined || packOutput === '') throw new Error('release-plugin: npm pack produced no filename')
   const packed = join(staging, packOutput)
   if (!existsSync(packed)) throw new Error(`release-plugin: npm pack did not create ${packed}`)
-  renameSync(packed, target)
+  copyFileSync(packed, target)
   process.stdout.write(`${target}\n`)
 } finally {
   rmSync(staging, { recursive: true, force: true })
