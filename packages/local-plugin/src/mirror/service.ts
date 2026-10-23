@@ -865,11 +865,12 @@ export class RemoteMirrorService {
     remote: RemoteSessionSummary,
     workspace: Workspace,
     remotePath: string,
+    options: EnsureMirrorOptions = {},
   ): Promise<MirrorRecord | undefined> {
     return singleFlight(
       this.#mirrorsInFlight,
       key(host.id, remote.sessionId),
-      () => this.#ensureMirrorOnce(host, remote, workspace, remotePath),
+      () => this.#ensureMirrorOnce(host, remote, workspace, remotePath, options),
     )
   }
 
