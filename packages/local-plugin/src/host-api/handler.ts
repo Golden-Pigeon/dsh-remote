@@ -23,7 +23,12 @@ import {
   type HostApiRequest,
   type HostApiResult,
   type HostApiValues,
+  type HostCreateSessionResult,
 } from './contract.ts'
+import { singleFlight } from './inflight.ts'
+
+/** Coalesce a burst of New Session clicks for one local workspace. */
+const createsInFlight = new Map<string, Promise<HostCreateSessionResult>>()
 
 /** Register the route; returns its asynchronous disposer. */
 export function registerHostApi(
@@ -181,17 +186,36 @@ async function dispatch(
     case 'host/session/create': {
       const body = requireRecord(payload)
       const hostId = requireStringField(body, 'hostId')
-      const created = await service.createSession(hostId, {
-        ...optionalStringField(body, 'workspaceId') === undefined
-          ? {}
-          : { workspaceId: optionalStringField(body, 'workspaceId') },
-        ...optionalStringField(body, 'cwd') === undefined ? {} : { cwd: optionalStringField(body, 'cwd') },
-        ...optionalStringField(body, 'agentPreset') === undefined
-          ? {}
-          : { agentPreset: optionalStringField(body, 'agentPreset') },
+      const localWorkspaceId = optionalStringField(body, 'localWorkspaceId')
+      const workspaceId = optionalStringField(body, 'workspaceId')
+      const cwd = optionalStringField(body, 'cwd')
+      const agentPreset = optionalStringField(body, 'agentPreset')
+      const createKey = `${hostId}:${localWorkspaceId ?? workspaceId ?? cwd ?? ''}`
+      return singleFlight(createsInFlight, createKey, async () => {
+        // The sidebar passes the local workspace id; the Settings page passes
+        // the remote workspace id. Either way the mirror state already knows
+        // the anchor and remote root, so the create path does not need the
+        // remote workspace/session listings.
+        const view = localWorkspaceId === undefined
+          ? workspaceId === undefined ? undefined : mirrors?.localWorkspaceViewByRemote(hostId, workspaceId)
+          : mirrors?.localWorkspaceView(hostId, localWorkspaceId)
+        if (localWorkspaceId !== undefined && view === undefined) {
+          throw new LocalError('request/invalid', `local workspace "${localWorkspaceId}" is not a mirror of host "${hostId}"`)
+        }
+        const remoteWorkspaceId = workspaceId ?? view?.remoteWorkspaceId ?? undefined
+        const remoteCwd = cwd ?? view?.remoteRoot
+        if (remoteWorkspaceId === undefined && remoteCwd === undefined) {
+          throw new LocalError('request/invalid', 'host/session/create needs a resolved remote workspace')
+        }
+        const created = await service.createSession(hostId, {
+          ...remoteWorkspaceId === undefined ? { cwd: remoteCwd ?? '' } : { workspaceId: remoteWorkspaceId },
+          ...agentPreset === undefined ? {} : { agentPreset },
+        })
+        let localSessionId: string | undefined
+        if (view !== undefined) localSessionId = await mirrors?.ensureCreatedSession(hostId, created.sessionId, view)
+        if (localSessionId === undefined) localSessionId = await mirrors?.ensureRemoteSession(hostId, created.sessionId)
+        return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
       })
-      const localSessionId = await mirrors?.ensureRemoteSession(hostId, created.sessionId)
-      return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
     }
     case 'host/session/prompt': {
       const body = requireRecord(payload)
