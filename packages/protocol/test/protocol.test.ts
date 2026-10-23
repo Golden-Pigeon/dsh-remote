@@ -193,6 +193,18 @@ describe('RemoteAgentClient', () => {
         res.end()
         return
       }
+      if (url.pathname === AGENT_ROUTES.approvalEvents) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' })
+        res.write(`event: ready\ndata: ${JSON.stringify({ type: 'ready' })}\n\n`)
+        // The agent pings this stream every 15 s; the ping carries no approval frame.
+        res.write('event: heartbeat\ndata: {}\n\n')
+        res.write(`event: request\ndata: ${JSON.stringify({
+          type: 'request',
+          request: { id: 'approval-1', sessionId: 's1', toolName: 'bash' },
+        })}\n\n`)
+        res.end()
+        return
+      }
       json(res, 404, {
         ok: false,
         protocolVersion: PROTOCOL_VERSION,
@@ -234,5 +246,12 @@ describe('RemoteAgentClient', () => {
     assert.equal(frames.length, 2)
     assert.equal(frames[0]?.type, 'ready')
     assert.equal(frames[1]?.type, 'event')
+  })
+
+  it('skips approval-stream heartbeats instead of failing the stream', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    const frames = []
+    for await (const frame of client.followApprovals(new AbortController().signal)) frames.push(frame)
+    assert.deepEqual(frames.map(frame => frame.type), ['ready', 'request'])
   })
 })
