@@ -19,7 +19,7 @@ import { NS, en, zh, type LocaleFace } from './locale.ts'
 import { installWorkspaceAddMenu } from './workspace-add.ts'
 
 /** The Settings shell's slot registry and the authenticated connection. */
-export const inject = ['slots', 'uiWorkspace', 'locale']
+export const inject = ['slots', 'uiWorkspace', 'locale', 'sessions', 'workspaces']
 
 /** Register the 远程开发 page. */
 export function apply(ctx: Context): void {

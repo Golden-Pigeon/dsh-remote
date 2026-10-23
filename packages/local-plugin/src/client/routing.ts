@@ -19,6 +19,53 @@ interface WorkspaceService {
   startSession(workspaceId?: unknown, options?: StartSessionOptions): void
 }
 
+interface SessionListSnapshot {
+  readonly byId?: Record<string, unknown>
+}
+
+interface WorkspaceListSnapshot {
+  readonly items?: readonly { readonly sessionIds: readonly string[] }[]
+}
+
+interface ClientStores {
+  readonly sessions?: { readonly list?: { getSnapshot?: () => SessionListSnapshot } }
+  readonly workspaces?: { readonly list?: { getSnapshot?: () => WorkspaceListSnapshot } }
+}
+
+/** Whether the client stores have published the new local Session. */
+function localSessionKnown(ctx: Context, sessionId: string): boolean {
+  try {
+    const stores = ctx as unknown as ClientStores
+    const sessions = stores.sessions?.list?.getSnapshot?.()
+    if (sessions?.byId?.[sessionId] !== undefined) return true
+    const workspaces = stores.workspaces?.list?.getSnapshot?.()
+    return workspaces?.items?.some(item => item.sessionIds.includes(sessionId)) === true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Wait for the workspace/session feed to publish the new local Session.
+ *
+ * The host API attaches the mirror before it returns, but the client stores are
+ * fed asynchronously. Opening the Session before its summary is known leaves
+ * the main view bound to a Session the conversation controller cannot
+ * subscribe to; switching away and back is the manual workaround.
+ */
+async function waitForLocalSession(ctx: Context, sessionId: string, timeoutMs = 2000): Promise<void> {
+  const stores = ctx as unknown as ClientStores
+  if (stores.sessions?.list?.getSnapshot === undefined && stores.workspaces?.list?.getSnapshot === undefined) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    return
+  }
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (localSessionKnown(ctx, sessionId)) return
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
 /** Install the sidebar routing adapter once per client mount. */
 export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi): void {
   const workspace = ctx.uiWorkspace as unknown as WorkspaceService | undefined
@@ -36,7 +83,7 @@ export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi): void
       return
     }
     let task: Promise<void>
-    task = route(api, key).then(result => {
+    task = route(ctx, api, key).then(result => {
       if (result === 'local') {
         original(workspaceId, options)
         return
@@ -53,7 +100,7 @@ export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi): void
   }
 }
 
-async function route(api: HostsApi, localWorkspaceId: string): Promise<'handled' | 'blocked' | 'local'> {
+async function route(ctx: Context, api: HostsApi, localWorkspaceId: string): Promise<'handled' | 'blocked' | 'local'> {
   const state = await api.state()
   const mirrored = Array.isArray(state.mirroredWorkspaceIds) ? state.mirroredWorkspaceIds : []
   if (!mirrored.includes(localWorkspaceId)) return 'local'
@@ -66,6 +113,7 @@ async function route(api: HostsApi, localWorkspaceId: string): Promise<'handled'
       const created = await api.createSession(host.id, { localWorkspaceId })
       const localSessionId = created.localSessionId
       if (localSessionId !== undefined) {
+        await waitForLocalSession(ctx, localSessionId)
         try {
           api.openSession(localSessionId)
         } catch {
