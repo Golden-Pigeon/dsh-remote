@@ -137,7 +137,7 @@ export interface HostApiPayloads {
   'local/workspace/create': { path: string; title?: string }
   'host/sessions': { hostId: string; workspaceId?: string }
   'host/session': { hostId: string; sessionId: string; limit?: number }
-  'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
+  'host/session/create': { hostId: string; localWorkspaceId?: string; workspaceId?: string; cwd?: string; agentPreset?: string }
   'host/session/prompt': {
     hostId: string
     sessionId: string

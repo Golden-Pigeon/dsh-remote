@@ -60,7 +60,7 @@ interface MirrorRecord {
   updatedAt: string
 }
 
-interface WorkspaceRecord {
+export interface WorkspaceRecord {
   readonly hostId: string
   readonly remoteWorkspaceId: string | null
   localWorkspaceId: string
@@ -68,6 +68,16 @@ interface WorkspaceRecord {
   readonly remoteRoot?: string
   readonly title: string
   readonly updatedAt: string
+}
+
+/** Options for one mirror-creation attempt. */
+interface EnsureMirrorOptions {
+  /**
+   * Create the local Session from an empty snapshot and let the first poll seed
+   * it. Used for the New Session action, where blocking on the remote snapshot
+   * would delay opening the session on a slow tunnel.
+   */
+  readonly skipSnapshot?: boolean
 }
 
 interface MirrorState {
@@ -386,6 +396,19 @@ export class RemoteMirrorService {
     return this.#state.workspaces[key(hostId, remoteWorkspaceId)]?.localWorkspaceId
   }
 
+  /** Find the mirror record for one local workspace. */
+  localWorkspaceView(hostId: string, localWorkspaceId: string): WorkspaceRecord | undefined {
+    for (const record of Object.values(this.#state.workspaces)) {
+      if (record.hostId === hostId && record.localWorkspaceId === localWorkspaceId) return record
+    }
+    return undefined
+  }
+
+  /** Find the mirror record for one remote workspace. */
+  localWorkspaceViewByRemote(hostId: string, remoteWorkspaceId: string): WorkspaceRecord | undefined {
+    return this.#state.workspaces[key(hostId, remoteWorkspaceId)]
+  }
+
   /** Find the local mirror for one remote session. */
   localSessionId(hostId: string, remoteSessionId: string): string | undefined {
     return this.#state.sessions[key(hostId, remoteSessionId)]?.localSessionId
@@ -413,6 +436,40 @@ export class RemoteMirrorService {
     if (summary.cwd !== null && isTestHidden(summary.cwd, '', this.#testVisibility)) return undefined
     const localWorkspace = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
     return (await this.#ensureMirror(host, summary, localWorkspace.workspace, localWorkspace.anchor))?.localSessionId
+  }
+
+  /**
+   * Create the local mirror for a Session the caller just created remotely.
+   *
+   * The caller already knows the remote identity and workspace, so this path
+   * skips the remote workspace/session listings and starts with an empty
+   * snapshot; the first poll fills the mirror in the background. A slow SSH
+   * tunnel therefore delays the New Session action by one remote create, not
+   * by the full discovery round trip.
+   */
+  async ensureCreatedSession(
+    hostId: string,
+    remoteSessionId: string,
+    view: WorkspaceRecord,
+  ): Promise<string | undefined> {
+    const host = this.#hosts.list().find(item => item.id === hostId)
+    if (host === undefined || host.phase !== 'connected') return undefined
+    const existing = this.localSessionId(hostId, remoteSessionId)
+    if (existing !== undefined && this.#sessions.get(existing as SessionId) !== undefined) return existing
+    const workspace = this.#workspaceRegistry.get(view.localWorkspaceId as unknown as WorkspaceId)
+    if (workspace === undefined) return undefined
+    const summary: RemoteSessionSummary = {
+      sessionId: remoteSessionId,
+      workspaceId: view.remoteWorkspaceId,
+      cwd: view.remoteRoot ?? null,
+      createdAt: new Date().toISOString(),
+      live: true,
+      eventCount: 0,
+    }
+    const record = await this.#ensureMirror(host, summary, workspace, view.remoteRoot ?? view.anchor, {
+      skipSnapshot: true,
+    })
+    return record?.localSessionId
   }
 
   /** Route one prompt from the local Agent façade to the remote session. */
@@ -821,6 +878,7 @@ export class RemoteMirrorService {
     remote: RemoteSessionSummary,
     workspace: Workspace,
     _remotePath: string,
+    options: EnsureMirrorOptions = {},
   ): Promise<MirrorRecord | undefined> {
     const ref = key(host.id, remote.sessionId)
     const existing = this.#state.sessions[ref]
@@ -852,7 +910,18 @@ export class RemoteMirrorService {
       if (live !== undefined) reuse = live
     }
 
-    const snapshot = await this.#hosts.snapshot(host.id, remote.sessionId, this.#config.mirrorMaxEvents)
+    const snapshot: SessionSnapshot = options.skipSnapshot === true
+      ? {
+          hostId: host.id,
+          sessionId: remote.sessionId,
+          cursor: 0,
+          live: true,
+          workspaceId: remote.workspaceId,
+          cwd: remote.cwd,
+          events: [],
+          truncated: false,
+        }
+      : await this.#hosts.snapshot(host.id, remote.sessionId, this.#config.mirrorMaxEvents)
     const anchor = this.#anchorFor(workspace)
     await mkdir(anchor, { recursive: true })
     // A long remote Session may only be available as a truncated tail. Seed
