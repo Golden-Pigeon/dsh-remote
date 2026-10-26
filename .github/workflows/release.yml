@@ -35,6 +35,9 @@ jobs:
         run: |
           VERSION="$(node -p "require('./packages/local-plugin/package.json').version")"
           test "v${VERSION}" = "${GITHUB_REF_NAME}"
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/release-notes.mjs > "$RUNNER_TEMP/release-notes.md"
       - name: Check whether this version is already published
         id: published
         run: |
@@ -71,6 +74,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ runner.temp }}/release-notes.md
           files: |
             packages/local-plugin/dsh-remote-local-plugin-*.tgz
             packages/local-plugin/assets/goldenpigeon-dsh-remote-agent-*.tgz
