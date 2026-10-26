@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Mirror remote subagent Sessions as local subagent children of their mirrored parent instead of
+  hiding them. A mirrored parent transcript carries the remote `subagent/catalog`, so opening one of
+  its subagent conversations previously failed with `subagent/not-found`. Children keep the remote
+  Session id, never attach to a Workspaces row, and are pruned only when the remote stops reporting
+  them. A child whose mirror window lost its `subagent/descriptor` is skipped with a warning.
+
 ## 0.8.11
 
 - Stop mirroring internal remote context messages (`compact-checkpoint`, `agent-instructions`,

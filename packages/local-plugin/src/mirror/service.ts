@@ -56,8 +56,17 @@ interface MirrorRecord {
   localSessionId: string
   readonly remoteWorkspaceId: string | null
   readonly anchor: string
+  /** Local parent Session id when this record mirrors a remote subagent child. */
+  readonly parentSessionId?: string
   lastSeq: number
   updatedAt: string
+}
+
+/** Local placement for one mirror; a subagent child shares its parent's anchor. */
+interface MirrorTarget {
+  /** Workspace row a top-level mirror attaches to; a subagent child stays unattached. */
+  readonly workspace?: Workspace
+  readonly anchor: string
 }
 
 interface WorkspaceRecord {
@@ -404,15 +413,27 @@ export class RemoteMirrorService {
       const summary = sessions.sessions.find(item => item.sessionId === remoteSessionId)
       if (summary === undefined) continue
       const localWorkspace = await this.#ensureWorkspace(host, workspace)
-      const record = await this.#ensureMirror(host, summary, localWorkspace, workspace.path)
+      const record = await this.#ensureMirror(host, summary, {
+        workspace: localWorkspace,
+        anchor: this.#anchorFor(localWorkspace),
+      })
       return record?.localSessionId
     }
     const all = await this.#hosts.sessions(hostId, undefined, true)
     const summary = all.sessions.find(item => item.sessionId === remoteSessionId)
     if (summary === undefined) return undefined
     if (summary.cwd !== null && isTestHidden(summary.cwd, '', this.#testVisibility)) return undefined
+    if (summary.origin === 'subagent' && summary.parentSession !== undefined) {
+      // Children are only reachable through their mirrored parent's catalog.
+      const parent = this.#state.sessions[key(hostId, summary.parentSession)]
+      if (parent === undefined) return undefined
+      return (await this.#ensureMirror(host, summary, { anchor: parent.anchor }, parent.localSessionId))?.localSessionId
+    }
     const localWorkspace = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
-    return (await this.#ensureMirror(host, summary, localWorkspace.workspace, localWorkspace.anchor))?.localSessionId
+    return (await this.#ensureMirror(host, summary, {
+      workspace: localWorkspace.workspace,
+      anchor: localWorkspace.anchor,
+    }))?.localSessionId
   }
 
   /** Route one prompt from the local Agent façade to the remote session. */
@@ -549,49 +570,65 @@ export class RemoteMirrorService {
     this.#ensureApprovalStream(host)
     await this.#reconcileTestHidden(host)
     const workspaces = await this.#hosts.workspaces(host.id)
-    const covered = new Set<string>()
-    const subagents = new Set<string>()
     const byPath = new Map<string, { workspace: Workspace; anchor: string }>()
+    const hiddenPaths = new Set<string>()
     for (const workspace of workspaces) {
       if (isTestHidden(workspace.path, workspace.workspaceId, this.#testVisibility)) {
-        const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId, true)
-        for (const summary of sessions.sessions) covered.add(summary.sessionId)
+        hiddenPaths.add(workspace.path)
         continue
       }
       const local = await this.#ensureWorkspace(host, workspace)
       byPath.set(workspace.path, { workspace: local, anchor: this.#anchorFor(local) })
-      const sessions = await this.#hosts.sessions(host.id, workspace.workspaceId, true)
-      for (const summary of sessions.sessions) {
-        covered.add(summary.sessionId)
-        if (summary.origin === 'subagent') {
-          subagents.add(summary.sessionId)
-          continue
-        }
-        await this.#ensureMirror(host, summary, local, workspace.path)
-      }
     }
     const all = await this.#hosts.sessions(host.id, undefined, true)
+    const subagents = new Set<string>()
+    const children: RemoteSessionSummary[] = []
     for (const summary of all.sessions) {
-      if (summary.origin === 'subagent') subagents.add(summary.sessionId)
-      if (covered.has(summary.sessionId)) continue
-      if (summary.origin === 'subagent') continue
-      if (summary.cwd !== null && isTestHidden(summary.cwd, '', this.#testVisibility)) continue
-      const workspace = summary.cwd === null ? undefined : byPath.get(summary.cwd)
-      if (workspace !== undefined) {
-        await this.#ensureMirror(host, summary, workspace.workspace, workspace.anchor)
+      if (summary.origin === 'subagent') {
+        subagents.add(summary.sessionId)
+        children.push(summary)
+        continue
+      }
+      if (summary.cwd !== null && (hiddenPaths.has(summary.cwd) || isTestHidden(summary.cwd, '', this.#testVisibility))) continue
+      const target = summary.cwd === null ? undefined : byPath.get(summary.cwd)
+      if (target !== undefined) {
+        await this.#ensureMirror(host, summary, target)
         continue
       }
       const ungrouped = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
-      await this.#ensureMirror(host, summary, ungrouped.workspace, ungrouped.anchor)
+      await this.#ensureMirror(host, summary, { workspace: ungrouped.workspace, anchor: ungrouped.anchor })
+    }
+    // A mirrored parent transcript carries the remote `subagent/catalog` events,
+    // whose child ids name remote Sessions. Mirror each one as a local subagent
+    // Session under the mirrored parent that the catalog names, so the client
+    // can open that conversation here. Nested children resolve in later passes
+    // once their own parent mirror exists.
+    let pending = children
+    for (let pass = 0; pass < 8 && pending.length > 0; pass += 1) {
+      const deferred: RemoteSessionSummary[] = []
+      for (const summary of pending) {
+        const parent = summary.parentSession === undefined
+          ? undefined
+          : this.#state.sessions[key(host.id, summary.parentSession)]
+        if (parent === undefined) {
+          deferred.push(summary)
+          continue
+        }
+        await this.#ensureMirror(host, summary, { anchor: parent.anchor }, parent.localSessionId)
+      }
+      if (deferred.length === pending.length) break
+      pending = deferred
     }
     await this.#pruneMirroredSubagents(host.id, subagents)
   }
 
-  /** Remove local mirrors for remote subagent Sessions, including stale rows. */
+  /** Remove local mirrors of remote subagent Sessions the remote no longer reports. */
   async #pruneMirroredSubagents(hostId: string, subagents: ReadonlySet<string>): Promise<void> {
     let changed = false
     for (const [ref, record] of Object.entries(this.#state.sessions)) {
-      if (record.hostId !== hostId || !subagents.has(record.remoteSessionId)) continue
+      if (record.hostId !== hostId) continue
+      if (record.parentSessionId === undefined) continue
+      if (subagents.has(record.remoteSessionId)) continue
       const runtime = this.#runtimes.get(record.localSessionId)
       if (runtime !== undefined) {
         runtime.stopped = true
@@ -806,21 +843,21 @@ export class RemoteMirrorService {
   async #ensureMirror(
     host: HostView,
     remote: RemoteSessionSummary,
-    workspace: Workspace,
-    remotePath: string,
+    target: MirrorTarget,
+    parentLocalId?: string,
   ): Promise<MirrorRecord | undefined> {
     return singleFlight(
       this.#mirrorsInFlight,
       key(host.id, remote.sessionId),
-      () => this.#ensureMirrorOnce(host, remote, workspace, remotePath),
+      () => this.#ensureMirrorOnce(host, remote, target, parentLocalId),
     )
   }
 
   async #ensureMirrorOnce(
     host: HostView,
     remote: RemoteSessionSummary,
-    workspace: Workspace,
-    _remotePath: string,
+    target: MirrorTarget,
+    parentLocalId: string | undefined,
   ): Promise<MirrorRecord | undefined> {
     const ref = key(host.id, remote.sessionId)
     const existing = this.#state.sessions[ref]
@@ -829,7 +866,7 @@ export class RemoteMirrorService {
       const live = this.#sessions.get(existing.localSessionId as SessionId)
       const runtime = this.#runtimes.get(existing.localSessionId)
       if (live !== undefined && runtime !== undefined && (!runtime.stopped || !remote.live)) {
-        await this.#attach(workspace, live.id)
+        await this.#attach(target.workspace, live.id)
         if (remote.live) {
           this.#startStream(runtime)
           this.#startAssistantStream(runtime)
@@ -853,7 +890,7 @@ export class RemoteMirrorService {
     }
 
     const snapshot = await this.#hosts.snapshot(host.id, remote.sessionId, this.#config.mirrorMaxEvents)
-    const anchor = this.#anchorFor(workspace)
+    const anchor = target.anchor
     await mkdir(anchor, { recursive: true })
     // A long remote Session may only be available as a truncated tail. Seed
     // from the first complete turn in that tail instead of refusing the mirror
@@ -872,6 +909,17 @@ export class RemoteMirrorService {
       }
     }
     const filtered = seedEvents.filter(event => !isMirrorNoise(event))
+    // A subagent address is authorized by the descriptor in the child log. A
+    // window that lost it (over-cap child, or a trim that cut the prefix)
+    // cannot answer a subagent history read, so leave that child unmirrored
+    // instead of publishing a Session the client would reject.
+    if (parentLocalId !== undefined && !filtered.some(event => event.type === 'subagent/descriptor')) {
+      this.#ctx.logger.warn(
+        'dsh-remote-local: subagent %s has no descriptor in its mirror window; skipping its local mirror',
+        remote.sessionId,
+      )
+      return undefined
+    }
     const seqMap = new Map(filtered.map((event, index) => [event.seq, index]))
     let latestTurn = 0
     for (const event of filtered) {
@@ -892,7 +940,7 @@ export class RemoteMirrorService {
         }
       }
       const record = existing as MirrorRecord
-      await this.#attach(workspace, reuse.id)
+      await this.#attach(target.workspace, reuse.id)
       await this.#mountRuntime(record, reuse, snapshot, remoteToLocalSeq, latestTurn, remote.live)
       this.#ctx.logger.info(
         'dsh-remote-local: reattached remote session %s to local %s',
@@ -902,7 +950,8 @@ export class RemoteMirrorService {
       return record
     }
 
-    const localId = existing?.localSessionId ?? `session-${randomUUID()}`
+    const localId = existing?.localSessionId
+      ?? (parentLocalId === undefined ? `session-${randomUUID()}` : remote.sessionId)
     let session: Session
     try {
       const seed = filtered.map((event, index) => toSeedEvent(event, index, seqMap))
@@ -912,13 +961,16 @@ export class RemoteMirrorService {
         meta: {
           cwd: anchor,
           ...Number.isFinite(remoteCreatedAt) ? { createdAt: remoteCreatedAt } : {},
+          ...parentLocalId === undefined
+            ? {}
+            : { origin: 'subagent' as const, parentSession: parentLocalId as SessionId },
         },
       })
     } catch (error) {
       this.#ctx.logger.warn('dsh-remote-local: could not seed mirror for %s: %s', remote.sessionId, String(error))
       return undefined
     }
-    await this.#attach(workspace, session.id)
+    await this.#attach(target.workspace, session.id)
     try {
       await this.#sessions.flush(session)
     } catch (error) {
@@ -932,6 +984,7 @@ export class RemoteMirrorService {
           localSessionId: localId,
           remoteWorkspaceId: remote.workspaceId,
           anchor,
+          ...parentLocalId === undefined ? {} : { parentSessionId: parentLocalId },
           lastSeq: (seedEndSeq ?? snapshot.cursor - 1) + 1,
           updatedAt: new Date().toISOString(),
         }
@@ -939,6 +992,7 @@ export class RemoteMirrorService {
           ...existing,
           remoteWorkspaceId: remote.workspaceId,
           anchor,
+          ...parentLocalId === undefined ? {} : { parentSessionId: parentLocalId },
           lastSeq: (seedEndSeq ?? snapshot.cursor - 1) + 1,
           updatedAt: new Date().toISOString(),
         }
@@ -1388,7 +1442,8 @@ export class RemoteMirrorService {
     }
   }
 
-  async #attach(workspace: Workspace, sessionId: SessionId): Promise<void> {
+  async #attach(workspace: Workspace | undefined, sessionId: SessionId): Promise<void> {
+    if (workspace === undefined) return
     try {
       await workspace.attachSession(sessionId)
     } catch (error) {
