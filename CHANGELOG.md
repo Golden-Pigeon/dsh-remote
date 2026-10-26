@@ -2,11 +2,25 @@
 
 ## 0.8.12
 
+- Tolerate approval-stream heartbeat events and recover a mirrored turn abandoned by a remote host
+  restart, so approvals keep reaching the local UI after reconnects
+  ([#1](https://github.com/Golden-Pigeon/dsh-remote/issues/1),
+  [#2](https://github.com/Golden-Pigeon/dsh-remote/issues/2),
+  [#3](https://github.com/Golden-Pigeon/dsh-remote/pull/3)).
+  Thanks [@XuHuaiyu](https://github.com/XuHuaiyu)!
+- Coalesce concurrent mirror creation per remote Session, preventing duplicate local rows for one
+  remote Session
+  ([#4](https://github.com/Golden-Pigeon/dsh-remote/issues/4),
+  [#5](https://github.com/Golden-Pigeon/dsh-remote/pull/5)).
+  Thanks [@XuHuaiyu](https://github.com/XuHuaiyu)!
 - Mirror remote subagent Sessions as local subagent children of their mirrored parent instead of
   hiding them. A mirrored parent transcript carries the remote `subagent/catalog`, so opening one of
   its subagent conversations previously failed with `subagent/not-found`. Children keep the remote
   Session id, never attach to a Workspaces row, and are pruned only when the remote stops reporting
-  them. A child whose mirror window lost its `subagent/descriptor` is skipped with a warning.
+  them. A child whose mirror window lost its `subagent/descriptor` is skipped with a warning
+  ([#8](https://github.com/Golden-Pigeon/dsh-remote/issues/8),
+  [#9](https://github.com/Golden-Pigeon/dsh-remote/pull/9)).
+  Thanks [@NoidLiu](https://github.com/NoidLiu)!
 
 ## 0.8.11
 
