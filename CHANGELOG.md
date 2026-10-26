@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.12
 
 - Mirror remote subagent Sessions as local subagent children of their mirrored parent instead of
   hiding them. A mirrored parent transcript carries the remote `subagent/catalog`, so opening one of
