@@ -17,9 +17,10 @@ import { realpathSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { scopeTarget } from '@deepseek-ai/dsh-scope'
+import { createScope, scopeTarget, type Scope } from '@deepseek-ai/dsh-scope'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type {
@@ -114,10 +115,20 @@ interface MirrorRuntime {
   waiters: Array<() => void>
 }
 
+interface MirrorModelSelection {
+  provider: string
+  model: string
+  reasoningEffort?: string
+}
+
 interface MirrorAgent {
   readonly id: SessionId
   readonly session: Session
-  readonly options: { provider: string; model: string; reasoningEffort?: string }
+  readonly options: MirrorModelSelection
+  readonly model: {
+    current(): MirrorModelSelection | undefined
+    select(selection: MirrorModelSelection): void
+  }
   readonly ctx: Context
   readonly inbox: MirrorInbox
   readonly status: 'idle' | 'running'
@@ -218,6 +229,7 @@ class RemoteMirrorAgent implements MirrorAgent {
   readonly id: SessionId
   readonly session: Session
   readonly options: MirrorAgent['options']
+  readonly scope: Scope
   readonly ctx: Context
   readonly inbox: MirrorInbox
   #runtime: MirrorRuntime
@@ -228,9 +240,25 @@ class RemoteMirrorAgent implements MirrorAgent {
     this.#runtime = runtime
     this.id = runtime.session.id
     this.session = runtime.session
-    this.ctx = ctx
+    this.scope = createScope(ctx, this)
+    this.ctx = this.scope.ctx
     this.options = options
     this.inbox = createMirrorInbox(runtime.session)
+  }
+
+  // Record choices in the mirror log so the existing bridge forwards them to the remote.
+  readonly model = {
+    current: (): MirrorModelSelection | undefined => this.#mirror.selectionFor(this.#runtime),
+    select: (selection: MirrorModelSelection): void => {
+      const previous = this.#mirror.selectionFor(this.#runtime, false)
+      if (previous?.provider === selection.provider && previous.model === selection.model
+        && previous.reasoningEffort === selection.reasoningEffort) return
+      this.session.append('model/selection', {
+        provider: selection.provider,
+        model: selection.model,
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+      })
+    },
   }
 
   get status(): 'idle' | 'running' {
@@ -299,7 +327,7 @@ export class RemoteMirrorService {
   #state: MirrorState = { version: MIRROR_VERSION, sessions: {}, workspaces: {}, testHidden: [] }
   #testVisibility: TestVisibility = { hiddenPaths: [], hiddenWorkspaceIds: [] }
   #runtimes = new Map<string, MirrorRuntime>()
-  #registrations = new Map<string, () => void>()
+  #registrations = new Map<string, () => Promise<void>>()
   #approvalStreams = new Map<string, AbortController>()
   #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
   #syncing = false
@@ -316,10 +344,21 @@ export class RemoteMirrorService {
 
   /** Load mappings and begin periodic discovery. */
   async start(): Promise<void> {
-    await this.#load()
-    this.#selectionOff = this.#ctx.on('session/event' as never, ((session: Session, event: SessionEvent) => {
+    const loaded = this.#load()
+    const offCreated = this.#ctx.on('agent/created' as never, (async ({ agent }: { agent: { id: string } }) => {
+      // A resume must wait for persisted ownership before native queued work can be released.
+      await loaded
+      const mirrored = Object.values(this.#state.sessions).some(record => record.localSessionId === agent.id)
+      if (mirrored && !(agent instanceof RemoteMirrorAgent)) {
+        throw new Error('Remote mirror is reconnecting; wait for the remote host before reopening this session.')
+      }
+    }) as never, { global: true, prepend: true } as never)
+    const offSelection = this.#ctx.on('session/event' as never, ((session: Session, event: SessionEvent) => {
       this.#onLocalSessionEvent(session, event)
     }) as never, { global: true } as never)
+    this.#selectionOff = () => { offSelection(); offCreated() }
+    await loaded
+    if (this.#disposed) return
     if (!this.#config.mirrorSessions) return
     // Catalog reconciliation is much less urgent than event delivery.
     this.#timer = setInterval(() => { void this.sync() }, Math.max(5_000, this.#config.mirrorPollMs * 4))
@@ -338,7 +377,7 @@ export class RemoteMirrorService {
       runtime.stream?.abort()
       runtime.assistant?.abort()
     }
-    for (const dispose of this.#registrations.values()) dispose()
+    for (const dispose of this.#registrations.values()) await dispose()
     this.#registrations.clear()
     for (const controller of this.#approvalStreams.values()) controller.abort()
     this.#approvalStreams.clear()
@@ -454,7 +493,7 @@ export class RemoteMirrorService {
       runtime.lastError = null
       this.#schedule(runtime)
     }
-    const selection = this.#selectionFor(runtime)
+    const selection = this.selectionFor(runtime)
     if (selection !== undefined) Object.assign(runtime.agent.options, selection)
     void this.#promptContent(message).then(({ text, content }) => this.#hosts.promptSession(
       runtime.record.hostId,
@@ -543,7 +582,8 @@ export class RemoteMirrorService {
     })
   }
 
-  #selectionFor(runtime: MirrorRuntime): { provider: string; model: string; reasoningEffort?: string } | undefined {
+  /** Read the recorded mirror choice, optionally falling back to its initial options. */
+  selectionFor(runtime: MirrorRuntime, fallbackToOptions = true): { provider: string; model: string; reasoningEffort?: string } | undefined {
     const projections = this.#ctx.get('sessionProjections') as unknown as {
       stateOf?: (session: Session, key: string) => unknown
     } | undefined
@@ -561,9 +601,9 @@ export class RemoteMirrorService {
       }
     }
     return read(state?.pending)
-      ?? latestSelection(runtime.session)
-      ?? read(runtime.agent.options)
       ?? read(state?.lastUsed)
+      ?? latestSelection(runtime.session)
+      ?? (fallbackToOptions ? read(runtime.agent.options) : undefined)
   }
 
   async #syncHost(host: HostView): Promise<void> {
@@ -639,7 +679,7 @@ export class RemoteMirrorService {
       }
       const registration = this.#registrations.get(record.localSessionId)
       if (registration !== undefined) {
-        registration()
+        await registration()
         this.#registrations.delete(record.localSessionId)
       }
       await this.#archive(record.localSessionId as SessionId)
@@ -883,7 +923,7 @@ export class RemoteMirrorService {
       }
       const registration = this.#registrations.get(existing.localSessionId)
       if (registration !== undefined) {
-        registration()
+        await registration()
         this.#registrations.delete(existing.localSessionId)
       }
       if (live !== undefined) reuse = live
@@ -1038,8 +1078,15 @@ export class RemoteMirrorService {
     const options = this.#defaultSelection() ?? modelOptions(snapshot.events)
     const agent = new RemoteMirrorAgent(this, runtime, this.#ctx, options)
     runtime.agent = agent
+    let detach: () => void
+    try {
+      detach = this.#agents.enter(agent as never, undefined)
+    } catch (error) {
+      await agent.scope.dispose()
+      throw error
+    }
     this.#runtimes.set(record.localSessionId, runtime)
-    this.#registrations.set(record.localSessionId, this.#agents.enter(agent as never, undefined))
+    this.#registrations.set(record.localSessionId, async () => { detach(); await agent.scope.dispose() })
     const localMode = this.#localSandboxMode(session)
     const remoteMode = latestRemoteSandboxMode(snapshot.events)
     if (localMode !== undefined && remoteMode !== undefined && localMode !== remoteMode) {
@@ -1265,6 +1312,7 @@ export class RemoteMirrorService {
       model: record.model,
       ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
     }
+    delete runtime.agent.options.reasoningEffort
     Object.assign(runtime.agent.options, selection)
     void this.#hosts.selectModel(runtime.record.hostId, runtime.record.remoteSessionId, selection).catch(error => {
       runtime.lastError = error instanceof Error ? error.message : String(error)

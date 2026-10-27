@@ -105,6 +105,9 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: 0.2.1-rc.2
         version: 0.2.1-rc.2(ba922ad4037e40def714bb7e19d35103)
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2(2014a92b4fab0402f05300b03b4a632d)
       '@deepseek-ai/dsh-api-terminal-controller':
         specifier: 0.2.1-rc.2
         version: 0.2.1-rc.2(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-subprocess@0.2.1-rc.2(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-http-proxy@0.2.1-rc.2(@deepseek-ai/cordis@4.0.5)))

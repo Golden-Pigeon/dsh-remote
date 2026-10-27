@@ -38,3 +38,15 @@ and recreates the local workspace from the remote log.
 
 No UI control and no agent tool is involved. The manifest is only present in test profiles; a normal
 profile has no manifest and mirrors remote workspaces normally.
+
+## Mirror regression checks
+
+After `pnpm -r build`, run the focused checks from the repository root:
+
+```sh
+pnpm --filter dsh-remote-local-plugin exec node --import tsx --test test/mirror_lifecycle.test.ts test/mirror-subagents.test.ts
+```
+
+The mirror fixture uses real Cordis contexts and scope disposal with in-memory remote services. It covers model selection and forwarding, explicit choices matching deployment defaults, recorded-model precedence, asynchronous shutdown and subagent pruning, and native resume attempted before persisted mirror mappings finish loading. Ordinary local Agents and the remote façade remain admissible.
+
+CI retains the frozen rc.2 development baseline and runs a second job with all installed DSH dependencies and peers pinned to rc.3. Neither job installs into a user's DSH profile or calls a model provider. Changes to the mirror's Agent interface must pass both targets.

@@ -6,6 +6,8 @@
  * framework `t` seat, so language switches re-render them.
  */
 
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+
 export const NS = 'dshRemote'
 
 export const zh = {
