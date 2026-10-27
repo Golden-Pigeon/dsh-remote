@@ -518,10 +518,11 @@ export class RemoteMirrorService {
   async #restoreWorkspace(hostId: string, remote: RemoteWorkspace): Promise<void> {
     const ref = key(hostId, remote.workspaceId)
     const match = this.#state.workspaces[ref] ?? Object.values(this.#state.workspaces).find(record =>
-      record.hostId === hostId && record.remoteWorkspaceId === null && record.remoteRoot === remote.path)
+      record.hostId === hostId && record.remoteRoot === remote.path
+      && (record.remoteWorkspaceId === null || this.#workspaceRemoved(record)))
     if (match === undefined || !this.#workspaceRemoved(match)) return
-    // A previously unregistered session cwd becomes a real remote workspace on
-    // add. Keep its anchor and local Session ids, rather than duplicating history.
+    // Explicit add may register a cwd or replace a remote workspace id. Keep its
+    // anchor and local Session ids, rather than duplicating history.
     const oldRef = Object.entries(this.#state.workspaces).find(([, record]) => record === match)?.[0]
     if (oldRef !== undefined && oldRef !== ref) delete this.#state.workspaces[oldRef]
     this.#state.workspaces[ref] = {
@@ -993,6 +994,10 @@ export class RemoteMirrorService {
       item => item.record.hostId === hostId && item.record.remoteSessionId === request.sessionId,
     )
     if (runtime === undefined) {
+      const mirror = this.#state.sessions[key(hostId, request.sessionId)]
+      // Detaching the local mirror must not reject later remote tool calls.
+      // Leave this decision to another client or the remote approval policy.
+      if (mirror !== undefined && this.#anchorRemoved(hostId, mirror.anchor)) return
       await this.#hosts.answerApproval(hostId, request.id, 'unavailable').catch(() => undefined)
       return
     }
@@ -1022,6 +1027,7 @@ export class RemoteMirrorService {
       this.#ctx.logger.warn('dsh-remote-local: local approval bridge failed: %s', String(error))
       outcome = 'unavailable'
     }
+    if (runtime.stopped || this.#anchorRemoved(hostId, runtime.record.anchor)) return
     await this.#hosts.answerApproval(hostId, request.id, outcome).catch(error => {
       this.#ctx.logger.warn('dsh-remote-local: approval answer failed: %s', String(error))
     })
@@ -1703,6 +1709,12 @@ export class RemoteMirrorService {
           sessions: parsed.sessions,
           workspaces: parsed.workspaces,
           testHidden: Array.isArray(parsed.testHidden) ? parsed.testHidden : [],
+        }
+        // Older test-hiding code removed native rows but retained their ids.
+        // Normalize those plugin-owned deletions before checking for user removal.
+        for (const ref of this.#state.testHidden) {
+          const workspace = this.#state.workspaces[ref]
+          if (workspace !== undefined) workspace.localWorkspaceId = undefined
         }
       }
     } catch {

@@ -58,7 +58,8 @@ CI retains the frozen rc.2 development baseline and runs a second job with all i
 `workspace_removal.test.ts` covers persistent removal, restart/reconnect discovery, explicit re-add,
 in-flight snapshots/polls/stream frames, unregistered session directories, subagent placement,
 host isolation, and rejection before remote session creation. It asserts that local removal never
-cancels remote work or deletes cached Sessions.
+cancels remote work or deletes cached Sessions. It also covers approvals arriving during or after
+removal, legacy test-hidden mappings, and explicit re-add with a new remote id at the same path.
 
 `workspace_removal_native.test.ts` runs the published DSH workspace registry and storage domain over
 an isolated in-memory backend. It exercises durable deletion, rollback of a failed delete, and a

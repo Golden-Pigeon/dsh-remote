@@ -14,6 +14,88 @@ function timeout<T>(promise: Promise<T>): Promise<T> {
 }
 
 describe('local remote-workspace removal', () => {
+  it('leaves approvals for a removed mirror pending instead of denying remote work', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    try {
+      await f.service.start()
+      await f.registry.delete(f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!)
+      await f.requestApproval(f.host.id, { id: 'removed-approval', sessionId: 'remote-session', toolName: 'shell' })
+      assert.deepEqual(f.answers, [])
+      await f.requestApproval(f.host.id, { id: 'unknown-approval', sessionId: 'unknown-session', toolName: 'shell' })
+      assert.deepEqual(f.answers, [{ hostId: f.host.id, requestId: 'unknown-approval', outcome: 'unavailable' }])
+    } finally { await f.close() }
+  })
+
+  it('does not forward a pending local approval result after its workspace is removed', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    const entered = deferred<void>()
+    const outcome = deferred<string>()
+    const off = f.ctx.on('approval/request' as never, (() => {
+      entered.resolve()
+      return outcome.promise
+    }) as never, { global: true } as never)
+    try {
+      await f.service.start()
+      await f.requestApproval(f.host.id, { id: 'pending-approval', sessionId: 'remote-session', toolName: 'shell' })
+      await timeout(entered.promise)
+      await f.registry.delete(f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!)
+      outcome.resolve('unavailable')
+      await new Promise(done => setImmediate(done))
+      assert.deepEqual(f.answers, [])
+    } finally { outcome.resolve('unavailable'); off(); await f.close() }
+  })
+
+  it('restores a removed workspace when explicit re-add returns a new remote id at the same path', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    try {
+      await f.service.start()
+      const oldId = f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!
+      const anchor = f.rows.get(oldId)!.path
+      const localId = f.service.localSessionId(f.host.id, 'remote-session')!
+      await f.registry.delete(oldId)
+      const replacement = { ...f.workspace, workspaceId: 'replacement-project' }
+      f.setWorkspaces([replacement])
+      f.setCatalog([{ sessionId: 'remote-session', workspaceId: replacement.workspaceId, cwd: replacement.path,
+        createdAt: '2026-01-01T00:00:00.000Z', live: true, eventCount: 1 }])
+      await f.service.sync()
+      assert.equal(f.rows.size, 0)
+      await f.add(f.host.id, replacement)
+      assert.equal(f.rows.size, 1)
+      assert.equal([...f.rows.values()][0]!.path, anchor)
+      assert.equal(f.service.localSessionId(f.host.id, 'remote-session'), localId)
+      const state = await f.state()
+      assert.equal(state.workspaces[`${f.host.id}:${f.workspace.workspaceId}`], undefined)
+      assert.equal(state.workspaces[`${f.host.id}:${replacement.workspaceId}`].removed, false)
+    } finally { await f.close() }
+  })
+
+  it('migrates legacy hidden records before missing-row detection and restores their history on unhide', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    try {
+      await f.service.start()
+      const oldId = f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!
+      const localId = f.service.localSessionId(f.host.id, 'remote-session')!
+      await f.restart(async () => {
+        const state = await f.state()
+        state.testHidden = [`${f.host.id}:${f.workspace.workspaceId}`]
+        await writeFile(join(f.stateDir, 'mirrors.json'), JSON.stringify(state))
+        await writeFile(join(f.stateDir, 'test-visibility.json'), JSON.stringify({ hiddenPaths: [f.workspace.path] }))
+        f.rows.delete(oldId) // Older plugin versions left this id in mirrors.json after their own hide.
+      })
+      assert.equal(f.service.isWorkspaceRemoved(f.host.id, f.workspace.workspaceId), false)
+      assert.equal(f.rows.size, 0)
+      await writeFile(join(f.stateDir, 'test-visibility.json'), JSON.stringify({ hiddenPaths: [] }))
+      await f.service.sync()
+      assert.equal(f.rows.size, 1)
+      assert.equal(f.service.localSessionId(f.host.id, 'remote-session'), localId)
+      assert.equal(f.sessions.size, 1)
+    } finally { await f.close() }
+  })
+
   it('stops subscriptions without cancelling remote work and does not recreate on discovery', async () => {
     const f = await removalFixture()
     try {

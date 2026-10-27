@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import type { RemoteSessionSummary, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
+import type { RemoteApprovalRequest, RemoteSessionSummary, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
 import type { ResolvedConfig } from '../src/config.ts'
 import { RemoteMirrorService } from '../src/mirror/service.ts'
 import type { RemoteHostsService } from '../src/service.ts'
@@ -93,6 +93,13 @@ export async function removalFixture(nativeRegistry?: (ctx: Context) => Promise<
   let snapshotGate: Promise<void> | undefined
   let snapshotEntered: (() => void) | undefined
   let eventGate: Promise<void> | undefined
+  const approvals = new Map<string, ReturnType<typeof deferred<RemoteApprovalRequest>>>()
+  const nextApproval = (hostId: string) => {
+    let pending = approvals.get(hostId)
+    if (pending === undefined) { pending = deferred<RemoteApprovalRequest>(); approvals.set(hostId, pending) }
+    return pending
+  }
+  const answers: Array<{ hostId: string; requestId: string; outcome: string }> = []
   async function* follow(signal: AbortSignal, event?: unknown) {
     effects.starts++
     const aborted = deferred<void>()
@@ -110,7 +117,17 @@ export async function removalFixture(nativeRegistry?: (ctx: Context) => Promise<
       if (snapshotGate !== undefined) await snapshotGate
       return { ...snapshots.get(id)!, hostId }
     },
-    followApprovals: async function* () {},
+    followApprovals: async function* (hostId: string, signal: AbortSignal) {
+      const aborted = deferred<undefined>()
+      signal.addEventListener('abort', () => aborted.resolve(undefined), { once: true })
+      while (!signal.aborted) {
+        const request = await Promise.race([nextApproval(hostId).promise, aborted.promise])
+        if (request === undefined) return
+        approvals.delete(hostId)
+        yield { type: 'request', request }
+      }
+    },
+    async answerApproval(hostId: string, requestId: string, outcome: string) { answers.push({ hostId, requestId, outcome }) },
     followSessionEvents: (_host: string, _id: string, _after: number, signal: AbortSignal) =>
       follow(signal, { type: 'event', event: { seq: 1, type: 'turn/end', data: { turn: 1 } } }),
     followAssistantFrames: (_host: string, _id: string, signal: AbortSignal) => follow(signal),
@@ -121,7 +138,11 @@ export async function removalFixture(nativeRegistry?: (ctx: Context) => Promise<
   const config = { stateDir, mirrorMaxEvents: 2000, mirrorPollMs: 500, mirrorSessions: true } as ResolvedConfig
   let service = new RemoteMirrorService(ctx, hosts, config)
   return {
-    ctx, host, hostB, workspace, stateDir, rows, sessions, agents, registry, effects, warnings, snapshots,
+    ctx, host, hostB, workspace, stateDir, rows, sessions, agents, registry, effects, warnings, snapshots, answers,
+    async requestApproval(hostId: string, request: RemoteApprovalRequest) {
+      nextApproval(hostId).resolve(request)
+      await new Promise(done => setImmediate(done))
+    },
     get service() { return service },
     setCatalog(next: RemoteSessionSummary[]) { catalog = next },
     setWorkspaces(next: RemoteWorkspace[]) { workspaces = next },
@@ -130,7 +151,12 @@ export async function removalFixture(nativeRegistry?: (ctx: Context) => Promise<
     gateFlush(gate: Promise<void>, entered: () => void) { flushGate = gate; flushEntered = entered },
     gateEvents(gate: Promise<void>) { eventGate = gate },
     async state() { return JSON.parse(await readFile(join(stateDir, 'mirrors.json'), 'utf8')) },
-    async restart() { await service.dispose(); service = new RemoteMirrorService(ctx, hosts, config); await service.start() },
+    async restart(beforeStart?: () => Promise<void>) {
+      await service.dispose()
+      await beforeStart?.()
+      service = new RemoteMirrorService(ctx, hosts, config)
+      await service.start()
+    },
     async add(hostId = host.id, remote = workspace) { await ctx.parallel('dsh-remote/workspace-added', hostId, remote) },
     async close() { await service.dispose(); await rm(stateDir, { recursive: true, force: true }) },
   }
