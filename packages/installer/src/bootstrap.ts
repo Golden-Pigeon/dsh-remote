@@ -21,6 +21,8 @@ export interface BootstrapOptions {
   readonly pnpmVersion: string
   readonly nodeVersion: string
   readonly autoInstallNode: boolean
+  /** Replace an existing DSH installation instead of only installing when missing. */
+  readonly upgrade?: boolean
   readonly start: StartMode
   readonly agentTarball: string
   /** Exact npm package spec for the remote agent, if it should be tried first. */
@@ -212,6 +214,7 @@ DSH_VERSION=${shellLiteral(options.dshVersion)}
 PNPM_VERSION=${shellLiteral(options.pnpmVersion)}
 NODE_VERSION=${shellLiteral(options.nodeVersion)}
 AUTO_INSTALL_NODE=${options.autoInstallNode ? '1' : '0'}
+DSH_UPGRADE=${options.upgrade === true ? '1' : '0'}
 AGENT_TARBALL=${shellLiteral(options.agentTarball)}
 AGENT_NPM_SPEC=${options.agentPackageSpec === undefined ? "''" : shellLiteral(options.agentPackageSpec)}
 AGENT_ARTIFACT_DIR="$INSTALL_DIR/artifacts"
@@ -320,9 +323,27 @@ if ! command -v pnpm >/dev/null 2>&1; then
   npm install --prefix "$INSTALL_DIR" --no-audit --no-fund "pnpm@$PNPM_VERSION"
 fi
 
+if [ "$DSH_UPGRADE" -eq 1 ]; then
+  echo "dsh-remote: stopping the remote DSH service before upgrading"
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet dsh-remote-agent.service 2>/dev/null; then
+    systemctl --user stop dsh-remote-agent.service || true
+  fi
+  if [ -f "$DSH_HOME/remote-agent/web.pid" ]; then
+    kill "$(cat "$DSH_HOME/remote-agent/web.pid")" 2>/dev/null || true
+    rm -f "$DSH_HOME/remote-agent/web.pid"
+  fi
+  # A stale state file would let the local plugin connect to the old listener
+  # before the upgraded service publishes its new port and credentials.
+  rm -f "$STATE_FILE"
+fi
+
 DSH_BIN="$INSTALL_DIR/node_modules/.bin/dsh"
-if [ ! -x "$DSH_BIN" ]; then
-  echo "dsh-remote: installing @deepseek-ai/dsh@$DSH_VERSION into $INSTALL_DIR"
+if [ "$DSH_UPGRADE" -eq 1 ] || [ ! -x "$DSH_BIN" ]; then
+  if [ "$DSH_UPGRADE" -eq 1 ]; then
+    echo "dsh-remote: upgrading @deepseek-ai/dsh to $DSH_VERSION into $INSTALL_DIR"
+  else
+    echo "dsh-remote: installing @deepseek-ai/dsh@$DSH_VERSION into $INSTALL_DIR"
+  fi
   npm install --prefix "$INSTALL_DIR" --no-audit --no-fund "@deepseek-ai/dsh@$DSH_VERSION"
 fi
 if [ ! -x "$DSH_BIN" ]; then

@@ -122,6 +122,8 @@ async function dispatch(
       return service.refresh(requireStringField(payload, 'hostId'))
     case 'host/provision':
       return service.provision(requireStringField(payload, 'hostId'))
+    case 'host/upgrade':
+      return service.upgrade(requireStringField(payload, 'hostId'))
     case 'host/restart':
       return service.restart(requireStringField(payload, 'hostId'))
     case 'host/workspaces': {

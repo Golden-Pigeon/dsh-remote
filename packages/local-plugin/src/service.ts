@@ -50,6 +50,7 @@ import { discoverAgent } from './ssh/probe.ts'
 import { restartRemoteAgent } from './remote/restart.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
 import { Tunnel } from './ssh/tunnel.ts'
+import { dshUpdateFor, resolveLocalDshVersion } from './version.ts'
 
 function fingerprintKey(value: string): string {
   return createHash('sha256').update(value).digest('hex')
@@ -73,6 +74,8 @@ interface Connected {
 export interface RemoteHostsServiceOptions {
   /** Resolve the local provider key at connect time; never cached in the view. */
   readonly resolveModelKey?: () => Promise<string | undefined>
+  /** Override the hosting DSH version; tests inject it instead of the runtime. */
+  readonly localDshVersion?: string
 }
 
 /** One host registry service. */
@@ -83,6 +86,7 @@ export class RemoteHostsService {
   readonly #store: HostStore
   readonly #provisioner: RemoteProvisioner
   readonly #resolveModelKey: (() => Promise<string | undefined>) | undefined
+  readonly #localDshVersion: string | undefined
   #proxy: ModelCredentialProxy | undefined
   #proxyAddress: CredentialProxyAddress | undefined
   #directModel: { readonly baseUrl: string; readonly apiKey: string } | undefined
@@ -98,6 +102,7 @@ export class RemoteHostsService {
   readonly #healthInFlight = new Set<string>()
   readonly #attempts = new Map<string, number>()
   readonly #manualDisconnect = new Set<string>()
+  readonly #upgrades = new Set<string>()
   #disposed = false
 
   constructor(ctx: Context, config: ResolvedConfig, options: RemoteHostsServiceOptions = {}) {
@@ -106,6 +111,7 @@ export class RemoteHostsService {
     this.#store = new HostStore(`${config.stateDir}/hosts.json`)
     this.#provisioner = new RemoteProvisioner(config)
     this.#resolveModelKey = options.resolveModelKey
+    this.#localDshVersion = options.localDshVersion ?? resolveLocalDshVersion()
   }
 
   /** Load the registry and auto-connect opted-in hosts. */
@@ -295,6 +301,74 @@ export class RemoteHostsService {
     return this.connect(id)
   }
 
+  /** Start a manual remote DSH upgrade to the local runtime version. */
+  async upgrade(id: string): Promise<HostView> {
+    this.#assertAlive()
+    this.#requireRecord(id)
+    const localVersion = this.#localDshVersion
+    if (localVersion === undefined) {
+      throw new LocalError('agent/unavailable', '无法确定本地 DSH 版本，无法更新远端 DSH')
+    }
+    if (this.#upgrades.has(id)) return this.view(id)
+    this.#upgrades.add(id)
+    this.#manualDisconnect.delete(id)
+    this.#clearReconnect(id)
+    this.#setRuntime(id, {
+      ...idleRuntime(),
+      phase: 'installing',
+      detail: '正在更新远端 DSH…',
+    })
+    void this.#runUpgrade(id, localVersion).catch(error => {
+      // The task itself reports expected failures through the host runtime;
+      // log anything unexpected without rejecting the Settings action.
+      this.ctx.logger.warn('dsh-remote: upgrade task for %s failed: %s', id, String(error))
+    }).finally(() => {
+      this.#upgrades.delete(id)
+    })
+    return this.view(id)
+  }
+
+  async #runUpgrade(id: string, localVersion: string): Promise<void> {
+    try {
+      const record = this.#requireRecord(id)
+      const target = parseSshTarget(record.sshTarget)
+      await this.#stopTransport(id)
+      const proxy = await this.#ensureModelProxy()
+      const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
+      const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+      this.#setRuntime(id, {
+        ...this.#runtimeFor(id),
+        modelProxy: proxy !== undefined,
+        modelDirect: direct !== undefined,
+      })
+      await this.#provisioner.ensureInstalled(target, {
+        ...this.#modelEnvironment(proxy, proxyToken, direct),
+        dshVersion: localVersion,
+        upgrade: true,
+        onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
+      })
+      // The upgraded service may still be binding its listener when the first
+      // health check runs; retry briefly instead of surfacing a transient error.
+      const deadline = Date.now() + 60_000
+      let lastError: unknown
+      while (Date.now() < deadline) {
+        try {
+          await this.connect(id)
+          return
+        } catch (error) {
+          lastError = error
+          await new Promise(resolve => setTimeout(resolve, 1_500))
+        }
+      }
+      // The upgrade itself succeeded; leave reconnection to the normal health
+      // loop instead of reporting an action failure.
+      this.ctx.logger.warn('dsh-remote: upgrade of %s is waiting to reconnect: %s', id, String(lastError))
+    } catch (error) {
+      this.#markError(id, error, 'agent/unavailable')
+      this.#scheduleReconnect(id)
+    }
+  }
+
   /** Restart the remote DSH service and reconnect without reinstalling. */
   async restart(id: string): Promise<HostView> {
     this.#assertAlive()
@@ -313,6 +387,8 @@ export class RemoteHostsService {
       error: null,
       errorCode: null,
       detail: '正在重启远端 DSH…',
+      dshUpdate: null,
+      retry: null,
     })
     try {
       await restartRemoteAgent(target, {
@@ -607,7 +683,10 @@ export class RemoteHostsService {
         this.#setRuntime(id, {
           ...this.#runtimeFor(id),
           phase: 'installing',
-          detail: '正在准备远端安装环境…',
+          error: null,
+          errorCode: null,
+          retry: null,
+          detail: '远端 agent 未运行，正在自动安装并启动…',
         })
         try {
           await this.#provisioner.ensureInstalled(target, {
@@ -656,6 +735,7 @@ export class RemoteHostsService {
 
     this.#setRuntime(id, { ...this.#runtimeFor(id), phase: 'connecting', detail: '正在建立 SSH 隧道…' })
     let tunnel: Tunnel | undefined
+    let stage: 'tunnel' | 'health' = 'tunnel'
     try {
       tunnel = await Tunnel.start({
         sshBinary: this.config.sshBinary,
@@ -666,6 +746,7 @@ export class RemoteHostsService {
         ...reverseForward === undefined ? {} : { reverseForward },
         onExit: info => this.#onTunnelExit(id, info),
       })
+      stage = 'health'
       const client = new RemoteAgentClient({
         baseUrl: tunnel.localUrl,
         token,
@@ -684,7 +765,13 @@ export class RemoteHostsService {
       return this.view(id)
     } catch (error) {
       await tunnel?.stop()
-      const failure = this.#markError(id, error, 'host/connect-failed')
+      const failure = stage === 'health'
+        ? this.#markError(id, new LocalError(
+          'host/connect-failed',
+          `远端 agent 健康检查失败：${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        ), 'host/connect-failed')
+        : this.#markError(id, error, 'host/connect-failed')
       this.#scheduleReconnect(id)
       throw failure
     }
@@ -877,7 +964,11 @@ export class RemoteHostsService {
       this.#tunnels.delete(id)
       this.#clients.delete(id)
       this.#clearHealth(id)
-      this.#markError(id, error, 'agent/unavailable')
+      this.#markError(id, new LocalError(
+        'agent/unavailable',
+        `远端 agent 健康检查失败：${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      ), 'agent/unavailable')
       this.#scheduleReconnect(id)
     } finally {
       this.#healthInFlight.delete(id)
@@ -892,6 +983,12 @@ export class RemoteHostsService {
     this.#attempts.set(id, attempt)
     const delay = Math.min(1_000 * 2 ** Math.min(attempt - 1, 10), this.config.maxReconnectDelayMs)
     this.ctx.logger.info('dsh-remote: reconnecting %s in %dms (attempt %d)', id, delay, attempt)
+    this.#setRuntime(id, {
+      ...this.#runtimeFor(id),
+      phase: 'connecting',
+      retry: { attempt, delayMs: delay, at: Date.now() + delay },
+      detail: '连接异常，正在自动重试…',
+    })
     const timer = setTimeout(() => {
       this.#reconnectTimers.delete(id)
       void this.connect(id).catch(error => {
@@ -963,12 +1060,18 @@ export class RemoteHostsService {
       error: null,
       errorCode: null,
       connectedAt: this.#runtimeFor(id).connectedAt ?? new Date().toISOString(),
+      dshUpdate: this.#dshUpdateFor(health),
+      retry: null,
       detail: this.#runtimeFor(id).modelProxy
         ? '已连接；模型请求经本地凭据代理转发'
         : this.#runtimeFor(id).modelDirect
           ? '已连接；模型请求由远端直连 DeepSeek'
           : '已连接；远端使用自身凭据或未配置模型 key',
     })
+  }
+
+  #dshUpdateFor(health: HostInfo): HostRuntime['dshUpdate'] {
+    return dshUpdateFor(health.dshVersion, this.#localDshVersion) ?? null
   }
 
   async #saveRecord(id: string, patch: Partial<HostRecord>): Promise<void> {
@@ -988,23 +1091,28 @@ export class RemoteHostsService {
       error: failure.message,
       errorCode: failure.code,
       detail: failure.message,
+      dshUpdate: null,
+      retry: null,
     })
     return failure
   }
 
   #remoteFailure(id: string, error: unknown): LocalError {
     if (error instanceof LocalError) return error
-    if (error instanceof RemoteProtocolError) {
-      const failure = new LocalError('agent/error', `remote agent: ${error.message}`, {
+    const failure = error instanceof RemoteProtocolError
+      ? new LocalError('agent/error', `remote agent: ${error.message}`, {
         details: { remoteCode: error.code, ...error.details },
         retryable: error.retryable,
         cause: error,
       })
+      : new LocalError('agent/unavailable', 'remote agent request failed', { cause: error })
+    // Ordinary remote calls can fail while the host is being installed or
+    // reconnected; that transient failure must not replace the install/retry
+    // status on the host card with a red "remote agent request failed".
+    const phase = this.#runtimeFor(id).phase
+    if (phase !== 'installing' && phase !== 'connecting' && phase !== 'discovering') {
       this.#setRuntime(id, { error: failure.message, errorCode: failure.code })
-      return failure
     }
-    const failure = new LocalError('agent/unavailable', 'remote agent request failed', { cause: error })
-    this.#setRuntime(id, { error: failure.message, errorCode: failure.code })
     return failure
   }
 

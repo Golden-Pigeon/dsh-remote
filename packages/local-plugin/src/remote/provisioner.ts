@@ -40,6 +40,10 @@ export class RemoteProvisioner {
     options: {
       readonly modelBaseUrl?: string
       readonly modelApiKey?: string
+      /** Install a specific DSH runtime instead of the configured default. */
+      readonly dshVersion?: string
+      /** Replace an existing DSH installation (manual remote upgrade). */
+      readonly upgrade?: boolean
       readonly onProgress?: ProvisionProgress
       readonly signal?: AbortSignal
     } = {},
@@ -60,10 +64,11 @@ export class RemoteProvisioner {
         profile: 'web',
         installDir: this.#config.remoteInstallDir,
         dshHome: this.#config.remoteDshHome,
-        dshVersion: this.#config.remoteDshVersion,
+        dshVersion: options.dshVersion ?? this.#config.remoteDshVersion,
         pnpmVersion: this.#config.remotePnpmVersion,
         nodeVersion: this.#config.remoteNodeVersion,
         autoInstallNode: this.#config.autoInstallNode,
+        upgrade: options.upgrade === true,
         start: this.#config.remoteStart,
         timeoutMs: this.#config.provisionTimeoutMs,
         ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },
@@ -134,6 +139,7 @@ const PROVISION_PROGRESS: readonly (readonly [string, string])[] = [
   ['installed node.js', 'Node.js 安装完成，继续安装 pnpm/DSH…'],
   ['node ready', 'Node.js 已就绪，准备安装 pnpm/DSH…'],
   ['installing pnpm@', '正在安装 pnpm…'],
+  ['upgrading @deepseek-ai/dsh@', '正在更新远端 DSH…'],
   ['installing @deepseek-ai/dsh@', '正在安装远端 DSH（下载依赖可能需要几分钟）…'],
   ['adding plugin to profile', '正在安装远端 agent…'],
   ['restarting systemd user unit', '正在启动远端 DSH Web 服务…'],

@@ -194,6 +194,9 @@ The normal plugin flow calls the same provisioning library.
 
 - Local plugin: quit DSH, run `./scripts/install-local.sh`, reopen.
 - Remote agent: click **重新安装** on the host card.
+- Remote DSH: when the host card reports that the remote runtime is older than the local one,
+  click **Update remote DSH**. The host remains usable while the update is pending; the plugin
+  replaces the runtime, restarts the remote service, and reconnects.
 - If a remote restart changes the port, click **重新发现**.
 
 ## Troubleshooting

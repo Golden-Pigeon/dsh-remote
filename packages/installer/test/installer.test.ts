@@ -123,6 +123,31 @@ describe('bootstrap rendering', () => {
     assert.match(script, /\$\{PROXY_ENV_LINES\}/)
   })
 
+  it('stops the service and replaces DSH for a manual upgrade', () => {
+    const script = renderBootstrapScript({
+      profile: 'web', port: 0, installDir: '/opt/dsh', dshHome: '/srv/dsh',
+      dshVersion: '0.2.1-rc.3', pnpmVersion: '11.21.0', nodeVersion: '22.19.0',
+      autoInstallNode: true, upgrade: true, start: 'systemd', agentTarball: '/tmp/a.tgz',
+    })
+    assert.match(script, /DSH_UPGRADE=1/)
+    assert.match(script, /stopping the remote DSH service before upgrading/)
+    assert.match(script, /systemctl --user stop dsh-remote-agent\.service/)
+    assert.match(script, /rm -f "\$STATE_FILE"/)
+    assert.match(script, /if \[ "\$DSH_UPGRADE" -eq 1 \] \|\| \[ ! -x "\$DSH_BIN" \]; then/)
+    assert.match(script, /upgrading @deepseek-ai\/dsh to \$DSH_VERSION/)
+    assert.match(script, /npm install --prefix "\$INSTALL_DIR".*"@deepseek-ai\/dsh@\$DSH_VERSION"/)
+  })
+
+  it('keeps a fresh install from replacing an existing DSH', () => {
+    const script = renderBootstrapScript({
+      profile: 'web', port: 0, installDir: '/opt/dsh', dshHome: '/srv/dsh',
+      dshVersion: '0.2.1-rc.2', pnpmVersion: '11.21.0', nodeVersion: '22.19.0',
+      autoInstallNode: true, start: 'nohup', agentTarball: '/tmp/a.tgz',
+    })
+    assert.match(script, /DSH_UPGRADE=0/)
+    assert.match(script, /if \[ "\$DSH_UPGRADE" -eq 1 \] \|\| \[ ! -x "\$DSH_BIN" \]; then/)
+  })
+
   it('renders the bootstrap script and never embeds a token', () => {
     const script = fromOptions(options, '/tmp/agent.tgz')
     assert.match(script, /set -euo pipefail/)

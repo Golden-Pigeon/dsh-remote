@@ -39,6 +39,19 @@ export interface HostRecord {
   readonly updatedAt: string
 }
 
+/** Remote DSH runtime version older than the local one. */
+export interface DshUpdate {
+  readonly remoteVersion: string
+  readonly localVersion: string
+}
+
+/** Pending automatic reconnect, exposed so Settings can show attempt and countdown. */
+export interface HostRetry {
+  readonly attempt: number
+  readonly delayMs: number
+  readonly at: number
+}
+
 /** Ephemeral runtime state for one host. */
 export interface HostRuntime {
   readonly phase: HostPhase
@@ -55,6 +68,10 @@ export interface HostRuntime {
   readonly modelProxy: boolean
   /** Whether the resolved local model key was copied into the remote environment. */
   readonly modelDirect: boolean
+  /** Set when the remote DSH runtime is older than the local one. */
+  readonly dshUpdate: DshUpdate | null
+  /** Set while an automatic reconnect is scheduled. */
+  readonly retry: HostRetry | null
 }
 
 /** Browser/tool-safe host projection. */
@@ -82,6 +99,10 @@ export interface HostView {
   readonly modelProxy: boolean
   /** Whether the resolved local model key was copied into the remote environment. */
   readonly modelDirect: boolean
+  /** Set when the remote DSH runtime is older than the local one. */
+  readonly dshUpdate: DshUpdate | null
+  /** Set while an automatic reconnect is scheduled. */
+  readonly retry: HostRetry | null
 }
 
 /** Input accepted by `host/add`. */
@@ -107,6 +128,8 @@ export function idleRuntime(): HostRuntime {
     detail: null,
     modelProxy: false,
     modelDirect: false,
+    dshUpdate: null,
+    retry: null,
   }
 }
 
@@ -133,5 +156,7 @@ export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
     detail: runtime.detail,
     modelProxy: runtime.modelProxy,
     modelDirect: runtime.modelDirect,
+    dshUpdate: runtime.dshUpdate,
+    retry: runtime.retry,
   }
 }
