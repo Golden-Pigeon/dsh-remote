@@ -22,17 +22,21 @@
 
 ## 支持环境
 
-本插件面向 **[官方 DSH Desktop 客户端](https://github.com/deepseek-ai/deepseek-harness)** 开发。目前唯一测试并声明支持的 DSH 版本是：
+本插件面向 **[官方 DSH Desktop 客户端](https://github.com/deepseek-ai/deepseek-harness)** 开发。支持的 DSH 版本：
 
-| 组件 | 测试版本 |
+| 组件 | 版本 |
 |---|---|
-| [DSH Desktop / 官方客户端](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| [DSH Desktop / 官方客户端](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)、[**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)（均已测试） |
 | 插件 | [**0.8.12**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
-| 远端 DSH 运行时 | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| 远端 DSH 运行时 | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)（安装默认）或 [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) |
 | 远端 Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | 远端操作系统 | Linux 或 macOS |
 
-没有测试过其他 DSH GUI 插件、社区 fork、修改过的客户端、非 DSH GUI 或其他 DSH 版本。包的依赖范围为了安装兼容性写得较宽，但不代表兼容性承诺或支持范围。使用本版本时请把 DSH 固定为 [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)。
+没有测试过其他 DSH GUI 插件、社区 fork、修改过的客户端、非 DSH GUI，以及 `0.2.1-rc.2`/`0.2.1-rc.3`
+之外的 DSH 版本。包的依赖范围为了安装兼容性写得较宽，但不代表兼容性承诺或支持范围。桌面客户端在两个版本上
+均已测试；远端运行时默认仍安装 `0.2.1-rc.2`，`0.2.1-rc.3` 通过相同的插件 API 受支持。使用本版本时请选择
+[`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) 或
+[`0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)。
 
 ## 已实现功能
 
