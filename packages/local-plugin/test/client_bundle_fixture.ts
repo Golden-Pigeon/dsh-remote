@@ -26,4 +26,3 @@ export async function loadClientBundle(surfaces: Record<string, unknown> = {}): 
   assert.ok(loaded, 'client bundle did not call window.__ModuleLoader__.load')
   return loaded
 }
-
