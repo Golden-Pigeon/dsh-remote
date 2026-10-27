@@ -24,20 +24,21 @@ Local DSH                                         Remote host
 
 ## Supported environment
 
-This plugin is developed for the **official DSH Desktop application**. The only tested and supported
-DSH version is:
+This plugin is developed for the **official DSH Desktop application**. Supported DSH versions:
 
-| Component | Tested version |
+| Component | Version |
 |---|---|
-| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) (both tested) |
 | Plugin | [**0.8.12**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
-| Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) |
+| Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) (provisioning default) or [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
 
-Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and other DSH versions have
-**not** been tested. The package's dependency range is intentionally permissive for installation, but
-it is not a compatibility or support guarantee. Pin DSH to [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) when using this release.
+Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and DSH versions other than
+`0.2.1-rc.2` and `0.2.1-rc.3` have **not** been tested. The package's dependency range is intentionally
+permissive for installation, but it is not a compatibility or support guarantee. The desktop client is
+tested on both versions; the remote runtime is still provisioned at `0.2.1-rc.2` by default and accepts
+`0.2.1-rc.3` through the same plugin API. Use `0.2.1-rc.2` or `0.2.1-rc.3` with this release.
 
 ## What works now
 
