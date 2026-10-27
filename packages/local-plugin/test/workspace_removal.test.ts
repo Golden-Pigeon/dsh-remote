@@ -47,6 +47,17 @@ describe('local remote-workspace removal', () => {
     } finally { outcome.resolve('unavailable'); off(); await f.close() }
   })
 
+  it('does not require the workspace registry while forwarding an existing approval', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    try {
+      await f.service.start()
+      f.ctx.reflect.set('workspaceRegistry', undefined as never)
+      await f.requestApproval(f.host.id, { id: 'active-approval', sessionId: 'remote-session', toolName: 'shell' })
+      assert.deepEqual(f.answers, [{ hostId: f.host.id, requestId: 'active-approval', outcome: 'unavailable' }])
+    } finally { f.ctx.reflect.set('workspaceRegistry', f.registry as never); await f.close() }
+  })
+
   it('restores a removed workspace when explicit re-add returns a new remote id at the same path', async () => {
     const f = await removalFixture()
     f.hostB.phase = 'disconnected'

@@ -997,7 +997,8 @@ export class RemoteMirrorService {
       const mirror = this.#state.sessions[key(hostId, request.sessionId)]
       // Detaching the local mirror must not reject later remote tool calls.
       // Leave this decision to another client or the remote approval policy.
-      if (mirror !== undefined && this.#anchorRemoved(hostId, mirror.anchor)) return
+      if (mirror !== undefined && Object.values(this.#state.workspaces).some(workspace =>
+        workspace.hostId === hostId && workspace.anchor === mirror.anchor && workspace.removed)) return
       await this.#hosts.answerApproval(hostId, request.id, 'unavailable').catch(() => undefined)
       return
     }
@@ -1027,7 +1028,7 @@ export class RemoteMirrorService {
       this.#ctx.logger.warn('dsh-remote-local: local approval bridge failed: %s', String(error))
       outcome = 'unavailable'
     }
-    if (runtime.stopped || this.#anchorRemoved(hostId, runtime.record.anchor)) return
+    if (runtime.stopped) return
     await this.#hosts.answerApproval(hostId, request.id, outcome).catch(error => {
       this.#ctx.logger.warn('dsh-remote-local: approval answer failed: %s', String(error))
     })
