@@ -274,6 +274,31 @@
   overflow-wrap: anywhere;
 }
 
+.dshr-update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--dshr-warning) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dshr-warning) 9%, transparent);
+  font-size: 12px;
+}
+
+.dshr-update p {
+  margin: 0;
+}
+
+.dshr-update code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.dshr-update .dshr-button {
+  flex: none;
+}
+
 .dshr-actions {
   display: flex;
   flex-wrap: wrap;

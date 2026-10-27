@@ -32,6 +32,8 @@ export interface ProvisionRemoteOptions {
   readonly pnpmVersion: string
   readonly nodeVersion: string
   readonly autoInstallNode: boolean
+  /** Replace the installed DSH runtime instead of only installing when missing. */
+  readonly upgrade?: boolean
   readonly start: StartMode
   /** Remote model endpoint, for example the reverse-tunnel credential proxy. */
   readonly modelBaseUrl?: string
@@ -72,6 +74,7 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     pnpmVersion: options.pnpmVersion,
     nodeVersion: options.nodeVersion,
     autoInstallNode: options.autoInstallNode,
+    upgrade: options.upgrade === true,
     start: options.start,
     agentTarball: remoteTarball,
     ...options.modelBaseUrl === undefined ? {} : { modelBaseUrl: options.modelBaseUrl },

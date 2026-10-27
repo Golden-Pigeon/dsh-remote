@@ -165,6 +165,8 @@ describe('host store', () => {
     const view = toHostView(record, idleRuntime())
     assert.equal('token' in view, false)
     assert.equal(view.hasToken, true)
+    assert.equal(view.dshUpdate, null)
+    assert.equal(view.retry, null)
     assert.equal(JSON.stringify(view).includes('0123456789abcdef'), false)
   })
 

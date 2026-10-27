@@ -32,6 +32,9 @@ const DETAIL_KEYS: Record<string, CopyKey> = {
   '正在建立 SSH 隧道并校验远端 agent…': 'detail.connecting',
   '正在重新安装远端 agent…': 'detail.reprovisioning',
   '正在重启远端 DSH…': 'detail.restarting',
+  '正在更新远端 DSH…': 'detail.dshUpdating',
+  '远端 agent 未运行，正在自动安装并启动…': 'detail.autoProvisioning',
+  '连接异常，正在自动重试…': 'detail.retrying',
   'SSH 隧道断开，等待重连…': 'detail.reconnecting',
   '正在准备远端安装环境…': 'detail.preparing',
   '正在配置远端安装代理…': 'detail.proxyPreparing',
@@ -71,6 +74,8 @@ const POLL_MS = 2_500
 export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const [state, setState] = useState<RemoteHostsState | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [pollError, setPollError] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [expandedHost, setExpandedHost] = useState<string | null>(null)
@@ -88,16 +93,23 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const hosts = useMemo(() => state?.hosts ?? [], [state])
 
   useEffect(() => {
+    if (!hosts.some(host => host.retry !== null)) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [hosts])
+
+  useEffect(() => {
     let cancelled = false
     const load = async (): Promise<void> => {
       try {
         const next = await api.state()
         if (!cancelled) {
           setState(next)
-          setError(current => current === t('settings.unavailable') ? null : current)
+          setPollError(null)
         }
       } catch (failure) {
-        if (!cancelled) setError(messageOf(failure, t('settings.unavailable')))
+        if (!cancelled) setPollError(messageOf(failure, t('settings.unavailable')))
       }
     }
     void load()
@@ -271,6 +283,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       </header>
 
       {error !== null && <p className="dshr-banner dshr-banner-error" role="alert">{error}</p>}
+      {pollError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{pollError}</p>}
       {notice !== null && <p className="dshr-banner dshr-banner-info" role="status">{notice}</p>}
 
       <section className="dshr-card">
@@ -331,11 +344,38 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                 <div><dt>{t('settings.localTunnel')}</dt><dd>{host.localPort ?? '—'}</dd></div>
                 <div><dt>{t('settings.workspaces')}</dt><dd>{host.workspaceCount ?? '—'}</dd></div>
                 <div><dt>Agent</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
+                <div><dt>{t('settings.dshVersion')}</dt><dd>{host.hostInfo?.dshVersion ?? '—'}</dd></div>
                 <div><dt>{t('settings.token')}</dt><dd>{host.hasToken ? t('settings.saved') : t('settings.unsaved')}</dd></div>
                 <div><dt>{t('settings.modelProxy')}</dt><dd>{host.modelProxy ? t('settings.localProxy') : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}</dd></div>
               </dl>
 
-              {host.detail !== null && <p className="dshr-detail">{detailLabel(t, host.detail)}</p>}
+              {host.dshUpdate !== null && (
+                <div className="dshr-update" role="status">
+                  <p>
+                    {t('settings.dshUpdateHint')}{' '}
+                    <code>{host.dshUpdate.remoteVersion}</code> → <code>{host.dshUpdate.localVersion}</code>
+                  </p>
+                  <button
+                    type="button"
+                    className="dshr-button dshr-button-primary"
+                    disabled={busy !== null || host.phase === 'installing'}
+                    onClick={() => { void run(`upgrade:${host.id}`, async () => { await api.upgrade(host.id) }) }}
+                  >
+                    {busy === `upgrade:${host.id}` ? t('settings.dshUpdating') : t('settings.dshUpdateAction')}
+                  </button>
+                </div>
+              )}
+
+              {host.retry !== null
+                ? (
+                  <p className="dshr-detail">
+                    {t('settings.retryPrefix')}{host.retry.attempt}{t('settings.retryMiddle')}
+                    {Math.max(0, Math.ceil((host.retry.at - now) / 1000))}{t('settings.retrySuffix')}
+                  </p>
+                )
+                : host.detail !== null && host.detail !== host.error && (
+                  <p className="dshr-detail">{detailLabel(t, host.detail)}</p>
+                )}
               {host.error !== null && <p className="dshr-host-error" role="alert">{host.error}</p>}
 
               <div className="dshr-actions">

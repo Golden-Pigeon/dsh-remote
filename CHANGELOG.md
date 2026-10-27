@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Detect an outdated remote DSH runtime and offer a manual, non-blocking update from Settings.
+  The installer replaces the remote runtime, restarts the service, and reconnects
+  ([#12](https://github.com/Golden-Pigeon/dsh-remote/pull/12)).
+- Show the retry attempt, countdown, and failing stage during reconnects, and keep transient host
+  API failures from overwriting the install/connect status
+  ([#12](https://github.com/Golden-Pigeon/dsh-remote/pull/12)).
+
 ## 0.8.12
 
 - Tolerate approval-stream heartbeat events and recover a mirrored turn abandoned by a remote host
