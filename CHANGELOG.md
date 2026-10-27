@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.13
 
 - Detect an outdated remote DSH runtime and offer a manual, non-blocking update from Settings.
   The installer replaces the remote runtime, restarts the service, and reconnects
