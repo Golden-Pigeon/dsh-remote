@@ -112,6 +112,17 @@ Reopen DSH. **Settings → Remote development** appears.
 
 The Settings page is now only host/workspace management. The conversation is not a popup.
 
+## Removing a local remote workspace
+
+Removing a mirrored workspace from the local sidebar pauses its local synchronization. The remote
+workspace, files, running sessions, and local cached history are retained. Catalog refreshes,
+reconnection, and plugin restarts do not add the row back.
+
+To resume, use **Add workspace**, select the same remote device and directory, and add it again.
+The plugin restores the existing local history and catches up from the remote log (within the
+configured snapshot window). Creating a session from a removed workspace requires this explicit
+add first; discovering it in the remote catalog alone does not resume synchronization.
+
 ## Test/CI workspace visibility
 
 Test isolation is controlled by a test-only manifest in the test DSH home, not by the Settings UI or

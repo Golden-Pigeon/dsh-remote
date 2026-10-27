@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import type { Workspace, WorkspaceId, WorkspaceDomainState } from '@deepseek-ai/dsh-workspace'
 import type {
   ApprovalOutcome,
   RemoteApprovalRequest,
@@ -73,9 +73,11 @@ interface MirrorTarget {
 interface WorkspaceRecord {
   readonly hostId: string
   readonly remoteWorkspaceId: string | null
-  localWorkspaceId: string
+  localWorkspaceId?: string
+  /** A native local removal pauses discovery until an explicit remote workspace add. */
+  removed?: boolean
   readonly anchor: string
-  readonly remoteRoot?: string
+  remoteRoot?: string
   readonly title: string
   readonly updatedAt: string
 }
@@ -333,6 +335,9 @@ export class RemoteMirrorService {
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
   #timer: NodeJS.Timeout | undefined
+  #workspaceOff: Array<() => void> = []
+  #internalWorkspaceDeletes = new Set<string>()
+  #pendingWorkspaceDeletion: string | undefined
   #selectionOff: (() => void) | undefined
   #disposed = false
 
@@ -345,6 +350,30 @@ export class RemoteMirrorService {
   /** Load mappings and begin periodic discovery. */
   async start(): Promise<void> {
     const loaded = this.#load()
+    this.#workspaceOff.push(this.#ctx.on('domain/changed', change => {
+      if (change.domain !== 'workspace') return
+      if (change.table === '' && change.operation === 'put') {
+        const pending = (change.value as { pendingMutation?: { operation?: string; workspaceId?: string } }).pendingMutation
+        this.#pendingWorkspaceDeletion = pending?.operation === 'delete' ? pending.workspaceId : undefined
+        return
+      }
+      if (change.table !== 'workspaces' || change.operation !== 'deleted') return
+      if (this.#internalWorkspaceDeletes.has(change.key)) return
+      for (const record of Object.values(this.#state.workspaces)) {
+        if (record.localWorkspaceId !== change.key) continue
+        void this.#retireWorkspace(record).catch(error => {
+          this.#ctx.logger.warn('dsh-remote-local: could not persist workspace removal: %s', String(error))
+        })
+      }
+    }))
+    // The registry can already be midway through a delete when this plugin
+    // starts. Its durable pending marker distinguishes that transient cache
+    // miss from a workspace removed while the plugin was stopped.
+    const workspaceState = this.#ctx.get('storageDomain')?.get('workspace')?.global.get() as WorkspaceDomainState | undefined
+    const pending = workspaceState?.pendingMutation
+    this.#pendingWorkspaceDeletion = pending?.operation === 'delete' ? pending.workspaceId : undefined
+    this.#workspaceOff.push(this.#ctx.on('dsh-remote/workspace-added', (hostId, workspace) =>
+      this.#restoreWorkspace(hostId, workspace)))
     const offCreated = this.#ctx.on('agent/created' as never, (async ({ agent }: { agent: { id: string } }) => {
       // A resume must wait for persisted ownership before native queued work can be released.
       await loaded
@@ -369,6 +398,7 @@ export class RemoteMirrorService {
   async dispose(): Promise<void> {
     this.#disposed = true
     if (this.#timer !== undefined) clearInterval(this.#timer)
+    for (const off of this.#workspaceOff.splice(0)) off()
     this.#selectionOff?.()
     this.#selectionOff = undefined
     for (const runtime of this.#runtimes.values()) {
@@ -408,7 +438,7 @@ export class RemoteMirrorService {
   remoteFileContext(workspaceRoot: string): { hostId: string; remoteRoot: string; anchor: string } | undefined {
     const root = canonicalPath(workspaceRoot)
     for (const record of Object.values(this.#state.workspaces)) {
-      if (record.remoteRoot === undefined) continue
+      if (record.remoteRoot === undefined || this.#workspaceRemoved(record)) continue
       const anchor = canonicalPath(record.anchor)
       if (root === anchor || root.startsWith(`${anchor}/`)) {
         return { hostId: record.hostId, remoteRoot: record.remoteRoot, anchor }
@@ -420,6 +450,7 @@ export class RemoteMirrorService {
   /** Local workspace ids that represent remote workspaces. */
   localWorkspaceIds(): string[] {
     return Object.values(this.#state.workspaces)
+      .filter(workspace => !this.#workspaceRemoved(workspace))
       .map(workspace => workspace.localWorkspaceId)
       .filter((id): id is string => typeof id === 'string' && id !== '')
   }
@@ -431,7 +462,93 @@ export class RemoteMirrorService {
 
   /** Find the local mirror workspace for one remote workspace. */
   localWorkspaceId(hostId: string, remoteWorkspaceId: string): string | undefined {
-    return this.#state.workspaces[key(hostId, remoteWorkspaceId)]?.localWorkspaceId
+    const record = this.#state.workspaces[key(hostId, remoteWorkspaceId)]
+    return record === undefined || this.#workspaceRemoved(record) ? undefined : record.localWorkspaceId
+  }
+
+  /** A removed local workspace can only be resumed through an explicit add. */
+  isWorkspaceRemoved(hostId: string, remoteWorkspaceId?: string, remoteRoot?: string): boolean {
+    return Object.values(this.#state.workspaces).some(record => record.hostId === hostId
+      && (remoteWorkspaceId !== undefined && record.remoteWorkspaceId === remoteWorkspaceId
+        || remoteRoot !== undefined && record.remoteRoot === remoteRoot)
+      && this.#workspaceRemoved(record))
+  }
+
+  #anchorRemoved(hostId: string, anchor: string): boolean {
+    return Object.values(this.#state.workspaces).some(record =>
+      record.hostId === hostId && record.anchor === anchor && this.#workspaceRemoved(record))
+  }
+
+  #workspaceRemoved(record: WorkspaceRecord): boolean {
+    if (record.removed) return true
+    // A deletion can happen while the plugin is offline. Never recreate that row
+    // merely because the next remote catalog still contains its workspace.
+    if (record.localWorkspaceId !== undefined
+      && record.localWorkspaceId !== this.#pendingWorkspaceDeletion
+      && this.#workspaceRegistry.get(record.localWorkspaceId as WorkspaceId) === undefined) {
+      void this.#retireWorkspace(record).catch(error => {
+        this.#ctx.logger.warn('dsh-remote-local: could not persist workspace removal: %s', String(error))
+      })
+      return true
+    }
+    return false
+  }
+
+  async #retireWorkspace(record: WorkspaceRecord): Promise<void> {
+    record.removed = true
+    const persistence = this.#save()
+    // Stop locally before awaiting persistence. Do not archive with stopActivity:
+    // that path invokes the mirror Agent's cancel and would stop the remote loop.
+    const disposals: Array<Promise<unknown>> = []
+    for (const [id, runtime] of this.#runtimes) {
+      if (runtime.record.hostId !== record.hostId || runtime.record.anchor !== record.anchor) continue
+      runtime.stopped = true
+      if (runtime.timer !== undefined) clearTimeout(runtime.timer)
+      runtime.stream?.abort()
+      runtime.assistant?.abort()
+      this.#setRunning(runtime, false)
+      this.#runtimes.delete(id)
+      const dispose = this.#registrations.get(id)
+      this.#registrations.delete(id)
+      if (dispose !== undefined) disposals.push(Promise.resolve().then(dispose))
+    }
+    await Promise.all([persistence, ...disposals])
+  }
+
+  async #restoreWorkspace(hostId: string, remote: RemoteWorkspace): Promise<void> {
+    const ref = key(hostId, remote.workspaceId)
+    const match = this.#state.workspaces[ref] ?? Object.values(this.#state.workspaces).find(record =>
+      record.hostId === hostId && record.remoteWorkspaceId === null && record.remoteRoot === remote.path)
+    if (match === undefined || !this.#workspaceRemoved(match)) return
+    // A previously unregistered session cwd becomes a real remote workspace on
+    // add. Keep its anchor and local Session ids, rather than duplicating history.
+    const oldRef = Object.entries(this.#state.workspaces).find(([, record]) => record === match)?.[0]
+    if (oldRef !== undefined && oldRef !== ref) delete this.#state.workspaces[oldRef]
+    this.#state.workspaces[ref] = {
+      ...match, remoteWorkspaceId: remote.workspaceId, remoteRoot: remote.path,
+      localWorkspaceId: undefined, removed: false,
+    }
+    for (const [sessionRef, session] of Object.entries(this.#state.sessions)) {
+      if (session.hostId === hostId && session.anchor === match.anchor) {
+        this.#state.sessions[sessionRef] = { ...session, remoteWorkspaceId: remote.workspaceId }
+      }
+    }
+    await this.#save()
+    const host = this.#hosts.list().find(item => item.id === hostId && item.phase === 'connected')
+    if (host !== undefined) await this.#ensureWorkspace(host, remote)
+    await this.sync()
+  }
+
+  async #deleteLocalWorkspace(record: WorkspaceRecord): Promise<void> {
+    const id = record.localWorkspaceId
+    if (id === undefined) return
+    this.#internalWorkspaceDeletes.add(id)
+    try {
+      await this.#workspaceRegistry.delete(id as WorkspaceId)
+      record.localWorkspaceId = undefined
+    } finally {
+      this.#internalWorkspaceDeletes.delete(id)
+    }
   }
 
   /** Find the local mirror for one remote session. */
@@ -443,6 +560,8 @@ export class RemoteMirrorService {
   async ensureRemoteSession(hostId: string, remoteSessionId: string): Promise<string | undefined> {
     const host = this.#hosts.list().find(item => item.id === hostId)
     if (host === undefined || host.phase !== 'connected') return undefined
+    const mapped = this.#state.sessions[key(hostId, remoteSessionId)]
+    if (mapped !== undefined && this.#anchorRemoved(hostId, mapped.anchor)) return undefined
     const existing = this.localSessionId(hostId, remoteSessionId)
     if (existing !== undefined && this.#sessions.get(existing as SessionId) !== undefined) return existing
     const workspaces = await this.#hosts.workspaces(hostId)
@@ -452,6 +571,7 @@ export class RemoteMirrorService {
       const summary = sessions.sessions.find(item => item.sessionId === remoteSessionId)
       if (summary === undefined) continue
       const localWorkspace = await this.#ensureWorkspace(host, workspace)
+      if (localWorkspace === undefined) return undefined
       const record = await this.#ensureMirror(host, summary, {
         workspace: localWorkspace,
         anchor: this.#anchorFor(localWorkspace),
@@ -469,14 +589,21 @@ export class RemoteMirrorService {
       return (await this.#ensureMirror(host, summary, { anchor: parent.anchor }, parent.localSessionId))?.localSessionId
     }
     const localWorkspace = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
+    if (localWorkspace === undefined) return undefined
     return (await this.#ensureMirror(host, summary, {
       workspace: localWorkspace.workspace,
       anchor: localWorkspace.anchor,
     }))?.localSessionId
   }
 
+  #detached(runtime: MirrorRuntime): boolean {
+    return this.#disposed || this.#runtimes.get(runtime.record.localSessionId) !== runtime
+      || this.#anchorRemoved(runtime.record.hostId, runtime.record.anchor)
+  }
+
   /** Route one prompt from the local Agent façade to the remote session. */
   prompt(runtime: MirrorRuntime, message: unknown, mode: PromptDeliveryMode): void {
+    if (this.#detached(runtime)) return
     const parts = promptParts(message)
     if (parts.length === 0) return
     const pending: PendingUser = { message, localSeq: -1 }
@@ -495,14 +622,18 @@ export class RemoteMirrorService {
     }
     const selection = this.selectionFor(runtime)
     if (selection !== undefined) Object.assign(runtime.agent.options, selection)
-    void this.#promptContent(message).then(({ text, content }) => this.#hosts.promptSession(
-      runtime.record.hostId,
-      runtime.record.remoteSessionId,
-      text,
-      mode,
-      selection,
-      content,
-    )).then(() => {
+    void this.#promptContent(message).then(({ text, content }) => {
+      if (this.#detached(runtime)) return
+      return this.#hosts.promptSession(
+        runtime.record.hostId,
+        runtime.record.remoteSessionId,
+        text,
+        mode,
+        selection,
+        content,
+      )
+    }).then(() => {
+      if (this.#detached(runtime)) return
       if (!runtime.pendingUsers.includes(pending)) return
       const before = (runtime.session as unknown as { seq: number }).seq
       try {
@@ -570,6 +701,7 @@ export class RemoteMirrorService {
 
   /** Route cancellation to the remote session only after the remote accepts it. */
   cancel(runtime: MirrorRuntime): void {
+    if (this.#detached(runtime)) return
     void this.#hosts.cancelSession(runtime.record.hostId, runtime.record.remoteSessionId).then(() => {
       runtime.awaitingTurn = null
       runtime.awaitingStarted = false
@@ -607,6 +739,9 @@ export class RemoteMirrorService {
   }
 
   async #syncHost(host: HostView): Promise<void> {
+    for (const record of Object.values(this.#state.workspaces)) {
+      if (record.hostId === host.id) this.#workspaceRemoved(record)
+    }
     this.#ensureApprovalStream(host)
     await this.#reconcileTestHidden(host)
     const workspaces = await this.#hosts.workspaces(host.id)
@@ -618,6 +753,10 @@ export class RemoteMirrorService {
         continue
       }
       const local = await this.#ensureWorkspace(host, workspace)
+      if (local === undefined) {
+        hiddenPaths.add(workspace.path)
+        continue
+      }
       byPath.set(workspace.path, { workspace: local, anchor: this.#anchorFor(local) })
     }
     const all = await this.#hosts.sessions(host.id, undefined, true)
@@ -636,7 +775,9 @@ export class RemoteMirrorService {
         continue
       }
       const ungrouped = await this.#ensureUngroupedWorkspace(host, summary.cwd ?? 'ungrouped')
-      await this.#ensureMirror(host, summary, { workspace: ungrouped.workspace, anchor: ungrouped.anchor })
+      if (ungrouped !== undefined) {
+        await this.#ensureMirror(host, summary, { workspace: ungrouped.workspace, anchor: ungrouped.anchor })
+      }
     }
     // A mirrored parent transcript carries the remote `subagent/catalog` events,
     // whose child ids name remote Sessions. Mirror each one as a local subagent
@@ -667,7 +808,7 @@ export class RemoteMirrorService {
     let changed = false
     for (const [ref, record] of Object.entries(this.#state.sessions)) {
       if (record.hostId !== hostId) continue
-      if (record.parentSessionId === undefined) continue
+      if (record.parentSessionId === undefined || this.#anchorRemoved(hostId, record.anchor)) continue
       if (subagents.has(record.remoteSessionId)) continue
       const runtime = this.#runtimes.get(record.localSessionId)
       if (runtime !== undefined) {
@@ -692,9 +833,9 @@ export class RemoteMirrorService {
       const used = Object.values(this.#state.sessions).some(
         session => session.hostId === hostId && session.anchor === workspace.anchor,
       )
-      if (used) continue
+      if (used || workspace.removed) continue
       try {
-        await this.#workspaceRegistry.delete(workspace.localWorkspaceId as WorkspaceId)
+        await this.#deleteLocalWorkspace(workspace)
       } catch {
         // The local row may already be gone; dropping the mirror record is enough.
       }
@@ -721,11 +862,11 @@ export class RemoteMirrorService {
         if (record.remoteRoot === undefined || tracked) continue
         for (const session of Object.values(this.#state.sessions)) {
           if (session.hostId !== host.id) continue
-          if (session.remoteWorkspaceId !== record.remoteWorkspaceId) continue
+          if (session.anchor !== record.anchor) continue
           await this.#archive(session.localSessionId as SessionId)
         }
         try {
-          await this.#workspaceRegistry.delete(record.localWorkspaceId as WorkspaceId)
+          await this.#deleteLocalWorkspace(record)
         } catch (error) {
           this.#ctx.logger.warn('dsh-remote-local: could not hide test workspace %s: %s', ref, String(error))
         }
@@ -734,7 +875,7 @@ export class RemoteMirrorService {
       } else if (tracked) {
         for (const session of Object.values(this.#state.sessions)) {
           if (session.hostId !== host.id) continue
-          if (session.remoteWorkspaceId !== record.remoteWorkspaceId) continue
+          if (session.anchor !== record.anchor) continue
           try {
             await this.#workspaceRegistry.unarchiveSession(session.localSessionId as SessionId)
           } catch {
@@ -748,22 +889,26 @@ export class RemoteMirrorService {
     if (changed) await this.#save()
   }
 
-  async #ensureWorkspace(host: HostView, remote: RemoteWorkspace): Promise<Workspace> {
+  async #ensureWorkspace(host: HostView, remote: RemoteWorkspace): Promise<Workspace | undefined> {
+    if (this.isWorkspaceRemoved(host.id, remote.workspaceId, remote.path)) return undefined
     const ref = key(host.id, remote.workspaceId)
     const existing = this.#state.workspaces[ref]
     if (existing !== undefined) {
-      try {
-        await mkdir(existing.anchor, { recursive: true })
-        const workspace = await this.#workspaceRegistry.create(existing.anchor, existing.title)
-        existing.localWorkspaceId = String(workspace.id)
-        if (existing.remoteRoot === undefined) {
-          this.#state.workspaces[ref] = { ...existing, remoteRoot: remote.path }
-          await this.#save()
-        }
-        return workspace
-      } catch (error) {
-        this.#ctx.logger.warn('dsh-remote-local: mapped workspace %s unavailable: %s', ref, String(error))
+      if (this.#workspaceRemoved(existing)) return undefined
+      if (existing.remoteRoot === undefined) {
+        existing.remoteRoot = remote.path
+        await this.#save()
       }
+      if (existing.localWorkspaceId !== undefined) {
+        return this.#workspaceRegistry.get(existing.localWorkspaceId as WorkspaceId)
+      }
+      await mkdir(existing.anchor, { recursive: true })
+      const workspace = await this.#workspaceRegistry.create(existing.anchor, existing.title)
+      if (existing.removed) return undefined
+      existing.localWorkspaceId = String(workspace.id)
+      if (this.#workspaceRemoved(existing)) return undefined
+      await this.#save()
+      return workspace
     }
     const anchor = join(this.#config.stateDir, 'anchors', safe(host.id), safe(remote.workspaceId))
     await mkdir(anchor, { recursive: true })
@@ -778,22 +923,32 @@ export class RemoteMirrorService {
       title,
       updatedAt: new Date().toISOString(),
     }
+    if (this.#workspaceRemoved(this.#state.workspaces[ref]!)) return undefined
     await this.#save()
     return workspace
   }
 
-  async #ensureUngroupedWorkspace(host: HostView, cwd: string): Promise<{ workspace: Workspace; anchor: string }> {
+  async #ensureUngroupedWorkspace(host: HostView, cwd: string): Promise<{ workspace: Workspace; anchor: string } | undefined> {
+    if (this.isWorkspaceRemoved(host.id, undefined, cwd)) return undefined
     const remoteId = `ungrouped:${createHash('sha1').update(cwd).digest('hex').slice(0, 12)}`
     const ref = key(host.id, remoteId)
     const existing = this.#state.workspaces[ref]
     if (existing !== undefined) {
-      await mkdir(existing.anchor, { recursive: true })
-      const workspace = await this.#workspaceRegistry.create(existing.anchor, existing.title)
-      existing.localWorkspaceId = String(workspace.id)
+      if (this.#workspaceRemoved(existing)) return undefined
       if (existing.remoteRoot === undefined) {
-        this.#state.workspaces[ref] = { ...existing, remoteRoot: cwd }
+        existing.remoteRoot = cwd
         await this.#save()
       }
+      if (existing.localWorkspaceId !== undefined) {
+        const workspace = this.#workspaceRegistry.get(existing.localWorkspaceId as WorkspaceId)
+        return workspace === undefined ? undefined : { workspace, anchor: existing.anchor }
+      }
+      await mkdir(existing.anchor, { recursive: true })
+      const workspace = await this.#workspaceRegistry.create(existing.anchor, existing.title)
+      if (existing.removed) return undefined
+      existing.localWorkspaceId = String(workspace.id)
+      if (this.#workspaceRemoved(existing)) return undefined
+      await this.#save()
       return { workspace, anchor: existing.anchor }
     }
     const anchor = join(this.#config.stateDir, 'anchors', safe(host.id), 'ungrouped', remoteId.split(':')[1] ?? 'root')
@@ -809,6 +964,7 @@ export class RemoteMirrorService {
       title,
       updatedAt: new Date().toISOString(),
     }
+    if (this.#workspaceRemoved(this.#state.workspaces[ref]!)) return undefined
     await this.#save()
     return { workspace, anchor }
   }
@@ -899,6 +1055,7 @@ export class RemoteMirrorService {
     target: MirrorTarget,
     parentLocalId: string | undefined,
   ): Promise<MirrorRecord | undefined> {
+    if (this.#anchorRemoved(host.id, target.anchor)) return undefined
     const ref = key(host.id, remote.sessionId)
     const existing = this.#state.sessions[ref]
     let reuse: Session | undefined
@@ -907,6 +1064,7 @@ export class RemoteMirrorService {
       const runtime = this.#runtimes.get(existing.localSessionId)
       if (live !== undefined && runtime !== undefined && (!runtime.stopped || !remote.live)) {
         await this.#attach(target.workspace, live.id)
+        if (this.#anchorRemoved(host.id, target.anchor) || this.#disposed) return undefined
         if (remote.live) {
           this.#startStream(runtime)
           this.#startAssistantStream(runtime)
@@ -932,6 +1090,7 @@ export class RemoteMirrorService {
     const snapshot = await this.#hosts.snapshot(host.id, remote.sessionId, this.#config.mirrorMaxEvents)
     const anchor = target.anchor
     await mkdir(anchor, { recursive: true })
+    if (this.#anchorRemoved(host.id, anchor) || this.#disposed) return undefined
     // A long remote Session may only be available as a truncated tail. Seed
     // from the first complete turn in that tail instead of refusing the mirror
     // entirely; older remote history stays available in the remote UI.
@@ -981,7 +1140,18 @@ export class RemoteMirrorService {
       }
       const record = existing as MirrorRecord
       await this.#attach(target.workspace, reuse.id)
-      await this.#mountRuntime(record, reuse, snapshot, remoteToLocalSeq, latestTurn, remote.live)
+      if (this.#anchorRemoved(host.id, anchor) || this.#disposed) return undefined
+      await this.#mountRuntime(record, reuse, snapshot, remoteToLocalSeq, latestTurn, false)
+      const runtime = this.#runtimes.get(record.localSessionId)
+      if (runtime === undefined || runtime.stopped) return undefined
+      // Re-add must replay the suffix produced while this workspace was removed,
+      // including completed sessions which no longer have a live event stream.
+      this.#replaySnapshot(runtime, snapshot)
+      await this.#save()
+      if (remote.live) {
+        this.#startStream(runtime)
+        this.#startAssistantStream(runtime)
+      }
       this.#ctx.logger.info(
         'dsh-remote-local: reattached remote session %s to local %s',
         remote.sessionId,
@@ -1037,6 +1207,10 @@ export class RemoteMirrorService {
           updatedAt: new Date().toISOString(),
         }
     this.#state.sessions[ref] = record
+    if (this.#anchorRemoved(host.id, anchor) || this.#disposed) {
+      await this.#save()
+      return undefined
+    }
     await this.#mountRuntime(record, session, snapshot, remoteToLocalSeq, latestTurn, remote.live)
     this.#ctx.logger.info(
       'dsh-remote-local: mirrored remote session %s as local %s',
@@ -1122,24 +1296,8 @@ export class RemoteMirrorService {
         runtime.record.remoteSessionId,
         this.#config.mirrorMaxEvents,
       )
-      if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > runtime.record.lastSeq) {
-        const first = snapshot.events[0]?.seq
-        this.#ctx.logger.warn(
-          'dsh-remote-local: remote log for %s skipped ahead to seq %s (window %d)',
-          runtime.record.remoteSessionId,
-          String(first ?? snapshot.cursor),
-          this.#config.mirrorMaxEvents,
-        )
-        runtime.record.lastSeq = first ?? snapshot.cursor
-      }
-      for (const event of snapshot.events) {
-        if (event.seq < runtime.record.lastSeq) continue
-        if (event.seq !== runtime.record.lastSeq) {
-          throw new Error(`remote event gap at ${event.seq}, mirror ${runtime.record.lastSeq}`)
-        }
-        this.#appendEvent(runtime, event)
-        runtime.record.lastSeq = event.seq + 1
-      }
+      if (runtime.stopped || this.#disposed) return
+      this.#replaySnapshot(runtime, snapshot)
       runtime.record.updatedAt = new Date().toISOString()
       if (!snapshot.live && runtime.record.lastSeq >= snapshot.cursor) {
         if (runtime.running) this.#closeAbandonedTurn(runtime)
@@ -1163,6 +1321,27 @@ export class RemoteMirrorService {
       )
     }
     this.#schedule(runtime)
+  }
+
+  #replaySnapshot(runtime: MirrorRuntime, snapshot: SessionSnapshot): void {
+    if (snapshot.truncated && (snapshot.events[0]?.seq ?? 0) > runtime.record.lastSeq) {
+      const first = snapshot.events[0]?.seq
+      this.#ctx.logger.warn(
+        'dsh-remote-local: remote log for %s skipped ahead to seq %s (window %d)',
+        runtime.record.remoteSessionId,
+        String(first ?? snapshot.cursor),
+        this.#config.mirrorMaxEvents,
+      )
+      runtime.record.lastSeq = first ?? snapshot.cursor
+    }
+    for (const event of snapshot.events) {
+      if (event.seq < runtime.record.lastSeq) continue
+      if (event.seq !== runtime.record.lastSeq) {
+        throw new Error(`remote event gap at ${event.seq}, mirror ${runtime.record.lastSeq}`)
+      }
+      this.#appendEvent(runtime, event)
+      runtime.record.lastSeq = event.seq + 1
+    }
   }
 
   /**

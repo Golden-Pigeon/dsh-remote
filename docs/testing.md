@@ -52,3 +52,14 @@ The mirror fixture uses real Cordis contexts and scope disposal with in-memory r
 The client tests render the built Settings component with React's test renderer. They keep a workspace request pending while host polling rerenders the component, then exercise completion, failure, reopening the host, and creating a workspace while an older listing is pending. A request limit makes a reintroduced render loop fail instead of hanging the suite.
 
 CI retains the frozen rc.2 development baseline and runs a second job with all installed DSH dependencies and peers pinned to rc.3. Neither job installs into a user's DSH profile or calls a model provider. Changes to the mirror's Agent interface must pass both targets.
+
+### Local workspace removal regressions
+
+`workspace_removal.test.ts` covers persistent removal, restart/reconnect discovery, explicit re-add,
+in-flight snapshots/polls/stream frames, unregistered session directories, subagent placement,
+host isolation, and rejection before remote session creation. It asserts that local removal never
+cancels remote work or deletes cached Sessions.
+
+`workspace_removal_native.test.ts` runs the published DSH workspace registry and storage domain over
+an isolated in-memory backend. It exercises durable deletion, rollback of a failed delete, and a
+plugin starting during a pending delete. No primary local or remote profile is used.
