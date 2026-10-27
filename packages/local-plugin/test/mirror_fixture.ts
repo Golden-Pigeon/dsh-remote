@@ -244,4 +244,3 @@ export function descriptorSnapshot(): Snapshot {
     ],
   }
 }
-
