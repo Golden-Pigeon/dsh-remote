@@ -29,7 +29,7 @@ This plugin is developed for the **official DSH Desktop application**. Supported
 | Component | Version |
 |---|---|
 | [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) (both tested) |
-| Plugin | [**0.8.13**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| Plugin | [**0.8.14**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) (provisioning default) or [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |

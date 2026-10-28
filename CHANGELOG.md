@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.14
+
+- Restore native model selection and remote-mirror lifecycle ownership for persisted mirrors:
+  implement the façade model operations, assign Agent scopes, await teardown, and block native
+  resume until persisted mirror mappings load. CI now verifies both DSH rc.2 and rc.3
+  ([#13](https://github.com/Golden-Pigeon/dsh-remote/pull/13)).
+- Keep locally removed mirrored remote workspaces removed across discovery, restart, and reconnect.
+  Local Sessions are archived instead of appearing under Ungrouped, remote execution and approvals
+  continue, and an explicit re-add restores local history, including when the remote workspace id
+  changes ([#14](https://github.com/Golden-Pigeon/dsh-remote/pull/14)).
+- Correct the native workspace-delete description for mirrored workspaces so it says Sessions are
+  archived locally rather than moved to Ungrouped
+  ([#14](https://github.com/Golden-Pigeon/dsh-remote/pull/14)).
+  Thanks [@samwei12](https://github.com/samwei12)!
+
 ## 0.8.13
 
 - Detect an outdated remote DSH runtime and offer a manual, non-blocking update from Settings.
