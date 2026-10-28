@@ -91,8 +91,14 @@ async function dispatch(
   signal: AbortSignal,
 ): Promise<HostApiValues[HostApiEndpoint]> {
   switch (endpoint as HostApiEndpoint) {
-    case 'state':
-      return { ...service.state(), mirroredWorkspaceIds: mirrors?.localWorkspaceIds() ?? [] }
+    case 'state': {
+      const mirroredWorkspaces = mirrors?.mirroredWorkspaces() ?? []
+      return {
+        ...service.state(),
+        mirroredWorkspaceIds: mirroredWorkspaces.map(workspace => workspace.id),
+        mirroredWorkspaces,
+      }
+    }
     case 'target/validate':
       return service.validateTarget(requireStringField(payload, 'sshTarget'))
     case 'host/add': {

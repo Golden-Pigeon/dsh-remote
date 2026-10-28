@@ -450,10 +450,14 @@ export class RemoteMirrorService {
 
   /** Local workspace ids that represent remote workspaces. */
   localWorkspaceIds(): string[] {
+    return this.mirroredWorkspaces().map(workspace => workspace.id)
+  }
+
+  /** Active mirrored workspaces with the titles shown in the local sidebar. */
+  mirroredWorkspaces(): Array<{ id: string; title: string }> {
     return Object.values(this.#state.workspaces)
-      .filter(workspace => !this.#workspaceRemoved(workspace))
-      .map(workspace => workspace.localWorkspaceId)
-      .filter((id): id is string => typeof id === 'string' && id !== '')
+      .filter(workspace => workspace.localWorkspaceId !== undefined && !this.#workspaceRemoved(workspace))
+      .map(workspace => ({ id: workspace.localWorkspaceId!, title: workspace.title }))
   }
 
   /** Whether the test-only manifest excludes this remote workspace from UI listings. */

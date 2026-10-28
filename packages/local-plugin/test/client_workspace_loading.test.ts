@@ -43,7 +43,7 @@ async function harness() {
   const host = { id: 'fixture-host', label: 'Fixture host', sshTarget: 'example-host', phase: 'connected', dshUpdate: null, retry: null, detail: null, error: null }
   const api = {
     createWorkspace: async () => ({}),
-    state: async () => ({ hosts: [{ ...host }], mirroredWorkspaceIds: [] }),
+    state: async () => ({ hosts: [{ ...host }], mirroredWorkspaceIds: [], mirroredWorkspaces: [] }),
     workspaces: () => {
       calls++
       // Bound a regression's render loop so a failed test cannot hang the suite.
