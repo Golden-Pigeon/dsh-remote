@@ -8,7 +8,7 @@
  * @module dsh-remote-local/client/panel
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostView } from '../hosts/types.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
@@ -80,6 +80,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const [busy, setBusy] = useState<string | null>(null)
   const [expandedHost, setExpandedHost] = useState<string | null>(null)
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
+  const loadingWorkspaces = useRef(new Map<string, Promise<void>>())
   const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
   const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
   const [workspaceDraft, setWorkspaceDraft] = useState('')
@@ -126,7 +127,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   useEffect(() => {
     const host = hosts.find(item => item.id === expandedHost)
     if (host?.phase === 'connected' && workspaces[host.id] === undefined) {
-      void loadWorkspaces(host.id)
+      void loadWorkspaces(host.id, false)
     }
   }, [hosts, expandedHost, workspaces])
 
@@ -176,14 +177,27 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     await loadWorkspaces(host.id)
   }
 
-  async function loadWorkspaces(hostId: string): Promise<void> {
-    setWorkspaces(current => ({ ...current, [hostId]: undefined }))
+  async function loadWorkspaces(hostId: string, refresh = true): Promise<void> {
+    // Automatic loads share pending work; explicit refreshes need a later snapshot.
+    let pending: Promise<void> | undefined
+    while ((pending = loadingWorkspaces.current.get(hostId)) !== undefined) {
+      await pending
+      if (!refresh) return
+    }
+    const request = (async () => {
+      try {
+        const result = await api.workspaces(hostId)
+        setWorkspaces(current => ({ ...current, [hostId]: [...result.workspaces] }))
+      } catch (failure) {
+        setWorkspaces(current => ({ ...current, [hostId]: [] }))
+        setError(messageOf(failure, t('settings.readWorkspacesFailed')))
+      }
+    })()
+    loadingWorkspaces.current.set(hostId, request)
     try {
-      const result = await api.workspaces(hostId)
-      setWorkspaces(current => ({ ...current, [hostId]: [...result.workspaces] }))
-    } catch (failure) {
-      setWorkspaces(current => ({ ...current, [hostId]: [] }))
-      setError(messageOf(failure, t('settings.readWorkspacesFailed')))
+      await request
+    } finally {
+      loadingWorkspaces.current.delete(hostId)
     }
   }
 

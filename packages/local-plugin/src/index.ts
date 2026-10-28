@@ -43,10 +43,24 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
       }
     },
   })
-  await service.start()
   const mirrors = new RemoteMirrorService(ctx, service, resolved)
-  await mirrors.start()
   const terminals = new RemoteTerminals(ctx, service, mirrors)
+  ctx.effect(
+    () => async () => {
+      terminals.dispose()
+      try {
+        await mirrors.dispose()
+      } finally {
+        await service.dispose()
+      }
+    },
+    'dsh-remote-local: tunnel and mirror lifecycle',
+  )
+
+  // Install mirror ownership before the first host-store or connection await.
+  await mirrors.start()
+  await service.start()
+  await mirrors.sync()
   ctx.effect(() => registerTerminalApi(ctx, terminals), 'dsh-remote-local: remote terminal route')
   ctx.inject(['workspaceFiles'], child => {
     installRemoteWorkspaceFiles(child, mirrors, service)
@@ -64,15 +78,6 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   ctx.inject(['tools'], child => {
     registerRemoteTools(child, service)
   })
-
-  ctx.effect(
-    () => () => {
-      terminals.dispose()
-      void mirrors.dispose()
-      void service.dispose()
-    },
-    'dsh-remote-local: tunnel and mirror lifecycle',
-  )
 
   ctx.logger.info(
     'dsh-remote-local: %d host(s), state in %s',

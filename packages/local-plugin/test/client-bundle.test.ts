@@ -1,32 +1,8 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { describe, it } from 'node:test'
-import vm from 'node:vm'
 import * as React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
-
-interface LoadedModule {
-  readonly id: string
-  readonly factory: (require: (specifier: string) => unknown) => Record<string, unknown>
-}
-
-async function loadClientBundle(): Promise<LoadedModule> {
-  const file = join(process.cwd(), 'lib', 'client.js')
-  const code = await readFile(file, 'utf8')
-  let loaded: LoadedModule | undefined
-  const sandbox = {
-    window: {
-      __ModuleLoader__: {
-        load: (entry: LoadedModule) => { loaded = entry },
-      },
-    },
-    console,
-  }
-  vm.runInNewContext(code, sandbox, { filename: file })
-  assert.ok(loaded, 'client bundle did not call window.__ModuleLoader__.load')
-  return loaded
-}
+import { loadClientBundle } from './client_bundle_fixture.ts'
 
 describe('client bundle artifact', () => {
   it('registers the package and a Settings section', async () => {

@@ -13,6 +13,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      matrix:
+        dsh: ['0.2.1-rc.2', '0.2.1-rc.3']
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,6 +29,11 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
+      - name: Select DSH compatibility target
+        if: matrix.dsh != '0.2.1-rc.2'
+        run: |
+          node scripts/select_dsh_version.mjs '${{ matrix.dsh }}'
+          pnpm install --no-frozen-lockfile
       - name: Build
         run: pnpm -r build
       - name: Typecheck
@@ -41,6 +49,6 @@ jobs:
       - name: Upload plugin tarball
         uses: actions/upload-artifact@v4
         with:
-          name: dsh-remote-local-plugin
+          name: dsh-remote-local-plugin-${{ matrix.dsh }}
           path: packages/local-plugin/dsh-remote-local-plugin-*.tgz
           if-no-files-found: error
