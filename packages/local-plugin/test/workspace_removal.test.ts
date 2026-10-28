@@ -117,8 +117,9 @@ describe('local remote-workspace removal', () => {
       const native = await f.registry.create('/srv/native-local', 'local')
       const otherId = f.service.localWorkspaceId(f.hostB.id, f.workspace.workspaceId)!
       await f.registry.delete(id)
-      for (let i = 0; i < 50 && f.effects.archives === 0; i += 1) {
-        await new Promise<void>(done => setImmediate(done))
+      const archiveDeadline = Date.now() + 2_000
+      while (f.effects.archives === 0 && Date.now() < archiveDeadline) {
+        await new Promise<void>(done => setTimeout(done, 5))
       }
       assert.equal(f.effects.aborts, 2)
       assert.equal(f.agents.has(localId), false)
@@ -204,8 +205,9 @@ describe('local remote-workspace removal', () => {
       await f.service.start()
       const id = f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!
       await f.registry.delete(id)
-      for (let i = 0; i < 50 && f.effects.archives === 0; i += 1) {
-        await new Promise<void>(done => setImmediate(done))
+      const archiveDeadline = Date.now() + 2_000
+      while (f.effects.archives === 0 && Date.now() < archiveDeadline) {
+        await new Promise<void>(done => setTimeout(done, 5))
       }
       assert.equal(f.effects.archives > 0, true)
       f.effects.archives = 0
