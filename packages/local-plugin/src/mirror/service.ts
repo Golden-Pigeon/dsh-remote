@@ -474,6 +474,22 @@ export class RemoteMirrorService {
       && this.#workspaceRemoved(record))
   }
 
+  /**
+   * Whether a remote session belongs to a workspace that was removed locally.
+   * Sessions may run in a subdirectory of their workspace, so cwd is matched by
+   * path prefix rather than only by exact workspace root.
+   */
+  isSessionWorkspaceRemoved(hostId: string, remoteWorkspaceId?: string | null, cwd?: string | null): boolean {
+    if (remoteWorkspaceId !== undefined && remoteWorkspaceId !== null
+      && this.isWorkspaceRemoved(hostId, remoteWorkspaceId)) return true
+    if (cwd === undefined || cwd === null) return false
+    return Object.values(this.#state.workspaces).some(record => {
+      if (record.hostId !== hostId || record.remoteRoot === undefined || !this.#workspaceRemoved(record)) return false
+      const root = record.remoteRoot.endsWith('/') ? record.remoteRoot : `${record.remoteRoot}/`
+      return cwd === record.remoteRoot || cwd.startsWith(root)
+    })
+  }
+
   #anchorRemoved(hostId: string, anchor: string): boolean {
     return Object.values(this.#state.workspaces).some(record =>
       record.hostId === hostId && record.anchor === anchor && this.#workspaceRemoved(record))
@@ -582,6 +598,7 @@ export class RemoteMirrorService {
     const all = await this.#hosts.sessions(hostId, undefined, true)
     const summary = all.sessions.find(item => item.sessionId === remoteSessionId)
     if (summary === undefined) return undefined
+    if (this.isSessionWorkspaceRemoved(hostId, summary.workspaceId, summary.cwd)) return undefined
     if (summary.cwd !== null && isTestHidden(summary.cwd, '', this.#testVisibility)) return undefined
     if (summary.origin === 'subagent' && summary.parentSession !== undefined) {
       // Children are only reachable through their mirrored parent's catalog.
@@ -764,6 +781,7 @@ export class RemoteMirrorService {
     const subagents = new Set<string>()
     const children: RemoteSessionSummary[] = []
     for (const summary of all.sessions) {
+      if (this.isSessionWorkspaceRemoved(host.id, summary.workspaceId, summary.cwd)) continue
       if (summary.origin === 'subagent') {
         subagents.add(summary.sessionId)
         children.push(summary)

@@ -183,7 +183,7 @@ async function dispatch(
     case 'host/session/create': {
       const body = requireRecord(payload)
       const hostId = requireStringField(body, 'hostId')
-      if (mirrors?.isWorkspaceRemoved(hostId, optionalStringField(body, 'workspaceId'), optionalStringField(body, 'cwd'))) {
+      if (mirrors?.isSessionWorkspaceRemoved(hostId, optionalStringField(body, 'workspaceId'), optionalStringField(body, 'cwd'))) {
         throw new LocalError('request/invalid', 'This workspace was removed locally. Add it again before creating a session.')
       }
       const created = await service.createSession(hostId, {

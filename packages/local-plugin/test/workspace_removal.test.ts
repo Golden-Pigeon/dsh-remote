@@ -314,6 +314,24 @@ describe('local remote-workspace removal', () => {
     } finally { await f.close() }
   })
 
+  it('does not mirror a removed workspace session whose cwd is a subdirectory', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    try {
+      await f.service.start()
+      const id = f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!
+      await f.registry.delete(id)
+      const cwd = `${f.workspace.path}/sub`
+      f.setCatalog([{ sessionId: 'sub-session', workspaceId: f.workspace.workspaceId, cwd,
+        createdAt: '2026-01-01T00:00:00.000Z', live: true, eventCount: 1 }])
+      f.snapshots.set('sub-session', { hostId: f.host.id, sessionId: 'sub-session', workspaceId: f.workspace.workspaceId,
+        cwd, cursor: 1, live: true, truncated: false, events: [] })
+      await f.service.sync()
+      assert.equal(f.rows.size, 0)
+      assert.equal(f.service.localSessionId(f.host.id, 'sub-session'), undefined)
+    } finally { await f.close() }
+  })
+
   it('keeps plugin-owned test hiding reversible without recording a user removal', async () => {
     const f = await removalFixture()
     f.hostB.phase = 'disconnected'
@@ -351,6 +369,14 @@ describe('local remote-workspace removal', () => {
       assert.equal(result.ok, false)
       assert.equal(result.error.code, 'request/invalid')
       assert.match(result.error.message, /Add it again/)
+      const subResponse = await fetch(new Request('http://localhost/api/dsh-remote', {
+        method: 'POST', body: JSON.stringify({ endpoint: 'host/session/create',
+          payload: { hostId: f.host.id, cwd: `${f.workspace.path}/sub` } }),
+      }))
+      const subResult = await subResponse.json()
+      assert.equal(subResult.ok, false)
+      assert.equal(subResult.error.code, 'request/invalid')
+      assert.match(subResult.error.message, /Add it again/)
       assert.equal(creates, 0)
     } finally { await dispose(); await f.close() }
   })
