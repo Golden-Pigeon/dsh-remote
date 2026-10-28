@@ -388,6 +388,7 @@ export class RemoteMirrorService {
     this.#selectionOff = () => { offSelection(); offCreated() }
     await loaded
     if (this.#disposed) return
+    await this.#archiveRemovedSessions()
     if (!this.#config.mirrorSessions) return
     // Catalog reconciliation is much less urgent than event delivery.
     this.#timer = setInterval(() => { void this.sync() }, Math.max(5_000, this.#config.mirrorPollMs * 4))
@@ -529,6 +530,14 @@ export class RemoteMirrorService {
       if (dispose !== undefined) disposals.push(Promise.resolve().then(dispose))
     }
     await Promise.all([persistence, ...disposals])
+    // Keep the local history but hide its rows from the sidebar. The workspace
+    // row is already gone, so leaving these sessions active makes the browser
+    // group them under the synthetic "ungrouped" bucket. Archive only after
+    // the mirror agents are detached: stopActivity must not reach the remote.
+    for (const session of Object.values(this.#state.sessions)) {
+      if (session.hostId !== record.hostId || session.anchor !== record.anchor) continue
+      await this.#archive(session.localSessionId as SessionId)
+    }
   }
 
   async #restoreWorkspace(hostId: string, remote: RemoteWorkspace): Promise<void> {
@@ -548,6 +557,11 @@ export class RemoteMirrorService {
     for (const [sessionRef, session] of Object.entries(this.#state.sessions)) {
       if (session.hostId === hostId && session.anchor === match.anchor) {
         this.#state.sessions[sessionRef] = { ...session, remoteWorkspaceId: remote.workspaceId }
+        try {
+          await this.#workspaceRegistry.unarchiveSession(session.localSessionId as SessionId)
+        } catch {
+          // The local Session may no longer exist; the next sync will skip it.
+        }
       }
     }
     await this.#save()
@@ -1708,6 +1722,19 @@ export class RemoteMirrorService {
       await this.#workspaceRegistry.archiveSession(sessionId, { stopActivity: true })
     } catch {
       // Missing/active sessions are left alone; the new mirror is still usable.
+    }
+  }
+
+  /** Repair sessions left orphaned by removals persisted before archival existed. */
+  async #archiveRemovedSessions(): Promise<void> {
+    const archived = new Set(this.#workspaceRegistry.archivedSessionIds)
+    for (const record of Object.values(this.#state.workspaces)) {
+      if (!record.removed) continue
+      for (const session of Object.values(this.#state.sessions)) {
+        if (session.hostId !== record.hostId || session.anchor !== record.anchor) continue
+        const id = session.localSessionId as SessionId
+        if (!archived.has(id)) await this.#archive(id)
+      }
     }
   }
 

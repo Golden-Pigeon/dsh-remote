@@ -22,7 +22,7 @@ export async function removalFixture(nativeRegistry?: (ctx: Context) => Promise<
   const rows = new Map<string, ReturnType<typeof makeRow>>()
   const sessions = new Map<string, ReturnType<typeof makeSession>>()
   const agents = new Map<string, { id: string; cancel(): void; send(message: unknown): void }>()
-  const effects = { cancellations: 0, prompts: 0, snapshots: 0, archives: 0, starts: 0, aborts: 0 }
+  const effects = { cancellations: 0, prompts: 0, snapshots: 0, archives: 0, unarchives: 0, starts: 0, aborts: 0 }
   let flushGate: Promise<void> | undefined
   let flushEntered: (() => void) | undefined
   let rowSeq = 0
@@ -54,7 +54,7 @@ export async function removalFixture(nativeRegistry?: (ctx: Context) => Promise<
       return existed
     },
     async archiveSession() { effects.archives++ },
-    async unarchiveSession() {},
+    async unarchiveSession() { effects.unarchives++ },
   }
   ctx.provide('sessions', {
     get: (id: string) => sessions.get(id),

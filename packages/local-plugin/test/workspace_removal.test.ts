@@ -117,6 +117,9 @@ describe('local remote-workspace removal', () => {
       const native = await f.registry.create('/srv/native-local', 'local')
       const otherId = f.service.localWorkspaceId(f.hostB.id, f.workspace.workspaceId)!
       await f.registry.delete(id)
+      for (let i = 0; i < 50 && f.effects.archives === 0; i += 1) {
+        await new Promise<void>(done => setImmediate(done))
+      }
       assert.equal(f.effects.aborts, 2)
       assert.equal(f.agents.has(localId), false)
       await f.service.sync()
@@ -131,7 +134,7 @@ describe('local remote-workspace removal', () => {
       await Promise.resolve()
       assert.equal(f.effects.cancellations, 0)
       assert.equal(f.effects.prompts, 0)
-      assert.equal(f.effects.archives, 0)
+      assert.equal(f.effects.archives > 0, true)
       assert.equal(f.sessions.has(localId), true)
       await f.service.dispose()
       const state = await f.state()
@@ -162,6 +165,7 @@ describe('local remote-workspace removal', () => {
       assert.equal(f.effects.snapshots, reads)
       await f.add()
       assert.equal(f.rows.size, 1)
+      assert.equal(f.effects.unarchives > 0, true)
       assert.equal(f.service.localSessionId(f.host.id, 'remote-session'), localId)
       assert.equal(f.sessions.size, 1)
       assert.deepEqual(session.snapshotEvents().map(event => event.type), ['turn/start', 'turn/end'])
@@ -190,6 +194,23 @@ describe('local remote-workspace removal', () => {
       assert.equal(f.service.isWorkspaceRemoved(f.host.id, f.workspace.workspaceId), true)
       await f.add()
       assert.equal(f.rows.size, 1)
+    } finally { await f.close() }
+  })
+
+  it('archives sessions when the persisted removal predates archival', async () => {
+    const f = await removalFixture()
+    f.hostB.phase = 'disconnected'
+    try {
+      await f.service.start()
+      const id = f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!
+      await f.registry.delete(id)
+      for (let i = 0; i < 50 && f.effects.archives === 0; i += 1) {
+        await new Promise<void>(done => setImmediate(done))
+      }
+      assert.equal(f.effects.archives > 0, true)
+      f.effects.archives = 0
+      await f.restart()
+      assert.equal(f.effects.archives > 0, true)
     } finally { await f.close() }
   })
 
