@@ -104,10 +104,16 @@ export function harness() {
     flush: async () => {},
   }
 
+  const workspaces = new Map<string, { id: string; anchor: string; title: string; attachSession(id: string): Promise<void> }>()
   const registry = {
+    get: (id: string) => workspaces.get(id),
     async create(anchor: string, title: string) {
+      const existing = [...workspaces.values()].find(workspace => workspace.anchor === anchor)
+      if (existing !== undefined) return existing
       workspaceSeq += 1
-      return { id: `workspace-${workspaceSeq}`, anchor, title, attachSession: async (id: string) => { attached.push(id) } }
+      const workspace = { id: `workspace-${workspaceSeq}`, anchor, title, attachSession: async (id: string) => { attached.push(id) } }
+      workspaces.set(workspace.id, workspace)
+      return workspace
     },
     async delete() {},
     async archiveSession(id: string) { archived.push(id) },

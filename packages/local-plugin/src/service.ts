@@ -56,6 +56,13 @@ function fingerprintKey(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Explicit workspace add, after the remote registration succeeded. @mode parallel */
+    'dsh-remote/workspace-added'(hostId: string, workspace: RemoteWorkspace): Promise<void>
+  }
+}
+
 /** Snapshot returned to the Settings page. */
 export interface HostsState {
   readonly protocolVersion: number
@@ -516,13 +523,15 @@ export class RemoteHostsService {
   /** Register a remote workspace. */
   async createWorkspace(id: string, request: CreateWorkspaceRequest): Promise<RemoteWorkspace> {
     const client = this.#requireClient(id)
+    let workspace: RemoteWorkspace
     try {
-      const workspace = await client.createWorkspace(request)
+      workspace = await client.createWorkspace(request)
       this.#setRuntime(id, { workspaceCount: (this.#runtimeFor(id).workspaceCount ?? 0) + 1 })
-      return workspace
     } catch (error) {
       throw this.#remoteFailure(id, error)
     }
+    await this.ctx.parallel('dsh-remote/workspace-added', id, workspace)
+    return workspace
   }
 
   /** Create a remote session. */

@@ -50,12 +50,20 @@ export type HostApiEndpoint =
   | 'host/files/stat'
   | 'host/files/bytes'
 
+/** One active mirrored workspace, exposed for UI copy decisions. */
+export interface MirroredWorkspace {
+  readonly id: string
+  readonly title: string
+}
+
 /** Browser-safe state snapshot. */
 export interface RemoteHostsState {
   readonly protocolVersion: number
   readonly hosts: readonly HostView[]
   /** Local workspace ids whose Session creation is owned by a remote host. */
   readonly mirroredWorkspaceIds: readonly string[]
+  /** Titles of active mirrored workspaces, used to scope workspace-delete copy. */
+  readonly mirroredWorkspaces: readonly MirroredWorkspace[]
 }
 
 /** Result of parsing a destination. */

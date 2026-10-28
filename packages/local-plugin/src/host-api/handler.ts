@@ -91,8 +91,14 @@ async function dispatch(
   signal: AbortSignal,
 ): Promise<HostApiValues[HostApiEndpoint]> {
   switch (endpoint as HostApiEndpoint) {
-    case 'state':
-      return { ...service.state(), mirroredWorkspaceIds: mirrors?.localWorkspaceIds() ?? [] }
+    case 'state': {
+      const mirroredWorkspaces = mirrors?.mirroredWorkspaces() ?? []
+      return {
+        ...service.state(),
+        mirroredWorkspaceIds: mirroredWorkspaces.map(workspace => workspace.id),
+        mirroredWorkspaces,
+      }
+    }
     case 'target/validate':
       return service.validateTarget(requireStringField(payload, 'sshTarget'))
     case 'host/add': {
@@ -183,6 +189,9 @@ async function dispatch(
     case 'host/session/create': {
       const body = requireRecord(payload)
       const hostId = requireStringField(body, 'hostId')
+      if (mirrors?.isSessionWorkspaceRemoved(hostId, optionalStringField(body, 'workspaceId'), optionalStringField(body, 'cwd'))) {
+        throw new LocalError('request/invalid', 'This workspace was removed locally. Add it again before creating a session.')
+      }
       const created = await service.createSession(hostId, {
         ...optionalStringField(body, 'workspaceId') === undefined
           ? {}

@@ -17,6 +17,7 @@ import { installNativeWorkspaceRouting } from './routing.ts'
 import { installRemoteFiles } from './remote-files.ts'
 import { NS, en, zh, type LocaleFace } from './locale.ts'
 import { installWorkspaceAddMenu } from './workspace-add.ts'
+import { installWorkspaceDeleteCopy } from './workspace-delete-copy.ts'
 
 /** The Settings shell's slot registry and the authenticated connection. */
 export const inject = ['slots', 'uiWorkspace', 'locale']
@@ -29,6 +30,7 @@ export function apply(ctx: Context): void {
   const t = locale.bind(NS)
   installNativeWorkspaceRouting(ctx, api)
   installWorkspaceAddMenu(ctx, api, t)
+  ctx.effect(() => installWorkspaceDeleteCopy(api), 'dsh-remote: mirrored workspace delete copy')
   ctx.inject(['remote.workspaceFiles'], child => {
     installRemoteFiles(child, api)
   })
