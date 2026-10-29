@@ -69,6 +69,14 @@ dsh-remote-local-plugin
 
 DSH 会从 npm 安装 bundle。这个包已经包含远端 agent 资源和 terminal-controller fork，不需要再安装其他包。按插件页提示重启 DSH，然后 **Settings → Remote development** 会出现。
 
+如果 npmjs.com 对刚发布版本的 `latest` 解析仍旧滞后，可以改为安装当前的精确版本：
+
+```text
+dsh-remote-local-plugin@0.8.14
+```
+
+每次发新版本时同步更新这个版本号。
+
 ### 从源码安装
 
 开发时克隆仓库并运行安装脚本：

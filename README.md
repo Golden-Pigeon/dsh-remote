@@ -73,6 +73,15 @@ The package is published on [npm](https://www.npmjs.com/package/dsh-remote-local
 terminal-controller fork, so there is nothing else to install. Restart DSH when the plugin page asks
 for it; **Settings → Remote development** then appears.
 
+If npmjs.com still resolves an older `latest` tag for a newly published release, install the exact
+current version instead:
+
+```text
+dsh-remote-local-plugin@0.8.14
+```
+
+Keep this pinned version in sync with each release.
+
 ### From a source checkout
 
 For development, clone the repository and run the installer:

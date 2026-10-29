@@ -51,6 +51,15 @@ dsh-remote-local-plugin
 The package bundles the remote agent asset and the terminal-controller fork. Restart DSH after the
 plugin page asks for it.
 
+If npmjs.com resolves an older `latest` tag for a newly published release, install the exact current
+version instead:
+
+```text
+dsh-remote-local-plugin@0.8.14
+```
+
+Keep this pinned version in sync with each release.
+
 ### From a source checkout
 
 ```sh

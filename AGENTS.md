@@ -9,6 +9,7 @@ This repository is intended to be public on GitHub.
 - Local logs, screenshots, and test state may contain real values; only staged content matters.
 - Do not bump the version for test-only tooling or documentation. The current release is 0.8.14.
 - In CHANGELOG entries, link the related issue or PR and thank external contributors with `@handle`.
+- When releasing a new version, update the pinned install version in `README.md`, `README.zh.md`, and `packages/local-plugin/README.md`.
 
 ## Verification commands
 
