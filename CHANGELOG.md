@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.15
+
+- Route remote files, directories, and terminals through the remote agent's authenticated APIs
+  over the existing single SSH tunnel. Remove per-operation SSH file/terminal/directory fallbacks
+  and ControlMaster plumbing; older agents must be reinstalled to expose the new capabilities
+  ([#15](https://github.com/Golden-Pigeon/dsh-remote/pull/15)).
+- Localize host detail/status and error messages with stable codes and parameters, and avoid
+  reporting a remote workspace creation as failed while its local mirror is still settling
+  ([#15](https://github.com/Golden-Pigeon/dsh-remote/pull/15)).
+- Verify the installed remote agent version during provisioning, avoid false version-mismatch
+  failures while the agent process is restarting, and validate deterministic prerelease
+  packaging before release ([#15](https://github.com/Golden-Pigeon/dsh-remote/pull/15)).
+
 ## 0.8.14
 
 - Restore native model selection and remote-mirror lifecycle ownership for persisted mirrors:
