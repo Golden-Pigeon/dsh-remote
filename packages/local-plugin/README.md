@@ -6,12 +6,12 @@ Remote development that appears as ordinary local sessions.
 
 This plugin targets the official **DSH Desktop** application. Supported versions:
 
-- [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [`0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)
+- [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [`0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3), [`0.2.1-rc.4`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.4), [`0.2.1-rc.5`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.5)
 - Plugin [`0.8.15`](https://www.npmjs.com/package/dsh-remote-local-plugin)
 - Remote DSH [`0.2.1-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) (provisioning default) or [`0.2.1-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)
 - Remote [Node.js `22.19+`](https://nodejs.org/en/download) on Linux/macOS
 
-Other DSH GUI plugins, forks, modified clients, and DSH versions other than `0.2.1-rc.2`/`0.2.1-rc.3`
+Other DSH GUI plugins, forks, modified clients, and DSH versions outside `0.2.1-rc.2` through `0.2.1-rc.5`
 have not been tested. The package dependency range is permissive for installation only; it is not a
 support guarantee.
 
