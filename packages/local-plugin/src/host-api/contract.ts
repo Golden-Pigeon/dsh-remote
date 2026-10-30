@@ -9,6 +9,7 @@
  */
 
 import type { HostView } from '../hosts/types.ts'
+import type { UiText } from '../messages.ts'
 import type {
   AcceptedResult,
   CreateSessionResult,
@@ -119,6 +120,7 @@ export type HostApiResult<T> =
       readonly code: string
       readonly message: string
       readonly details: Record<string, unknown>
+      readonly ui?: UiText
     }
   }
 

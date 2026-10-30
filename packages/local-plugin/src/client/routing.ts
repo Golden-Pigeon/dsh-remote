@@ -10,6 +10,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { HostsApi } from './api.ts'
+import { localizedError } from './errors.ts'
+import type { Translate } from './locale.ts'
 
 interface StartSessionOptions {
   readonly agentPreset?: string
@@ -20,7 +22,7 @@ interface WorkspaceService {
 }
 
 /** Install the sidebar routing adapter once per client mount. */
-export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi): void {
+export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi, t: Translate): void {
   const workspace = ctx.uiWorkspace as unknown as WorkspaceService | undefined
   if (workspace === undefined || typeof workspace.startSession !== 'function') return
   const original = workspace.startSession.bind(workspace)
@@ -35,10 +37,10 @@ export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi): void
         return
       }
       if (result === 'blocked') {
-        showToast('远端工作区当前不可用，未创建本地会话。请先恢复远端连接。')
+        showToast(t('toast.remoteUnavailable'))
       }
     }).catch(error => {
-      showToast(`无法在远端工作区创建会话：${error instanceof Error ? error.message : String(error)}`)
+      showToast(localizedError(t, error, t('toast.createSessionFailed')))
     })
   }
 }

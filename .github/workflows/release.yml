@@ -29,6 +29,12 @@ jobs:
       - run: pnpm -r build
       - run: pnpm -r typecheck
       - run: pnpm -r test
+      - name: Reject prerelease remote agent
+        run: |
+          VERSION="$(node -p "require('./packages/remote-agent/package.json').version")"
+          case "$VERSION" in
+            *-*) echo "::error::Refusing to release prerelease remote agent $VERSION"; exit 1 ;;
+          esac
       - run: node scripts/release-plugin.mjs
       - name: Verify tag matches package version
         if: startsWith(github.ref, 'refs/tags/')

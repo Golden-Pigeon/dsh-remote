@@ -30,10 +30,10 @@ support guarantee.
 - `+ 新会话` creates the remote session, creates its local mirror, and opens it through
   `uiWorkspace.openSession` — not a popup.
 - Sidebar **+** menu to create a workspace locally (native flow) or on a connected remote host.
-- SSH-backed remote workspace file listing/preview.
+- Agent-backed remote workspace file listing/preview over the SSH tunnel.
 - Automatic remote Node.js discovery/install (nvm, Volta, fnm, Bun, asdf, mise, Nix, Homebrew, login shell; verified Node tarball fallback).
 - Chinese / English client copy follows the DSH locale service.
-- Remote SSH PTY terminals for mirror Sessions; local Sessions keep the local terminal.
+- Remote agent PTY terminals for mirror Sessions over the SSH tunnel; local Sessions keep the local terminal.
 - Remote approval questions bridged into the normal local approval UI.
 - Model tools for every operation.
 - Authenticated host API at `/api/dsh-remote` through DSH Connection's Fetch route.

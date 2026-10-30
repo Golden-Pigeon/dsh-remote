@@ -31,8 +31,11 @@ import {
   type PromptContentPart,
   type PromptSessionRequest,
   type SessionStreamFrame,
+  type RemoteTerminalCreateRequest,
+  type RemoteTerminalInput,
 } from '@dsh-remote/protocol'
 import { parseBearer, tokensEqual } from './auth.ts'
+import { listDirectories, listFile, readBytes, readText, statFile, watchFile } from './files.ts'
 import type { RemoteAgentService } from './service.ts'
 import { AGENT_VERSION } from './version.ts'
 
@@ -48,7 +51,7 @@ export function registerAgentRoutes(ctx: Context, service: RemoteAgentService): 
   })
 }
 
-async function handleAgentRequest(
+export async function handleAgentRequest(
   ctx: Context,
   service: RemoteAgentService,
   req: IncomingMessage,
@@ -132,6 +135,33 @@ async function handleAgentRequest(
         case 'approval-answer':
           sendJson(res, asApprovalAnswer(body, service))
           return
+        case 'file-stat':
+          sendJson(res, await statFile(asPath(body)))
+          return
+        case 'file-list':
+          sendJson(res, await listFile(asPath(body)))
+          return
+        case 'file-read':
+          sendJson(res, await readText(asPath(body), optionalInt(body, 'offset'), optionalInt(body, 'limit')))
+          return
+        case 'file-bytes':
+          sendJson(res, await readBytes(asPath(body), optionalInt(body, 'offset'), optionalInt(body, 'length')))
+          return
+        case 'terminals':
+          sendJson(res, service.terminals.create(asTerminalCreate(body)))
+          return
+        case 'terminal-input':
+          service.terminals.input(route.terminalId, asTerminalInput(body))
+          sendJson(res, { accepted: true })
+          return
+        case 'terminal-rename':
+          service.terminals.rename(route.terminalId, asTerminalTitle(body))
+          sendJson(res, { accepted: true })
+          return
+        case 'terminal-close':
+          service.terminals.close(route.terminalId)
+          sendJson(res, { accepted: true })
+          return
         default:
           throw new RemoteProtocolError({
             code: 'request/invalid',
@@ -150,6 +180,14 @@ async function handleAgentRequest(
 
     if (route.kind === 'approval-events') {
       streamApprovals(service, req, res)
+      return
+    }
+    if (route.kind === 'file-watch') {
+      await streamFileWatch(req, res, url.searchParams.get('path') ?? '')
+      return
+    }
+    if (route.kind === 'terminal-attach') {
+      await streamTerminal(service, req, res, route.terminalId)
       return
     }
     if (route.kind === 'session-assistant-events') {
@@ -191,6 +229,12 @@ async function handleAgentRequest(
       }
       case 'web-url':
         sendJson(res, service.webUrl())
+        return
+      case 'directory-list':
+        sendJson(res, await listDirectories(url.searchParams.get('path') ?? '~'))
+        return
+      case 'terminals':
+        sendJson(res, { terminals: service.terminals.list() })
         return
       case 'session-prompt':
       case 'session-cancel':
@@ -518,6 +562,137 @@ function streamApprovals(service: RemoteAgentService, req: IncomingMessage, res:
   }
   req.on('close', close)
   req.on('error', close)
+}
+
+function asPath(value: unknown): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const path = (value as Record<string, unknown>).path
+  if (typeof path !== 'string' || path.trim() === '') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'path must be a non-empty string' })
+  }
+  return path
+}
+
+function optionalInt(value: unknown, key: string): number | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const raw = (value as Record<string, unknown>)[key]
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: `${key} must be a number` })
+  }
+  return Math.trunc(raw)
+}
+
+async function streamFileWatch(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  if (path === '') throw new RemoteProtocolError({ code: 'request/invalid', message: 'path query is required' })
+  const controller = new AbortController()
+  const onClose = (): void => controller.abort()
+  req.on('close', onClose)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders?.()
+  const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': heartbeat\n\n') }, 15_000)
+  heartbeat.unref?.()
+  try {
+    for await (const frame of watchFile(path, controller.signal)) {
+      if (res.writableEnded) break
+      res.write(`event: file\ndata: ${JSON.stringify(frame)}\n\n`)
+    }
+    res.end()
+  } finally {
+    clearInterval(heartbeat)
+    req.off('close', onClose)
+    controller.abort()
+  }
+}
+
+function asTerminalCreate(value: unknown): RemoteTerminalCreateRequest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  if (typeof body.cwd !== 'string' || body.cwd.trim() === '') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'cwd must be a non-empty string' })
+  }
+  return {
+    cwd: body.cwd,
+    ...typeof body.id === 'string' && body.id !== '' ? { id: body.id } : {},
+    ...typeof body.title === 'string' ? { title: body.title } : {},
+    ...typeof body.shellPath === 'string' ? { shellPath: body.shellPath } : {},
+    ...typeof body.cols === 'number' ? { cols: body.cols } : {},
+    ...typeof body.rows === 'number' ? { rows: body.rows } : {},
+  }
+}
+
+function asTerminalInput(value: unknown): RemoteTerminalInput {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const body = value as Record<string, unknown>
+  if (body.type === 'write') {
+    if (typeof body.data !== 'string') throw new RemoteProtocolError({ code: 'request/invalid', message: 'data must be a string' })
+    return { type: 'write', data: body.data }
+  }
+  if (body.type === 'resize') {
+    if (typeof body.cols !== 'number' || typeof body.rows !== 'number') {
+      throw new RemoteProtocolError({ code: 'request/invalid', message: 'cols and rows must be numbers' })
+    }
+    return { type: 'resize', cols: body.cols, rows: body.rows }
+  }
+  throw new RemoteProtocolError({ code: 'request/invalid', message: 'input type must be write or resize' })
+}
+
+function asTerminalTitle(value: unknown): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'body must be a JSON object' })
+  }
+  const title = (value as Record<string, unknown>).title
+  if (typeof title !== 'string' || title.trim() === '') {
+    throw new RemoteProtocolError({ code: 'request/invalid', message: 'title must be a non-empty string' })
+  }
+  return title
+}
+
+async function streamTerminal(
+  service: RemoteAgentService,
+  req: IncomingMessage,
+  res: ServerResponse,
+  id: string,
+): Promise<void> {
+  const controller = new AbortController()
+  const onClose = (): void => controller.abort()
+  req.on('close', onClose)
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  })
+  res.flushHeaders?.()
+  const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': heartbeat\n\n') }, 15_000)
+  heartbeat.unref?.()
+  try {
+    for await (const frame of service.terminals.attach(id, controller.signal)) {
+      if (res.writableEnded) break
+      res.write(`event: frame\ndata: ${JSON.stringify(frame)}\n\n`)
+    }
+    res.end()
+  } catch (error) {
+    if (!res.writableEnded) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: error instanceof Error ? error.message : String(error) })}\n\n`)
+      res.end()
+    }
+  } finally {
+    clearInterval(heartbeat)
+    req.off('close', onClose)
+    controller.abort()
+  }
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

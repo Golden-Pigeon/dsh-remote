@@ -13,13 +13,15 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { provisionRemoteAgent } from '@dsh-remote/installer'
 import { isAgentLive } from '@dsh-remote/protocol'
+import { compareVersions } from '../version.ts'
 import type { ResolvedConfig } from '../config.ts'
 import { LocalError } from '../errors.ts'
+import type { HostDetail } from '../messages.ts'
 import { discoverAgent } from '../ssh/probe.ts'
 import type { ParsedSshTarget } from '../ssh/target.ts'
 
 /** Progress callback shown in the host card. */
-export type ProvisionProgress = (message: string) => void
+export type ProvisionProgress = (code: HostDetail) => void
 
 /** Provisioner bound to one plugin config. */
 export class RemoteProvisioner {
@@ -50,10 +52,24 @@ export class RemoteProvisioner {
   ): Promise<void> {
     const tarball = findAgentTarball()
     const version = /dsh-remote-agent-(.+)\.tgz$/u.exec(tarball)?.[1]
-    const agentPackageSpec = version === undefined ? undefined : `@goldenpigeon/dsh-remote-agent@${version}`
-    options.onProgress?.('正在准备远端安装环境…')
+    const agentPackageSpec = agentPackageSpecFor(version)
+    let baselinePid: number | undefined
+    let baselineKnown = false
+    try {
+      const baseline = await discoverAgent(target, {
+        sshBinary: this.#config.sshBinary,
+        timeoutMs: this.#config.probeTimeoutMs,
+        strictHostKeyChecking: this.#config.strictHostKeyChecking,
+        remoteStateFile: this.#config.remoteStateFile,
+      })
+      baselineKnown = true
+      if (isAgentLive(baseline.state)) baselinePid = baseline.state.pid
+    } catch {
+      // The host may have no agent yet; absence of a baseline is not fatal.
+    }
+    options.onProgress?.('preparing')
     const proxyUrl = this.#config.remoteInstallProxy.trim() || undefined
-    if (proxyUrl !== undefined) options.onProgress?.('正在配置远端安装代理…')
+    if (proxyUrl !== undefined) options.onProgress?.('proxyPreparing')
     try {
       await provisionRemoteAgent({
         target: target.canonical,
@@ -89,21 +105,33 @@ export class RemoteProvisioner {
         details: { host: target.canonical },
         retryable: true,
         cause: error,
+        ui: { key: 'error.agentInstallFailed' },
       })
     }
 
-    options.onProgress?.('远端安装完成，正在等待 DSH web 启动…')
-    await this.#waitForAgent(target, options.onProgress, options.signal)
+    options.onProgress?.('waitingWeb')
+    await this.#waitForAgent(
+      target,
+      version,
+      baselineKnown,
+      baselinePid,
+      options.onProgress,
+      options.signal,
+    )
   }
 
   async #waitForAgent(
     target: ParsedSshTarget,
+    expectedVersion: string | undefined,
+    baselineKnown: boolean,
+    baselinePid: number | undefined,
     onProgress?: ProvisionProgress,
     signal?: AbortSignal,
   ): Promise<void> {
     const deadline = Date.now() + 120_000
+    let versionFailure: LocalError | undefined
     let lastError: unknown
-    onProgress?.('正在等待远端 agent 状态…')
+    onProgress?.('waitingAgent')
     while (Date.now() < deadline) {
       if (signal?.aborted === true) throw new LocalError('internal', '远端安装已取消')
       try {
@@ -114,43 +142,131 @@ export class RemoteProvisioner {
           remoteStateFile: this.#config.remoteStateFile,
         })
         if (isAgentLive(discovered.state)) {
-          onProgress?.('远端 agent 已就绪，正在建立连接…')
-          return
+          const transition = agentVersionTransition(
+            discovered.state.agentVersion,
+            discovered.state.pid,
+            expectedVersion,
+            baselineKnown,
+            baselinePid,
+          )
+          if (transition === 'ready') {
+            onProgress?.('agentReady')
+            return
+          }
+          const mismatch = () => new LocalError(
+            'agent/unavailable',
+            `远端 agent 版本不符：期望 ${expectedVersion}，实际 ${discovered.state.agentVersion}`,
+            {
+              details: { expectedVersion, actualVersion: discovered.state.agentVersion },
+              ui: {
+                key: 'error.agentVersionMismatch',
+                params: {
+                  expected: expectedVersion ?? 'n/a',
+                  actual: discovered.state.agentVersion,
+                },
+              },
+            },
+          )
+          // A newly started process with the wrong version is a real failure;
+          // an unchanged old pid is just the restart transition.
+          if (transition === 'mismatch') {
+            versionFailure = mismatch()
+            break
+          }
+          lastError = mismatch()
+          onProgress?.('stillWaiting')
         }
       } catch (error) {
         lastError = error
-        onProgress?.('仍在等待远端 dsh web 就绪…')
+        onProgress?.('stillWaiting')
       }
       await new Promise(resolve => setTimeout(resolve, 2_000))
     }
-    throw new LocalError('agent/unavailable', '远端 DSH web 未能在 120 秒内启动', {
-      details: { host: target.canonical, reason: lastError instanceof Error ? lastError.message : String(lastError) },
-      retryable: true,
-    })
+    if (versionFailure !== undefined) throw versionFailure
+    throw new LocalError(
+      'agent/unavailable',
+      expectedVersion === undefined
+        ? '远端 DSH web 未能在 120 秒内启动'
+        : `远端 agent 未在 120 秒内升级到 ${expectedVersion}`,
+      {
+        details: {
+          host: target.canonical,
+          expectedVersion: expectedVersion ?? null,
+          reason: lastError instanceof Error ? lastError.message : String(lastError),
+        },
+        retryable: true,
+        ui: expectedVersion === undefined
+          ? { key: 'error.agentUnavailable' }
+          : { key: 'error.agentStartTimeout', params: { expected: expectedVersion } },
+      },
+    )
   }
 }
 
-const PROVISION_PROGRESS: readonly (readonly [string, string])[] = [
-  ['uploading agent package', '正在上传远端 agent 安装包…'],
-  ['agent package uploaded', '安装包上传完成，开始远端安装…'],
-  ['preparing remote install', '正在准备远端安装环境…'],
-  ['install proxy configured', '已配置远端安装代理…'],
-  ['downloading node.js', '正在下载 Node.js…'],
-  ['installed node.js', 'Node.js 安装完成，继续安装 pnpm/DSH…'],
-  ['node ready', 'Node.js 已就绪，准备安装 pnpm/DSH…'],
-  ['installing pnpm@', '正在安装 pnpm…'],
-  ['upgrading @deepseek-ai/dsh@', '正在更新远端 DSH…'],
-  ['installing @deepseek-ai/dsh@', '正在安装远端 DSH（下载依赖可能需要几分钟）…'],
-  ['adding plugin to profile', '正在安装远端 agent…'],
-  ['restarting systemd user unit', '正在启动远端 DSH Web 服务…'],
-  ['starting dsh web under nohup', '正在启动远端 DSH Web…'],
-  ['starting dsh web', '正在启动远端 DSH Web 服务…'],
-  ['waiting for agent state', '正在等待远端 agent 状态文件…'],
-  ['agent ready', '远端 agent 已就绪，正在建立连接…'],
-  ['installed', '远端安装完成…'],
+const PROVISION_PROGRESS: readonly (readonly [string, HostDetail])[] = [
+  ['uploading agent package', 'uploadingAgent'],
+  ['agent package uploaded', 'uploaded'],
+  ['preparing remote install', 'preparing'],
+  ['install proxy configured', 'proxy'],
+  ['downloading node.js', 'nodeDownloading'],
+  ['installed node.js', 'nodeInstalled'],
+  ['node ready', 'nodeReady'],
+  ['installing pnpm@', 'pnpmInstalling'],
+  ['upgrading @deepseek-ai/dsh@', 'dshUpdating'],
+  ['installing @deepseek-ai/dsh@', 'dshInstalling'],
+  ['adding plugin to profile', 'agentInstalling'],
+  ['restarting systemd user unit', 'webStarting'],
+  ['starting dsh web under nohup', 'webStarting'],
+  ['starting dsh web', 'webStarting'],
+  ['waiting for agent state', 'waitingState'],
+  ['agent ready', 'agentReady'],
+  ['installed', 'installed'],
 ]
 
-function progressForLine(line: string): string | undefined {
+/** Whether a discovered runtime is the version this install intended to start. */
+export function agentVersionMatches(actual: string, expected: string | undefined): boolean {
+  if (expected === undefined) return true
+  const comparison = compareVersions(actual, expected)
+  return comparison === undefined ? actual === expected : comparison === 0
+}
+
+/** Version bundled with this local plugin, if its packed asset is available. */
+export function bundledAgentVersion(): string | undefined {
+  try {
+    return /dsh-remote-agent-(.+)\.tgz$/u.exec(findAgentTarball())?.[1]
+  } catch {
+    return undefined
+  }
+}
+
+/** Decide whether a discovered agent is ready, a confirmed mismatch, or still restarting. */
+export function agentVersionTransition(
+  actualVersion: string,
+  actualPid: number,
+  expectedVersion: string | undefined,
+  baselineKnown: boolean,
+  baselinePid: number | undefined,
+): 'ready' | 'mismatch' | 'wait' {
+  if (agentVersionMatches(actualVersion, expectedVersion)) return 'ready'
+  if (!baselineKnown) return 'wait'
+  if (baselinePid === undefined || actualPid !== baselinePid) return 'mismatch'
+  return 'wait'
+}
+
+/** Whether the remote runtime is older than the bundled one (newer is not "outdated"). */
+export function agentVersionIsOlder(actual: string, expected: string | undefined): boolean {
+  if (expected === undefined) return false
+  const comparison = compareVersions(actual, expected)
+  return comparison !== undefined && comparison < 0
+}
+
+/** Exact npm spec for a release build; prerelease/dev builds stay bundled. */
+export function agentPackageSpecFor(version: string | undefined): string | undefined {
+  if (version === undefined || version.includes('-')) return undefined
+  return `@goldenpigeon/dsh-remote-agent@${version}`
+}
+
+function progressForLine(line: string): HostDetail | undefined {
   const normalized = line.toLowerCase()
   for (const [needle, message] of PROVISION_PROGRESS) {
     if (normalized.includes(needle)) return message
@@ -167,8 +283,15 @@ export function findAgentTarball(): string {
   for (const candidate of candidates) {
     const dir = fileURLToPath(candidate)
     if (!existsSync(dir)) continue
-    const tarball = readdirSync(dir).find(name => name.endsWith('.tgz'))
-    if (tarball !== undefined) return join(dir, tarball)
+    const tarballs = readdirSync(dir)
+      .filter(name => name.startsWith('goldenpigeon-dsh-remote-agent-') && name.endsWith('.tgz'))
+      .sort()
+    if (tarballs.length === 1) return join(dir, tarballs[0]!)
+    if (tarballs.length > 1) {
+      throw new LocalError('internal', `本地插件包含多个 agent 安装包：${tarballs.join(', ')}`, {
+        details: { assets: tarballs },
+      })
+    }
   }
   throw new LocalError(
     'internal',

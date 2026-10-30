@@ -12,6 +12,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { LocalError, asLocalError } from '../errors.ts'
+import { uiForErrorCode } from '../messages.ts'
 import type { RemoteHostsService } from '../service.ts'
 import type { RemoteMirrorService } from '../mirror/service.ts'
 import { listRemoteDirectories } from '../remote/directory.ts'
@@ -77,6 +78,7 @@ async function handleHostApi(
         code: failure.code,
         message: failure.message,
         details: failure.details,
+        ui: failure.ui ?? uiForErrorCode(failure.code),
       },
     })
   }
@@ -190,7 +192,9 @@ async function dispatch(
       const body = requireRecord(payload)
       const hostId = requireStringField(body, 'hostId')
       if (mirrors?.isSessionWorkspaceRemoved(hostId, optionalStringField(body, 'workspaceId'), optionalStringField(body, 'cwd'))) {
-        throw new LocalError('request/invalid', 'This workspace was removed locally. Add it again before creating a session.')
+        throw new LocalError('request/invalid', 'This workspace was removed locally. Add it again before creating a session.', {
+          ui: { key: 'error.workspaceRemoved' },
+        })
       }
       const created = await service.createSession(hostId, {
         ...optionalStringField(body, 'workspaceId') === undefined

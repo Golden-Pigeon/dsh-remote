@@ -7,6 +7,8 @@
  * @module dsh-remote-local/errors
  */
 
+import type { UiText } from './messages.ts'
+
 /** Stable local error codes. */
 export type LocalErrorCode =
   | 'request/invalid'
@@ -27,17 +29,21 @@ export class LocalError extends Error {
   readonly code: LocalErrorCode
   readonly details: Record<string, unknown>
   readonly retryable: boolean
+  /** Stable localized message key; raw messages are for logs/tools only. */
+  readonly ui: UiText | undefined
 
   constructor(code: LocalErrorCode, message: string, options: {
     readonly details?: Record<string, unknown>
     readonly retryable?: boolean
     readonly cause?: unknown
+    readonly ui?: UiText
   } = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'LocalError'
     this.code = code
     this.details = options.details ?? {}
     this.retryable = options.retryable ?? (code === 'agent/unavailable' || code === 'internal')
+    this.ui = options.ui
   }
 }
 

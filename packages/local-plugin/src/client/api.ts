@@ -19,17 +19,20 @@ import {
   type WorkspacesResult,
 } from '../host-api/contract.ts'
 import type { HostView } from '../hosts/types.ts'
+import type { UiText } from '../messages.ts'
 
 /** Error surfaced by one host call. */
 export class RemoteUiError extends Error {
   readonly code: string
   readonly details: Record<string, unknown>
+  readonly ui: UiText | undefined
 
-  constructor(code: string, message: string, details: Record<string, unknown> = {}) {
+  constructor(code: string, message: string, details: Record<string, unknown> = {}, ui?: UiText) {
     super(message)
     this.name = 'RemoteUiError'
     this.code = code
     this.details = details
+    this.ui = ui
   }
 }
 
@@ -135,9 +138,9 @@ async function call<K extends keyof HostApiPayloads & string>(
   }
   const result = await response.json() as
     | { ok: true; value: HostApiValues[K] }
-    | { ok: false; error: { code: string; message: string; details?: Record<string, unknown> } }
+    | { ok: false; error: { code: string; message: string; details?: Record<string, unknown>; ui?: UiText } }
   if (!result.ok) {
-    throw new RemoteUiError(result.error.code, result.error.message, result.error.details ?? {})
+    throw new RemoteUiError(result.error.code, result.error.message, result.error.details ?? {}, result.error.ui)
   }
   return result.value
 }

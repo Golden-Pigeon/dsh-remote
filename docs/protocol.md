@@ -47,7 +47,7 @@ The agent advertises its revision on every response:
 
 ```http
 x-dsh-remote-server-protocol: 1
-x-dsh-remote-agent-version: 0.2.1
+x-dsh-remote-agent-version: 0.2.10
 x-dsh-remote-host-id: <echoed or local>
 x-dsh-remote-request-id: <echoed or generated>
 ```
@@ -119,6 +119,10 @@ tunnel exits, not on authentication or protocol errors.
 | `GET` | `/sessions/:sessionId?limit=N` | `SessionSnapshot` |
 | `GET` | `/sessions/:sessionId/events?cursor=N` | `text/event-stream` |
 | `GET` | `/web-url` | `{ path: "/?token=..." }` |
+| `GET` | `/files/watch?path=...` | SSE `ready`/`change` frames |
+| `GET` | `/directories?path=...` | `RemoteDirectoryListing` |
+| `GET` | `/terminals` | `{ terminals: RemoteTerminalInfo[] }` |
+| `GET` | `/terminals/:id/attach` | SSE terminal frames |
 
 Read routes use `GET`. `GET /approvals/events` is an SSE approval-question stream. Write routes use
 `POST` with a JSON body:
@@ -130,13 +134,21 @@ Read routes use `GET`. `GET /approvals/events` is an SSE approval-question strea
 | `POST` | `/sessions/:id/prompt` | `{ "text": "…", "mode"?: "queue" \| "steer", "provider"?: "…", "model"?: "…", "reasoningEffort"?: "…" }` | `{ "accepted": true }` |
 | `POST` | `/sessions/:id/cancel` | `{}` | `{ "accepted": true }` |
 | `POST` | `/approvals/answer` | `{ "id": "…", "outcome": "allowed-once" \| "rejected" \| "cancelled" \| "unavailable" }` | `{ "accepted": true }` |
+| `POST` | `/files/stat`, `/files/list`, `/files/read`, `/files/bytes` | `{ "path": "/abs/path", "offset"?, "limit"?, "length"? }` | file/list result |
+| `POST` | `/terminals` | `{ "cwd": "/abs/dir", "id"?, "cols"?, "rows"?, "shellPath"? }` | `RemoteTerminalInfo` |
+| `POST` | `/terminals/:id/input` | `{ "type": "write", "data": "…" }` or `{ "type": "resize", "cols": 100, "rows": 30 }` | `{ "accepted": true }` |
+| `POST` | `/terminals/:id/rename` | `{ "title": "…" }` | `{ "accepted": true }` |
+| `POST` | `/terminals/:id/close` | `{}` | `{ "accepted": true }` |
 
 `workspaceId` and `cwd` are mutually exclusive. Prompt text must be non-empty. An optional provider/model
 selection is installed on the remote Session before the prompt. A wrong method for a route returns
 `405`; unknown paths return a JSON `route/not-found` envelope.
 
-The write surface is deliberately limited: it creates workspaces and sessions, submits prompts, and
-cancels a turn. It cannot execute arbitrary commands or read files outside the remote DSH APIs.
+The HTTP write surface creates workspaces and sessions, submits prompts, cancels a turn, reads files
+for the native file tree/preview, and owns PTY terminals. File reads are read-only; terminal input is
+the only path that executes a shell, and it is gated by the same bearer token. File and terminal
+traffic from the local UI travels over the existing SSH tunnel; no per-operation SSH connection is
+opened by the local plugin.
 
 ## Approvals
 
@@ -272,10 +284,11 @@ never logged or stored by the local plugin.
 - Every write route is authenticated by the same bearer token and loopback check as the reads.
 - `session.create` joins an existing workspace or an explicit remote directory; it never creates an
   arbitrary local path outside the remote DSH workspace registry.
-- `session.prompt` submits text and an optional model selection. Attachments, file content, terminal
-  input, and direct file writes are not part of this protocol. Approval questions travel on the
-  dedicated approval stream; the local UI's decision is posted back to this agent. A prompt can still
-  cause the remote DSH agent to use its own tools under the remote sandbox and approval policy.
+- `session.prompt` submits text and an optional model selection. File reads and terminal input are
+  separate authenticated endpoints; the file surface is read-only, while terminal input reaches a
+  host shell. Approval questions travel on the dedicated approval stream; the local UI's decision is
+  posted back to this agent. A prompt can still cause the remote DSH agent to use its own tools under
+  the remote sandbox and approval policy.
 - The bearer token grants session-writing capability. Treat it as a secret and keep the agent on
   loopback.
 - `session.cancel` only cancels the active turn of an existing live session.
@@ -288,6 +301,6 @@ never logged or stored by the local plugin.
 - State files are written atomically with `0600`.
 - The protocol never carries model credentials.
 - The agent's write surface is session/workspace creation, prompts, cancel, and approval answers.
-  Terminal and file traffic for the native UI is carried by the local plugin's SSH adapter, not this
+  Terminal and file traffic for the native UI is carried by the remote agent file/terminal API over the tunnel, not this
   HTTP protocol.
 - Adding another mutation verb requires a protocol revision and a re-review of this boundary.

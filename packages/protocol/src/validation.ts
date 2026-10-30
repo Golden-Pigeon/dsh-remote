@@ -28,6 +28,20 @@ import type {
   SessionStreamFrame,
   WebUrlResult,
 } from './types.ts'
+import type {
+  RemoteDirectoryListing,
+  RemoteFileBytes,
+  RemoteFileEntry,
+  RemoteFileListing,
+  RemoteFileStat,
+  RemoteFileText,
+  RemoteFileWatchFrame,
+} from './files.ts'
+import type {
+  RemoteTerminalFrame,
+  RemoteTerminalInfo,
+  RemoteTerminalListResult,
+} from './terminal.ts'
 
 /** True for a non-array object. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -205,4 +219,112 @@ export function isSessionStreamFrame(value: unknown): value is SessionStreamFram
     return typeof value.cursor === 'number' && isString(value.reason)
   }
   return false
+}
+
+
+/** Guard for one remote file stat. */
+export function isRemoteFileStat(value: unknown): value is RemoteFileStat {
+  return isRecord(value)
+    && isString(value.absolutePath)
+    && isString(value.version)
+    && (value.bytes === undefined || typeof value.bytes === 'number')
+}
+
+/** Guard for one remote text page. */
+export function isRemoteFileText(value: unknown): value is RemoteFileText {
+  if (!isRemoteFileStat(value)) return false
+  const record = value as unknown as Record<string, unknown>
+  return typeof record.offset === 'number'
+    && typeof record.lines === 'number'
+    && isString(record.text)
+    && typeof record.eof === 'boolean'
+}
+
+/** Guard for one remote byte page. */
+export function isRemoteFileBytes(value: unknown): value is RemoteFileBytes {
+  if (!isRemoteFileStat(value)) return false
+  const record = value as unknown as Record<string, unknown>
+  return typeof record.offset === 'number'
+    && isString(record.data)
+    && typeof record.eof === 'boolean'
+}
+
+function isRemoteFileEntry(value: unknown): value is RemoteFileEntry {
+  return isRecord(value)
+    && isString(value.name)
+    && (value.type === 'file' || value.type === 'directory' || value.type === 'other')
+    && (value.size === undefined || typeof value.size === 'number')
+}
+
+/** Guard for one remote directory listing. */
+export function isRemoteFileListing(value: unknown): value is RemoteFileListing {
+  return isRecord(value)
+    && isString(value.path)
+    && Array.isArray(value.entries)
+    && value.entries.every(isRemoteFileEntry)
+    && typeof value.truncated === 'boolean'
+}
+
+/** Guard for the workspace-creation directory picker. */
+export function isRemoteDirectoryListing(value: unknown): value is RemoteDirectoryListing {
+  return isRecord(value)
+    && isString(value.path)
+    && isString(value.parent)
+    && Array.isArray(value.entries)
+    && value.entries.every(entry => isRecord(entry) && isString(entry.name) && isString(entry.path))
+    && typeof value.truncated === 'boolean'
+}
+
+/** Guard for one file watch frame. */
+export function isRemoteFileWatchFrame(value: unknown): value is RemoteFileWatchFrame {
+  if (!isRecord(value)) return false
+  if (value.kind === 'ready') return true
+  if (value.kind !== 'change' || !isRecord(value.change)) return false
+  if (value.change.absent === true) return isString(value.change.absolutePath)
+  return isString(value.change.absolutePath) && isString(value.change.version)
+}
+
+function isRemoteTerminalShell(value: unknown): boolean {
+  return isRecord(value)
+    && isString(value.path)
+    && isString(value.name)
+    && Array.isArray(value.args)
+    && value.args.every(isString)
+}
+
+/** Guard for one remote terminal state. */
+export function isRemoteTerminalInfo(value: unknown): value is RemoteTerminalInfo {
+  return isRecord(value)
+    && isString(value.id)
+    && isString(value.title)
+    && isRemoteTerminalShell(value.shell)
+    && isString(value.cwd)
+    && typeof value.cols === 'number'
+    && typeof value.rows === 'number'
+    && (value.state === 'running' || value.state === 'exited' || value.state === 'failed')
+    && (value.exitCode === null || typeof value.exitCode === 'number')
+    && (value.error === undefined || isString(value.error))
+}
+
+/** Guard for one terminal attachment frame. */
+export function isRemoteTerminalFrame(value: unknown): value is RemoteTerminalFrame {
+  if (!isRecord(value)) return false
+  if (value.type === 'output') return typeof value.sequence === 'number' && isString(value.data)
+  if (value.type === 'snapshot') {
+    return typeof value.sequence === 'number'
+      && isString(value.screen)
+      && isRemoteTerminalInfo(value.info)
+      && typeof value.writable === 'boolean'
+  }
+  if (value.type === 'state') {
+    return isRemoteTerminalInfo(value.info) && typeof value.writable === 'boolean'
+  }
+  return false
+}
+
+/** Guard for a terminal list result. */
+export function isRemoteTerminalListResult(value: unknown): value is RemoteTerminalListResult {
+  return isRecord(value)
+    && Array.isArray(value.terminals)
+    && value.terminals.every(isRemoteTerminalInfo)
 }

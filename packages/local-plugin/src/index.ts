@@ -47,7 +47,7 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   const terminals = new RemoteTerminals(ctx, service, mirrors)
   ctx.effect(
     () => async () => {
-      terminals.dispose()
+      await terminals.dispose()
       try {
         await mirrors.dispose()
       } finally {

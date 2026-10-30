@@ -11,8 +11,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostView } from '../hosts/types.ts'
+import type { HostDetail } from '../messages.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
 import type { HostsApi } from './api.ts'
+import { formatUiText, localizedError } from './errors.ts'
 import type { CopyKey, Translate } from './locale.ts'
 import panelCss from './panel.css'
 
@@ -26,46 +28,8 @@ function phaseLabel(t: Translate, phase: HostView['phase']): string {
   return t(`phase.${phase}` as CopyKey)
 }
 
-const DETAIL_KEYS: Record<string, CopyKey> = {
-  '正在通过 SSH 发现远端 agent…': 'detail.discovering',
-  '正在远端安装 DSH 与 dsh-remote-agent，首次约 1–3 分钟…': 'detail.installing',
-  '正在建立 SSH 隧道并校验远端 agent…': 'detail.connecting',
-  '正在重新安装远端 agent…': 'detail.reprovisioning',
-  '正在重启远端 DSH…': 'detail.restarting',
-  '正在更新远端 DSH…': 'detail.dshUpdating',
-  '远端 agent 未运行，正在自动安装并启动…': 'detail.autoProvisioning',
-  '连接异常，正在自动重试…': 'detail.retrying',
-  'SSH 隧道断开，等待重连…': 'detail.reconnecting',
-  '正在准备远端安装环境…': 'detail.preparing',
-  '正在配置远端安装代理…': 'detail.proxyPreparing',
-  '已配置远端安装代理…': 'detail.proxy',
-  '正在上传远端 agent 安装包…': 'detail.uploadingAgent',
-  '安装包上传完成，开始远端安装…': 'detail.uploaded',
-  '正在下载 Node.js…': 'detail.nodeDownloading',
-  'Node.js 安装完成，继续安装 pnpm/DSH…': 'detail.nodeInstalled',
-  'Node.js 已就绪，准备安装 pnpm/DSH…': 'detail.nodeReady',
-  '正在安装 pnpm…': 'detail.pnpmInstalling',
-  '正在安装远端 DSH（下载依赖可能需要几分钟）…': 'detail.dshInstalling',
-  '正在安装远端 agent…': 'detail.agentInstalling',
-  '正在启动远端 DSH Web 服务…': 'detail.webStarting',
-  '正在等待远端 agent 状态文件…': 'detail.waitingState',
-  '正在等待远端 agent 状态…': 'detail.waitingAgent',
-  '远端 agent 已就绪，正在建立连接…': 'detail.agentReady',
-  '远端安装完成…': 'detail.installed',
-  '远端安装完成，正在等待 DSH web 启动…': 'detail.waitingWeb',
-  '仍在等待远端 dsh web 就绪…': 'detail.stillWaiting',
-  '正在读取远端 agent 状态…': 'detail.readingState',
-  '正在建立 SSH 隧道…': 'detail.tunnel',
-  '正在校验远端 agent…': 'detail.checkingAgent',
-  '正在同步远端模型环境…': 'detail.reconcilingModel',
-  '已连接；模型请求经本地凭据代理转发': 'detail.connectedProxy',
-  '已连接；模型请求由远端直连 DeepSeek': 'detail.connectedDirect',
-  '已连接；远端使用自身凭据或未配置模型 key': 'detail.connectedRemote',
-}
-
-function detailLabel(t: Translate, detail: string): string {
-  const key = DETAIL_KEYS[detail]
-  return key === undefined ? detail : t(key)
+function detailLabel(t: Translate, detail: HostDetail): string {
+  return t(`detail.${detail}` as CopyKey)
 }
 
 const POLL_MS = 2_500
@@ -110,7 +74,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
           setPollError(null)
         }
       } catch (failure) {
-        if (!cancelled) setPollError(messageOf(failure, t('settings.unavailable')))
+        if (!cancelled) setPollError(localizedError(t, failure, t('settings.unavailable')))
       }
     }
     void load()
@@ -143,7 +107,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       await task()
       await refresh()
     } catch (failure) {
-      setError(messageOf(failure, t('settings.operationFailed')))
+      setError(localizedError(t, failure, t('settings.operationFailed')))
     } finally {
       setBusy(null)
     }
@@ -190,7 +154,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         setWorkspaces(current => ({ ...current, [hostId]: [...result.workspaces] }))
       } catch (failure) {
         setWorkspaces(current => ({ ...current, [hostId]: [] }))
-        setError(messageOf(failure, t('settings.readWorkspacesFailed')))
+        setError(localizedError(t, failure, t('settings.readWorkspacesFailed')))
       }
     })()
     loadingWorkspaces.current.set(hostId, request)
@@ -212,7 +176,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       setSessions(current => ({ ...current, [key]: [...result.sessions] }))
     } catch (failure) {
       setSessions(current => ({ ...current, [key]: [] }))
-      setError(messageOf(failure, t('settings.readSessionsFailed')))
+      setError(localizedError(t, failure, t('settings.readSessionsFailed')))
     }
   }
 
@@ -230,7 +194,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       await loadWorkspaces(host.id)
       setExpandedHost(host.id)
     } catch (failure) {
-      setError(messageOf(failure, t('settings.addWorkspaceFailed')))
+      setError(localizedError(t, failure, t('settings.addWorkspaceFailed')))
     } finally {
       setBusy(null)
     }
@@ -259,7 +223,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       const refreshed = await api.workspaces(host.id)
       setWorkspaces(current => ({ ...current, [host.id]: [...refreshed.workspaces] }))
     } catch (failure) {
-      setError(messageOf(failure, t('settings.createSessionFailed')))
+      setError(localizedError(t, failure, t('settings.createSessionFailed')))
     } finally {
       setBusy(null)
     }
@@ -289,7 +253,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         <button
           type="button"
           className="dshr-button"
-          onClick={() => { void refresh().catch(failure => setError(messageOf(failure, t('settings.refreshFailed')))) }}
+          onClick={() => { void refresh().catch(failure => setError(localizedError(t, failure, t('settings.refreshFailed')))) }}
           disabled={busy !== null}
         >
           {t('settings.refresh')}
@@ -357,7 +321,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                 <div><dt>{t('settings.remotePort')}</dt><dd>{host.remoteAgentPort ?? '—'}</dd></div>
                 <div><dt>{t('settings.localTunnel')}</dt><dd>{host.localPort ?? '—'}</dd></div>
                 <div><dt>{t('settings.workspaces')}</dt><dd>{host.workspaceCount ?? '—'}</dd></div>
-                <div><dt>Agent</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
+                <div><dt>{t('settings.agent')}</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
                 <div><dt>{t('settings.dshVersion')}</dt><dd>{host.hostInfo?.dshVersion ?? '—'}</dd></div>
                 <div><dt>{t('settings.token')}</dt><dd>{host.hasToken ? t('settings.saved') : t('settings.unsaved')}</dd></div>
                 <div><dt>{t('settings.modelProxy')}</dt><dd>{host.modelProxy ? t('settings.localProxy') : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}</dd></div>
@@ -387,10 +351,17 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                     {Math.max(0, Math.ceil((host.retry.at - now) / 1000))}{t('settings.retrySuffix')}
                   </p>
                 )
-                : host.detail !== null && host.detail !== host.error && (
+                : host.detail !== null && (
                   <p className="dshr-detail">{detailLabel(t, host.detail)}</p>
                 )}
-              {host.error !== null && <p className="dshr-host-error" role="alert">{host.error}</p>}
+              {host.agentOutdated && <p className="dshr-detail dshr-agent-outdated">{t('settings.agentOutdated')}</p>}
+              {host.error !== null && (
+                <p className="dshr-host-error" role="alert">
+                  {host.errorUi === null
+                    ? t('error.unknown')
+                    : formatUiText(t, host.errorUi)}
+                </p>
+              )}
 
               <div className="dshr-actions">
                 {host.phase === 'connected'
@@ -560,8 +531,4 @@ function useInjectedStyle(css: string): void {
     document.head.appendChild(tag)
     return () => { tag.remove() }
   }, [css])
-}
-
-function messageOf(value: unknown, fallback: string): string {
-  return value instanceof Error && value.message !== '' ? value.message : fallback
 }

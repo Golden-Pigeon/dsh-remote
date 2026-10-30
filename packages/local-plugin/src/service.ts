@@ -45,7 +45,8 @@ import {
   type HostRuntime,
   type HostView,
 } from './hosts/types.ts'
-import { RemoteProvisioner } from './remote/provisioner.ts'
+import { RemoteProvisioner, agentVersionIsOlder, bundledAgentVersion } from './remote/provisioner.ts'
+import { uiForErrorCode } from './messages.ts'
 import { discoverAgent } from './ssh/probe.ts'
 import { restartRemoteAgent } from './remote/restart.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
@@ -251,6 +252,8 @@ export class RemoteHostsService {
       workspaceCount: null,
       error: null,
       errorCode: null,
+      errorUi: null,
+      agentOutdated: false,
       connectedAt: null,
     })
     return this.view(id)
@@ -293,7 +296,7 @@ export class RemoteHostsService {
       phase: 'installing',
       modelProxy: proxy !== undefined,
       modelDirect: direct !== undefined,
-      detail: '正在准备远端安装环境…',
+      detail: 'preparing',
     })
     try {
       await this.#provisioner.ensureInstalled(target, {
@@ -323,7 +326,7 @@ export class RemoteHostsService {
     this.#setRuntime(id, {
       ...idleRuntime(),
       phase: 'installing',
-      detail: '正在更新远端 DSH…',
+      detail: 'dshUpdating',
     })
     void this.#runUpgrade(id, localVersion).catch(error => {
       // The task itself reports expected failures through the host runtime;
@@ -393,7 +396,7 @@ export class RemoteHostsService {
       connectedAt: null,
       error: null,
       errorCode: null,
-      detail: '正在重启远端 DSH…',
+      detail: 'restarting',
       dshUpdate: null,
       retry: null,
     })
@@ -439,7 +442,7 @@ export class RemoteHostsService {
     const client = this.#requireClient(id)
     try {
       const workspaces = await client.listWorkspaces()
-      this.#setRuntime(id, { workspaceCount: workspaces.length, error: null, errorCode: null })
+      this.#setRuntime(id, { workspaceCount: workspaces.length, error: null, errorCode: null, errorUi: null })
       return workspaces
     } catch (error) {
       throw this.#remoteFailure(id, error)
@@ -592,11 +595,14 @@ export class RemoteHostsService {
     }
   }
 
-  /** SSH invocation facts for auxiliary remote file/terminal adapters. */
-  sshFor(id: string): { binary: string; target: string; port: number | null } {
-    const record = this.#requireRecord(id)
-    const target = parseSshTarget(record.sshTarget)
-    return { binary: this.config.sshBinary, target: target.destination, port: target.port }
+  /** Connected agent client for auxiliary remote adapters. */
+  agentFor(id: string): import('@dsh-remote/protocol').RemoteAgentClient {
+    return this.#requireClient(id)
+  }
+
+  /** Whether the connected agent advertises one capability. */
+  supportsAgent(id: string, capability: import('@dsh-remote/protocol').AgentCapability): boolean {
+    return this.#runtimeFor(id).hostInfo?.capabilities.includes(capability) === true
   }
 
   /** Follow remote approval questions for one host. */
@@ -660,7 +666,7 @@ export class RemoteHostsService {
     this.#setRuntime(id, {
       ...idleRuntime(),
       phase: 'discovering',
-      detail: '正在通过 SSH 发现远端 agent…',
+      detail: 'discovering',
     })
 
     const target = parseSshTarget(record.sshTarget)
@@ -695,14 +701,14 @@ export class RemoteHostsService {
           error: null,
           errorCode: null,
           retry: null,
-          detail: '远端 agent 未运行，正在自动安装并启动…',
+          detail: 'autoProvisioning',
         })
         try {
           await this.#provisioner.ensureInstalled(target, {
             ...this.#modelEnvironment(proxy, proxyToken, direct),
             onProgress: detail => this.#setRuntime(id, { ...this.#runtimeFor(id), detail }),
           })
-          this.#setRuntime(id, { ...this.#runtimeFor(id), detail: '正在读取远端 agent 状态…' })
+          this.#setRuntime(id, { ...this.#runtimeFor(id), detail: 'readingState' })
           const discovery = await this.#discover(target)
           remotePort = discovery.state.port
           token = discovery.state.token
@@ -739,10 +745,10 @@ export class RemoteHostsService {
     this.#setRuntime(id, {
       ...this.#runtimeFor(id),
       phase: 'connecting',
-      detail: '正在建立 SSH 隧道并校验远端 agent…',
+      detail: 'connecting',
     })
 
-    this.#setRuntime(id, { ...this.#runtimeFor(id), phase: 'connecting', detail: '正在建立 SSH 隧道…' })
+    this.#setRuntime(id, { ...this.#runtimeFor(id), phase: 'connecting', detail: 'tunnel' })
     let tunnel: Tunnel | undefined
     let stage: 'tunnel' | 'health' = 'tunnel'
     try {
@@ -761,7 +767,7 @@ export class RemoteHostsService {
         token,
         hostId: id,
       })
-      this.#setRuntime(id, { ...this.#runtimeFor(id), detail: '正在校验远端 agent…' })
+      this.#setRuntime(id, { ...this.#runtimeFor(id), detail: 'checkingAgent' })
       const health = await client.health()
       if (await this.#reconcileModelEnvironment(id, target, health, proxy, proxyToken, direct, tunnel)) {
         return this.#doConnect(id)
@@ -778,7 +784,7 @@ export class RemoteHostsService {
         ? this.#markError(id, new LocalError(
           'host/connect-failed',
           `远端 agent 健康检查失败：${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
+          { cause: error, ui: { key: 'error.healthCheckFailed' } },
         ), 'host/connect-failed')
         : this.#markError(id, error, 'host/connect-failed')
       this.#scheduleReconnect(id)
@@ -818,7 +824,7 @@ export class RemoteHostsService {
       return false
     }
     this.#modelReconciled.add(id)
-    this.#setRuntime(id, { ...this.#runtimeFor(id), detail: '正在同步远端模型环境…' })
+    this.#setRuntime(id, { ...this.#runtimeFor(id), detail: 'reconcilingModel' })
     this.ctx.logger.warn(
       'dsh-remote: remote model environment for %s is %s, expected %s; reinstalling',
       id,
@@ -944,7 +950,12 @@ export class RemoteHostsService {
       localUrl: null,
       error: `SSH tunnel exited (code ${String(info.code)}, signal ${String(info.signal)})${detail}`,
       errorCode: 'ssh/tunnel-failed',
-      detail: 'SSH 隧道断开，等待重连…',
+      errorUi: {
+        key: 'error.tunnelExited',
+        params: { code: info.code ?? 'null', signal: info.signal ?? 'null' },
+      },
+      agentOutdated: false,
+      detail: 'reconnecting',
     })
     this.#scheduleReconnect(id)
   }
@@ -976,7 +987,7 @@ export class RemoteHostsService {
       this.#markError(id, new LocalError(
         'agent/unavailable',
         `远端 agent 健康检查失败：${error instanceof Error ? error.message : String(error)}`,
-        { cause: error },
+        { cause: error, ui: { key: 'error.healthCheckFailed' } },
       ), 'agent/unavailable')
       this.#scheduleReconnect(id)
     } finally {
@@ -996,7 +1007,7 @@ export class RemoteHostsService {
       ...this.#runtimeFor(id),
       phase: 'connecting',
       retry: { attempt, delayMs: delay, at: Date.now() + delay },
-      detail: '连接异常，正在自动重试…',
+      detail: 'retrying',
     })
     const timer = setTimeout(() => {
       this.#reconnectTimers.delete(id)
@@ -1060,6 +1071,7 @@ export class RemoteHostsService {
 
   #setConnected(id: string, health: HostInfo): void {
     const existing = this.#connected(id)
+    const bundledVersion = bundledAgentVersion()
     this.#setRuntime(id, {
       phase: 'connected',
       localPort: existing?.tunnel.localPort ?? this.#runtimeFor(id).localPort,
@@ -1068,14 +1080,17 @@ export class RemoteHostsService {
       workspaceCount: health.workspaceCount,
       error: null,
       errorCode: null,
+      errorUi: null,
       connectedAt: this.#runtimeFor(id).connectedAt ?? new Date().toISOString(),
       dshUpdate: this.#dshUpdateFor(health),
       retry: null,
+      agentOutdated: !health.capabilities.includes('file.watch')
+        || agentVersionIsOlder(health.agentVersion, bundledVersion),
       detail: this.#runtimeFor(id).modelProxy
-        ? '已连接；模型请求经本地凭据代理转发'
+        ? 'connectedProxy'
         : this.#runtimeFor(id).modelDirect
-          ? '已连接；模型请求由远端直连 DeepSeek'
-          : '已连接；远端使用自身凭据或未配置模型 key',
+          ? 'connectedDirect'
+          : 'connectedRemote',
     })
   }
 
@@ -1099,7 +1114,10 @@ export class RemoteHostsService {
       localUrl: null,
       error: failure.message,
       errorCode: failure.code,
-      detail: failure.message,
+      errorUi: failure.ui ?? uiForErrorCode(failure.code),
+      agentOutdated: false,
+      // Keep the last progress code so the failure still says which stage failed.
+      detail: this.#runtimeFor(id).detail,
       dshUpdate: null,
       retry: null,
     })
@@ -1113,14 +1131,22 @@ export class RemoteHostsService {
         details: { remoteCode: error.code, ...error.details },
         retryable: error.retryable,
         cause: error,
+        ui: { key: 'error.agentError' },
       })
-      : new LocalError('agent/unavailable', 'remote agent request failed', { cause: error })
+      : new LocalError('agent/unavailable', 'remote agent request failed', {
+        cause: error,
+        ui: { key: 'error.agentUnavailable' },
+      })
     // Ordinary remote calls can fail while the host is being installed or
     // reconnected; that transient failure must not replace the install/retry
     // status on the host card with a red "remote agent request failed".
     const phase = this.#runtimeFor(id).phase
     if (phase !== 'installing' && phase !== 'connecting' && phase !== 'discovering') {
-      this.#setRuntime(id, { error: failure.message, errorCode: failure.code })
+      this.#setRuntime(id, {
+        error: failure.message,
+        errorCode: failure.code,
+        errorUi: failure.ui ?? uiForErrorCode(failure.code),
+      })
     }
     return failure
   }

@@ -2,42 +2,32 @@
  * Remote PTY terminals for mirrored Sessions.
  *
  * The stock terminal controller spawns processes in the local execution
- * environment. For a mirror, this manager spawns an SSH PTY in the remote
- * workspace instead and exposes the browser protocol the normal terminal UI
- * already consumes.
+ * environment. For a mirror, this manager talks to the remote agent's PTY API
+ * over the existing SSH tunnel and exposes the browser protocol the normal
+ * terminal UI consumes.
  *
  * @module dsh-remote-local/remote/terminal
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { TerminalFrame, TerminalInput, TerminalShell, WebTerminalInfo } from '@deepseek-ai/dsh-api-terminal-controller'
+import type { RemoteAgentClient } from '@dsh-remote/protocol'
+import { LocalError } from '../errors.ts'
 import type { RemoteHostsService } from '../service.ts'
 import type { RemoteMirrorService } from '../mirror/service.ts'
 
-interface TerminalRecord {
-  readonly id: string
+interface AgentTerminalRecord {
   readonly sessionId: string
   info: WebTerminalInfo
-  readonly child: ChildProcessWithoutNullStreams
-  readonly queue: TerminalFrame[]
-  waiters: Array<(frame: IteratorResult<TerminalFrame>) => void>
-  sequence: number
-  bufferedBytes: number
-  title: string
-  exited: boolean
 }
-
-/** Bound retained terminal output so a noisy remote process cannot exhaust local memory. */
-const MAX_BUFFERED_BYTES = 512 * 1024
 
 /** One host-side terminal manager. */
 export class RemoteTerminals {
   #ctx: Context
   #hosts: RemoteHostsService
   #mirrors: RemoteMirrorService
-  #terminals = new Map<string, TerminalRecord>()
+  #terminals = new Map<string, AgentTerminalRecord>()
 
   constructor(ctx: Context, hosts: RemoteHostsService, mirrors: RemoteMirrorService) {
     this.#ctx = ctx
@@ -56,7 +46,7 @@ export class RemoteTerminals {
     return {
       cwd: context?.remoteRoot ?? '/',
       maxInputBytes: 64 * 1024,
-      maxBufferedBytes: MAX_BUFFERED_BYTES,
+      maxBufferedBytes: 512 * 1024,
       maxCols: 240,
       maxRows: 80,
       scrollback: 4_000,
@@ -65,139 +55,105 @@ export class RemoteTerminals {
 
   /** One remote shell candidate. */
   shells(): TerminalShell[] {
-    return [{ path: 'ssh', name: 'Remote SSH', args: [] }]
+    return [{ path: '/bin/bash', name: 'Remote Bash', args: [] }]
   }
 
   /** Terminals retained for one Session. */
-  list(sessionId: string): WebTerminalInfo[] {
-    return [...this.#terminals.values()].filter(item => item.sessionId === sessionId).map(item => item.info)
+  async list(sessionId: string): Promise<WebTerminalInfo[]> {
+    const context = this.#context(sessionId)
+    if (context === undefined) return []
+    const live = await this.#client(context.hostId).listTerminals()
+    const liveIds = new Set(live.map(info => info.id))
+    for (const id of this.#terminals.keys()) {
+      if (!liveIds.has(id)) this.#terminals.delete(id)
+    }
+    for (const info of live) {
+      const tracked = this.#terminals.get(info.id)
+      if (tracked !== undefined) this.#terminals.set(info.id, { ...tracked, info: info as unknown as WebTerminalInfo })
+    }
+    return [...this.#terminals.values()]
+      .filter(item => item.sessionId === sessionId)
+      .map(item => item.info)
   }
 
-  /** Allocate an SSH PTY in the mirrored workspace. */
-  create(sessionId: string, request: { id?: string; shellPath?: string; cols?: number; rows?: number }): WebTerminalInfo {
+  /** Allocate a PTY through the agent API. */
+  async create(sessionId: string, request: { id?: string; shellPath?: string; cols?: number; rows?: number }): Promise<WebTerminalInfo> {
     const context = this.#context(sessionId)
-    if (context === undefined) throw new Error('terminal is only available for mirrored sessions')
+    if (context === undefined) throw new LocalError('agent/unavailable', 'terminal is only available for mirrored sessions')
     const id = request.id ?? randomUUID()
     const existing = this.#terminals.get(id)
     if (existing !== undefined) return existing.info
-    const ssh = this.#hosts.sshFor(context.hostId)
-    const cwd = shellQuote(context.remoteRoot)
-    const args = [
-      '-tt',
-      '-o', 'BatchMode=yes',
-      '-o', 'ConnectTimeout=10000',
-      ...ssh.port === null ? [] : ['-p', String(ssh.port)],
-      ssh.target,
-      `cd ${cwd} && exec bash -l`,
-    ]
-    const child = spawn(ssh.binary, args, { stdio: ['pipe', 'pipe', 'pipe'] })
-    const info: WebTerminalInfo = {
-      id: id as never,
-      title: `Remote · ${context.remoteRoot.split('/').at(-1) ?? context.remoteRoot}`,
-      shell: { path: 'ssh', name: 'Remote SSH', args: [] },
+    const info = await this.#client(context.hostId).createTerminal({
+      id,
       cwd: context.remoteRoot,
+      title: `Remote · ${context.remoteRoot.split('/').at(-1) ?? context.remoteRoot}`,
+      ...request.shellPath === undefined ? {} : { shellPath: request.shellPath },
       cols: request.cols ?? 80,
       rows: request.rows ?? 24,
-      state: 'running',
-      exitCode: null,
-    }
-    const runtime: TerminalRecord = {
-      id, sessionId, info, child, queue: [], waiters: [],
-      sequence: 0, bufferedBytes: 0, title: info.title, exited: false,
-    }
-    this.#terminals.set(id, runtime)
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (data: string) => this.#push(runtime, { type: 'output', sequence: ++runtime.sequence, data }))
-    child.stderr.on('data', (data: string) => this.#push(runtime, { type: 'output', sequence: ++runtime.sequence, data }))
-    child.on('exit', code => {
-      runtime.exited = true
-      runtime.info = { ...runtime.info, state: code === 0 ? 'exited' : 'failed', exitCode: code }
-      this.#push(runtime, { type: 'state', info: runtime.info, writable: false })
-      this.#closeWaiters(runtime)
-    })
-    child.on('error', error => {
-      runtime.exited = true
-      runtime.info = { ...runtime.info, state: 'failed', error: String(error) }
-      this.#push(runtime, { type: 'state', info: runtime.info, writable: false })
-    })
+    }) as unknown as WebTerminalInfo
+    this.#terminals.set(id, { sessionId, info })
     return info
   }
 
   /** Feed input/resize into one remote PTY. */
-  input(id: string, input: TerminalInput): void {
-    const runtime = this.#terminals.get(id)
-    if (runtime === undefined || runtime.exited) return
-    if (input.type === 'write') runtime.child.stdin.write(input.data)
-    else {
-      // ssh -tt picks up the remote PTY window size from the terminal, but a
-      // pipe has no size. stty is best-effort and never fatal.
-      runtime.child.stdin.write(`stty cols ${input.cols} rows ${input.rows} 2>/dev/null || true\n`)
-    }
+  async input(id: string, input: TerminalInput): Promise<void> {
+    const record = this.#terminals.get(id)
+    if (record === undefined) throw new LocalError('agent/unavailable', `terminal ${id} is unavailable`)
+    const context = this.#context(record.sessionId)
+    if (context === undefined) throw new LocalError('agent/unavailable', `terminal ${id} is unavailable`)
+    await this.#client(context.hostId).terminalInput(id, input.type === 'write'
+      ? { type: 'write', data: input.data }
+      : { type: 'resize', cols: input.cols, rows: input.rows })
   }
 
   /** Rename a retained terminal. */
-  rename(id: string, title: string): void {
-    const runtime = this.#terminals.get(id)
-    if (runtime !== undefined) runtime.title = title
+  async rename(id: string, title: string): Promise<void> {
+    const record = this.#terminals.get(id)
+    if (record === undefined) return
+    const context = this.#context(record.sessionId)
+    if (context === undefined) return
+    await this.#client(context.hostId).renameTerminal(id, title)
+    this.#terminals.set(id, { ...record, info: { ...record.info, title } })
   }
 
   /** Close one terminal. */
-  close(id: string): void {
-    const runtime = this.#terminals.get(id)
-    if (runtime === undefined) return
-    runtime.child.kill('SIGHUP')
+  async close(id: string): Promise<void> {
+    const record = this.#terminals.get(id)
+    if (record === undefined) return
+    const context = this.#context(record.sessionId)
     this.#terminals.delete(id)
+    if (context !== undefined) await this.#client(context.hostId).closeTerminal(id).catch(() => {})
   }
 
   /** Stream frames for one attachment. */
   async *attach(id: string, signal: AbortSignal): AsyncGenerator<TerminalFrame> {
-    const runtime = this.#terminals.get(id)
-    if (runtime === undefined) throw new Error(`terminal ${id} is unavailable`)
-    yield {
-      type: 'snapshot',
-      sequence: runtime.sequence,
-      screen: '',
-      info: runtime.info,
-      writable: !runtime.exited,
-    }
-    while (!signal.aborted) {
-      if (signal.aborted) return
-      if (runtime.queue.length > 0) {
-        const frame = runtime.queue.shift()!
-        runtime.bufferedBytes = Math.max(0, runtime.bufferedBytes - frameSize(frame))
-        yield frame
-        continue
-      }
-      if (runtime.exited) return
-      const next = await new Promise<IteratorResult<TerminalFrame>>(resolve => {
-        let settled = false
-        const finish = (result: IteratorResult<TerminalFrame>): void => {
-          if (settled) return
-          settled = true
-          signal.removeEventListener('abort', onAbort)
-          const index = runtime.waiters.indexOf(finish)
-          if (index >= 0) runtime.waiters.splice(index, 1)
-          resolve(result)
-        }
-        const onAbort = (): void => finish({ done: true, value: undefined })
-        runtime.waiters.push(finish)
-        signal.addEventListener('abort', onAbort, { once: true })
-      })
-      if (next.done) return
-      yield next.value
+    const record = this.#terminals.get(id)
+    if (record === undefined) throw new LocalError('agent/unavailable', `terminal ${id} is unavailable`)
+    const context = this.#context(record.sessionId)
+    if (context === undefined) throw new LocalError('agent/unavailable', `terminal ${id} is unavailable`)
+    for await (const frame of this.#client(context.hostId).attachTerminal(id, signal)) {
+      yield frame as unknown as TerminalFrame
     }
   }
 
-  /** Retain acknowledgement used by reconnecting windows. */
-  async *retain(): AsyncGenerator<{ type: 'retained' }> {
-    yield { type: 'retained' }
-  }
-
-  /** Dispose every process. */
-  dispose(): void {
-    for (const runtime of this.#terminals.values()) runtime.child.kill('SIGHUP')
+  /** Dispose every remote process. */
+  async dispose(): Promise<void> {
+    await Promise.allSettled([...this.#terminals].map(async ([id, terminal]) => {
+      const context = this.#context(terminal.sessionId)
+      if (context !== undefined) await this.#client(context.hostId).closeTerminal(id)
+    }))
     this.#terminals.clear()
+  }
+
+  #client(hostId: string): RemoteAgentClient {
+    if (!this.#hosts.supportsAgent(hostId, 'terminal')) {
+      throw new LocalError(
+        'agent/unavailable',
+        'remote agent does not advertise terminal; reinstall it',
+        { retryable: false, ui: { key: 'error.agentOutdated' } },
+      )
+    }
+    return this.#hosts.agentFor(hostId)
   }
 
   #context(sessionId: string): { hostId: string; remoteRoot: string; anchor: string } | undefined {
@@ -207,44 +163,4 @@ export class RemoteTerminals {
     if (cwd === undefined) return undefined
     return this.#mirrors.remoteFileContext(cwd)
   }
-
-  #push(runtime: TerminalRecord, frame: TerminalFrame): void {
-    const waiter = runtime.waiters.shift()
-    if (waiter !== undefined) {
-      waiter({ done: false, value: frame })
-      return
-    }
-
-    let normalized = frame
-    let bytes = frameSize(frame)
-    if (bytes > MAX_BUFFERED_BYTES) {
-      if (frame.type === 'output') {
-        const marker = '\n[dsh-remote: terminal output truncated]\n'
-        const limit = Math.max(0, MAX_BUFFERED_BYTES - Buffer.byteLength(marker))
-        normalized = { ...frame, data: `${frame.data.slice(0, limit)}${marker}` }
-        bytes = frameSize(normalized)
-      } else {
-        runtime.queue.length = 0
-        runtime.bufferedBytes = 0
-      }
-    }
-    while (runtime.queue.length > 0 && runtime.bufferedBytes + bytes > MAX_BUFFERED_BYTES) {
-      const dropped = runtime.queue.shift()!
-      runtime.bufferedBytes = Math.max(0, runtime.bufferedBytes - frameSize(dropped))
-    }
-    runtime.queue.push(normalized)
-    runtime.bufferedBytes += bytes
-  }
-
-  #closeWaiters(runtime: TerminalRecord): void {
-    for (const waiter of runtime.waiters.splice(0)) waiter({ done: true, value: undefined })
-  }
-}
-
-function frameSize(frame: TerminalFrame): number {
-  return Buffer.byteLength(JSON.stringify(frame))
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/gu, `'\\''`)}'`
 }

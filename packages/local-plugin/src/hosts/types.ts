@@ -9,6 +9,7 @@
  */
 
 import type { HostInfo } from '@dsh-remote/protocol'
+import type { HostDetail, UiText } from '../messages.ts'
 
 /** Lifecycle phase shown by the Settings page. */
 export type HostPhase =
@@ -62,8 +63,12 @@ export interface HostRuntime {
   readonly error: string | null
   readonly errorCode: string | null
   readonly connectedAt: string | null
-  /** Human-readable progress detail for discovery/provisioning. */
-  readonly detail: string | null
+  /** Stable progress detail code rendered by the client locale. */
+  readonly detail: HostDetail | null
+  /** Localized form of {@link error}; raw error text stays in `error`. */
+  readonly errorUi: UiText | null
+  /** Whether the connected agent is too old for agent-backed file/terminal APIs. */
+  readonly agentOutdated: boolean
   /** Whether the local model credential proxy is active for this host. */
   readonly modelProxy: boolean
   /** Whether the resolved local model key was copied into the remote environment. */
@@ -93,8 +98,12 @@ export interface HostView {
   readonly error: string | null
   readonly errorCode: string | null
   readonly connectedAt: string | null
-  /** Human-readable progress detail for discovery/provisioning. */
-  readonly detail: string | null
+  /** Stable progress detail code rendered by the client locale. */
+  readonly detail: HostDetail | null
+  /** Localized form of {@link error}; raw error text stays in `error`. */
+  readonly errorUi: UiText | null
+  /** Whether the connected agent is too old for agent-backed file/terminal APIs. */
+  readonly agentOutdated: boolean
   /** Whether the local model credential proxy is active for this host. */
   readonly modelProxy: boolean
   /** Whether the resolved local model key was copied into the remote environment. */
@@ -126,6 +135,8 @@ export function idleRuntime(): HostRuntime {
     errorCode: null,
     connectedAt: null,
     detail: null,
+    errorUi: null,
+    agentOutdated: false,
     modelProxy: false,
     modelDirect: false,
     dshUpdate: null,
@@ -154,6 +165,8 @@ export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
     errorCode: runtime.errorCode,
     connectedAt: runtime.connectedAt,
     detail: runtime.detail,
+    errorUi: runtime.errorUi,
+    agentOutdated: runtime.agentOutdated,
     modelProxy: runtime.modelProxy,
     modelDirect: runtime.modelDirect,
     dshUpdate: runtime.dshUpdate,
