@@ -47,7 +47,7 @@ The agent advertises its revision on every response:
 
 ```http
 x-dsh-remote-server-protocol: 1
-x-dsh-remote-agent-version: 0.2.1
+x-dsh-remote-agent-version: 0.2.10
 x-dsh-remote-host-id: <echoed or local>
 x-dsh-remote-request-id: <echoed or generated>
 ```
