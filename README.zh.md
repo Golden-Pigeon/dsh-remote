@@ -27,7 +27,7 @@
 | 组件 | 版本 |
 |---|---|
 | [DSH Desktop / 官方客户端](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)、[**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3)（均已测试） |
-| 插件 | [**0.8.14**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| 插件 | [**0.8.15**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | 远端 DSH 运行时 | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2)（安装默认）或 [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) |
 | 远端 Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | 远端操作系统 | Linux 或 macOS |
@@ -74,7 +74,7 @@ DSH 会从 npm 安装 bundle。这个包已经包含远端 agent 资源和 termi
 如果 npmjs.com 对刚发布版本的 `latest` 解析仍旧滞后，可以改为安装当前的精确版本：
 
 ```text
-dsh-remote-local-plugin@0.8.14
+dsh-remote-local-plugin@0.8.15
 ```
 
 每次发新版本时同步更新这个版本号。
