@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { HostView } from '../hosts/types.ts'
 import type { HostsApi } from './api.ts'
 import type { Translate } from './locale.ts'
+import { localizedError } from './errors.ts'
 
 const ADD_LABELS = new Set(['Add workspace', '添加工作区'])
 const NATIVE_CLICK_FLAG = 'dshrNativeClick'
@@ -250,7 +251,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
             update()
           }
         })
-        .catch(failure => { error.textContent = messageOf(failure, flow.t('dialog.nativePickerFailed')) })
+        .catch(failure => { error.textContent = localizedError(flow.t, failure, flow.t('dialog.nativePickerFailed')) })
         .finally(() => { addFolder.disabled = false })
       return
     }
@@ -300,11 +301,17 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
           return
         }
         const localId = await waitForLocalWorkspace(flow.api, destination.host.id, workspace.workspaceId)
-        if (localId === undefined) throw new Error(flow.t('dialog.selectedFallback'))
+        if (localId === undefined) {
+          error.textContent = flow.t('dialog.selectedFallback')
+          create.disabled = false
+          cancel.disabled = false
+          create.textContent = flow.t('dialog.create')
+          return
+        }
         close()
         flow.ctx.uiWorkspace.startSession(localId as never)
       } catch (failure) {
-        error.textContent = messageOf(failure, flow.t('dialog.createFailed'))
+        error.textContent = localizedError(flow.t, failure, flow.t('dialog.createFailed'))
         create.disabled = false
         cancel.disabled = false
         create.textContent = flow.t('dialog.create')
@@ -455,7 +462,7 @@ async function openDirectoryBrowser(
       return listing
     } catch (failure) {
       if (sequence === requestSeq) {
-        status.textContent = messageOf(failure, flow.t('dialog.readFailed'))
+        status.textContent = localizedError(flow.t, failure, flow.t('dialog.readFailed'))
         status.classList.add(`${DIALOG_CLASS}-error-text`)
       }
       return undefined
@@ -579,10 +586,6 @@ function closeTransient(): void {
   closeMenu?.()
 }
 
-function messageOf(failure: unknown, fallback: string): string {
-  if (failure instanceof Error && failure.message !== '') return failure.message
-  return fallback
-}
 
 function setFolderIcon(icon: HTMLElement): void {
   icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" stroke="currentColor" stroke-width="1.5"/></svg>'

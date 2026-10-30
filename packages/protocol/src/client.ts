@@ -20,6 +20,12 @@ import {
   sessionPath,
   sessionPromptPath,
   workspaceSessionsPath,
+  directoryListPath,
+  fileWatchPath,
+  terminalAttachPath,
+  terminalClosePath,
+  terminalInputPath,
+  terminalRenamePath,
   AGENT_ROUTES,
 } from './routes.ts'
 import { parseSseStream } from './sse.ts'
@@ -46,6 +52,21 @@ import type {
   SessionStreamFrame,
   WebUrlResult,
 } from './types.ts'
+import type {
+  RemoteDirectoryListing,
+  RemoteFileBytes,
+  RemoteFileListing,
+  RemoteFileStat,
+  RemoteFileText,
+  RemoteFileWatchFrame,
+} from './files.ts'
+import type {
+  RemoteTerminalCreateRequest,
+  RemoteTerminalFrame,
+  RemoteTerminalInfo,
+  RemoteTerminalInput,
+  RemoteTerminalListResult,
+} from './terminal.ts'
 import {
   isAcceptedResult,
   isRemoteApprovalFrame,
@@ -58,6 +79,15 @@ import {
   isSessionSnapshot,
   isSessionStreamFrame,
   isWebUrlResult,
+  isRemoteDirectoryListing,
+  isRemoteFileBytes,
+  isRemoteFileListing,
+  isRemoteFileStat,
+  isRemoteFileText,
+  isRemoteFileWatchFrame,
+  isRemoteTerminalFrame,
+  isRemoteTerminalInfo,
+  isRemoteTerminalListResult,
 } from './validation.ts'
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
@@ -332,6 +362,99 @@ export class RemoteAgentClient {
     return cursor.accept(event)
   }
 
+  /** Stat one remote file. */
+  fileStat(path: string, signal?: AbortSignal): Promise<RemoteFileStat> {
+    return this.#request(AGENT_ROUTES.fileStat, isRemoteFileStat, { method: 'POST', body: { path }, signal })
+  }
+
+  /** List one remote directory. */
+  fileList(path: string, signal?: AbortSignal): Promise<RemoteFileListing> {
+    return this.#request(AGENT_ROUTES.fileList, isRemoteFileListing, { method: 'POST', body: { path }, signal })
+  }
+
+  /** Read one text page from a remote file. */
+  fileRead(path: string, offset?: number, limit?: number, signal?: AbortSignal): Promise<RemoteFileText> {
+    return this.#request(AGENT_ROUTES.fileRead, isRemoteFileText, {
+      method: 'POST',
+      body: { path, ...offset === undefined ? {} : { offset }, ...limit === undefined ? {} : { limit } },
+      signal,
+    })
+  }
+
+  /** Read one byte window from a remote file. */
+  fileBytes(path: string, offset?: number, length?: number, signal?: AbortSignal): Promise<RemoteFileBytes> {
+    return this.#request(AGENT_ROUTES.fileBytes, isRemoteFileBytes, {
+      method: 'POST',
+      body: { path, ...offset === undefined ? {} : { offset }, ...length === undefined ? {} : { length } },
+      signal,
+    })
+  }
+
+  /** List child directories for the workspace-creation picker. */
+  listDirectories(path: string, signal?: AbortSignal): Promise<RemoteDirectoryListing> {
+    return this.#request(directoryListPath(path), isRemoteDirectoryListing, { signal })
+  }
+
+  /** Follow one remote file or directory watch. */
+  async *followFileChanges(path: string, signal: AbortSignal): AsyncGenerator<RemoteFileWatchFrame> {
+    const response = await this.#openStream(fileWatchPath(path), signal)
+    const body = response.body
+    if (body === null) throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent returned an empty file watch stream' })
+    for await (const message of parseSseStream(body)) {
+      if (message.data === '') continue
+      let frame: unknown
+      try { frame = JSON.parse(message.data) } catch (error) {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent sent malformed file watch JSON', cause: error })
+      }
+      if (!isRemoteFileWatchFrame(frame)) {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent sent an unknown file watch frame' })
+      }
+      yield frame
+    }
+  }
+
+  /** Allocate one remote PTY. */
+  createTerminal(request: RemoteTerminalCreateRequest): Promise<RemoteTerminalInfo> {
+    return this.#request(AGENT_ROUTES.terminals, isRemoteTerminalInfo, { method: 'POST', body: request })
+  }
+
+  /** List remote PTYs owned by the agent. */
+  async listTerminals(): Promise<readonly RemoteTerminalInfo[]> {
+    const result: RemoteTerminalListResult = await this.#request(AGENT_ROUTES.terminals, isRemoteTerminalListResult)
+    return result.terminals
+  }
+
+  /** Send input or resize to one remote PTY. */
+  async terminalInput(id: string, input: RemoteTerminalInput): Promise<void> {
+    await this.#request(terminalInputPath(id), isAcceptedResult, { method: 'POST', body: input })
+  }
+
+  /** Rename one remote PTY. */
+  async renameTerminal(id: string, title: string): Promise<void> {
+    await this.#request(terminalRenamePath(id), isAcceptedResult, { method: 'POST', body: { title } })
+  }
+
+  /** Close one remote PTY. */
+  async closeTerminal(id: string): Promise<void> {
+    await this.#request(terminalClosePath(id), isAcceptedResult, { method: 'POST', body: {} })
+  }
+
+  /** Follow one terminal attachment stream. */
+  async *attachTerminal(id: string, signal: AbortSignal): AsyncGenerator<RemoteTerminalFrame> {
+    const response = await this.#openStream(terminalAttachPath(id), signal)
+    const body = response.body
+    if (body === null) throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent returned an empty terminal stream' })
+    for await (const message of parseSseStream(body)) {
+      if (message.data === '') continue
+      let frame: unknown
+      try { frame = JSON.parse(message.data) } catch (error) {
+        throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent sent malformed terminal JSON', cause: error })
+      }
+      if (!isRemoteTerminalFrame(frame)) throw new RemoteProtocolError({ code: 'request/invalid', message: 'remote agent sent an unknown terminal frame' })
+      yield frame
+    }
+  }
+
   async #openStream(path: string, signal: AbortSignal): Promise<Response> {
     const headers = this.#headers()
     headers.set('accept', 'text/event-stream')
@@ -350,7 +473,7 @@ export class RemoteAgentClient {
   async #request<T>(
     path: string,
     guard: Guard<T>,
-    init: { readonly method?: 'GET' | 'POST'; readonly body?: unknown } = {},
+    init: { readonly method?: 'GET' | 'POST'; readonly body?: unknown; readonly signal?: AbortSignal } = {},
   ): Promise<T> {
     const headers = this.#headers()
     if (init.body !== undefined) headers.set('content-type', 'application/json')
@@ -364,7 +487,7 @@ export class RemoteAgentClient {
       },
       this.#fetch,
       this.#timeoutMs,
-      undefined,
+      init.signal,
     )
     if (!response.ok) await this.#throwResponseError(response)
 
@@ -452,7 +575,9 @@ function isDetails(value: unknown): value is Record<string, unknown> {
 const KNOWN_CODES = new Set([
   'protocol/version-mismatch', 'auth/missing', 'auth/invalid', 'auth/forbidden',
   'request/invalid', 'request/too-large', 'route/not-found', 'workspace/not-found',
-  'session/not-found', 'session/not-live', 'agent/not-ready', 'internal',
+  'session/not-found', 'session/not-live', 'agent/not-ready',
+  'workspace-file/not-found', 'workspace-file/not-regular-file', 'workspace-file/not-text',
+  'directory/unreadable', 'terminal/unavailable', 'terminal/error', 'internal',
 ])
 
 function isCode(value: string): value is import('./errors.ts').ProtocolErrorCode {

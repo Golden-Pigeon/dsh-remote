@@ -2,8 +2,10 @@
  * dsh-remote-agent plugin entry.
  *
  * Installed into a remote DSH Web profile. It publishes a loopback-only,
- * bearer-authenticated read API for host identity, workspaces, sessions, and
- * live session events. It never executes tools or mutates sessions.
+ * bearer-authenticated API for host identity, workspaces, sessions, live
+ * session events, read-only file access, and PTY terminals. The terminal
+ * surface executes a shell on the remote host; the bearer token and private
+ * state file are the trust boundary.
  *
  * @module dsh-remote-agent
  */

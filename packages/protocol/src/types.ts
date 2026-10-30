@@ -27,6 +27,13 @@ export type AgentCapability =
   | 'approval.follow'
   | 'approval.answer'
   | 'web.url'
+  | 'file.stat'
+  | 'file.list'
+  | 'file.read'
+  | 'file.bytes'
+  | 'file.watch'
+  | 'directory.list'
+  | 'terminal'
 
 /** Identity and environment of the remote DSH host serving the agent API. */
 export interface HostInfo {

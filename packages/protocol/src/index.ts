@@ -24,6 +24,28 @@ export {
 export type { ProtocolNegotiation } from './version.ts'
 
 export type {
+  RemoteFileBytes,
+  RemoteFileEntry,
+  RemoteFileListing,
+  RemoteFileRequest,
+  RemoteFileStat,
+  RemoteFileText,
+  RemoteFileWatchFrame,
+  RemoteByteReadRequest,
+  RemoteTextReadRequest,
+  RemoteDirectoryEntry,
+  RemoteDirectoryListing,
+} from './files.ts'
+export type {
+  RemoteTerminalCreateRequest,
+  RemoteTerminalFrame,
+  RemoteTerminalInfo,
+  RemoteTerminalInput,
+  RemoteTerminalListResult,
+  RemoteTerminalShell,
+} from './terminal.ts'
+
+export type {
   AgentCapability,
   ApiEnvelope,
   ApiFailure,
@@ -92,6 +114,12 @@ export {
   sessionPath,
   sessionPromptPath,
   workspaceSessionsPath,
+  directoryListPath,
+  fileWatchPath,
+  terminalAttachPath,
+  terminalClosePath,
+  terminalInputPath,
+  terminalRenamePath,
 } from './routes.ts'
 export type { AgentRoute } from './routes.ts'
 
@@ -114,6 +142,15 @@ export {
   isSessionSnapshot,
   isSessionStreamFrame,
   isWebUrlResult,
+  isRemoteDirectoryListing,
+  isRemoteFileBytes,
+  isRemoteFileListing,
+  isRemoteFileStat,
+  isRemoteFileText,
+  isRemoteFileWatchFrame,
+  isRemoteTerminalFrame,
+  isRemoteTerminalInfo,
+  isRemoteTerminalListResult,
 } from './validation.ts'
 
 export {

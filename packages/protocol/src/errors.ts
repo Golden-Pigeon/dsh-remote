@@ -23,6 +23,12 @@ export const PROTOCOL_ERROR_CODES = [
   'session/not-found',
   'session/not-live',
   'agent/not-ready',
+  'workspace-file/not-found',
+  'workspace-file/not-regular-file',
+  'workspace-file/not-text',
+  'directory/unreadable',
+  'terminal/unavailable',
+  'terminal/error',
   'internal',
 ] as const
 
@@ -51,11 +57,17 @@ export function httpStatusForCode(code: ProtocolErrorCode): number {
     case 'route/not-found':
     case 'workspace/not-found':
     case 'session/not-found':
+    case 'workspace-file/not-found':
+    case 'workspace-file/not-regular-file':
+    case 'workspace-file/not-text':
+    case 'directory/unreadable':
       return 404
     case 'session/not-live':
+    case 'terminal/unavailable':
       return 409
     case 'agent/not-ready':
       return 503
+    case 'terminal/error':
     case 'internal':
       return 500
   }

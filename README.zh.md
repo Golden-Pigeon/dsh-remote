@@ -51,11 +51,13 @@
 | UI 跟随 DSH 语言（中文 / 英文） | 可用 |
 | Prompt、停止、转录、工具卡片、usage | 可用 |
 | 默认远端直连 key，或可选的本地 key proxy | 可用 |
-| 远端文件树和文件预览 | 可用（SSH） |
-| 每个 Session 的远端终端 | 可用（本地 Session 用本地 PTY；远端 Session 用 SSH PTY） |
+| 远端文件树和文件预览 | 可用（经 SSH 隧道的 agent API） |
+| 每个 Session 的远端终端 | 可用（本地 Session 用本地 PTY；远端 Session 用经 SSH 隧道的远端 agent PTY） |
 | 主机/工作区/Session 的 Agent 工具 | 可用 |
 | 审批提示接入本地 UI | 可用 |
 | Relay/NAT、云沙箱、多租户 | 尚未实现 |
+
+> 文件/终端操作要求新版 agent API。远端 agent 过旧时，操作会提示 Reinstall，而不会再额外建立 SSH 连接。
 
 ## 安装
 

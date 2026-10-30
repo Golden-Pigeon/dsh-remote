@@ -74,7 +74,7 @@ The sidebar **Workspaces** header **+** opens a small chooser:
 The **Workspace files** and **New terminal** panels are Session-scoped:
 
 - local Session: stock local workspace files and local PTY;
-- remote mirror Session: SSH-backed remote file listing/preview and an SSH PTY in the remote workspace.
+- remote mirror Session: agent-backed remote file listing/preview and an agent PTY in the remote workspace, both over the existing SSH tunnel. Older agents must be reinstalled; file/terminal actions fail with a Reinstall instruction rather than opening extra SSH connections.
 
 The install script also installs the `dsh-remote-terminal-controller` profile fork. It disables the
 stock terminal-controller row and inserts the fork so `ClientTerminals` is constructed with the

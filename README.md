@@ -53,11 +53,13 @@ tested on both versions; the remote runtime is still provisioned at `0.2.1-rc.2`
 | Localized UI follows the DSH language (zh / en) | Available |
 | Prompts, stop, transcripts, tool cards, usage | Available |
 | Direct remote key (default) or optional local key proxy | Available |
-| Remote file tree and file previews | Available (SSH-backed) |
-| Remote terminal per Session | Available (local Sessions keep local PTY; remote Sessions use SSH PTY) |
+| Remote file tree and file previews | Available (agent-backed over the SSH tunnel) |
+| Remote terminal per Session | Available (local Sessions keep local PTY; remote Sessions use the remote agent PTY over the SSH tunnel) |
 | Agent tools for host/workspace/session operations | Available |
 | Approval prompts bridged into the local UI | Available |
 | Relay/NAT traversal, cloud sandbox, multi-tenant | Not yet |
+
+> Remote file and terminal operations require the agent-backed API. If the connected remote agent is older, file/terminal actions fail with a Reinstall instruction instead of opening extra SSH connections.
 
 ## Install
 
@@ -226,9 +228,9 @@ remote model requests use it as well, not just the installer.
 
 - SSH is the transport; tunnels bind `127.0.0.1` only.
 - Host keys default to TOFU (`accept-new`); use `yes` with a prepared `known_hosts` for strict checks.
-- The remote agent is loopback-only and bearer-authenticated. Its write surface is limited to
-  workspace/session create, prompt, and cancel. Prompts can make the remote DSH use its own tools under
-  the remote sandbox and approval policy.
+- The remote agent is loopback-only and bearer-authenticated. Its execution surface is terminal
+  allocation/input plus workspace/session create, prompt, and cancel; file reads are read-only.
+  Prompts can make the remote DSH use its own tools under the remote sandbox and approval policy.
 - In the default direct mode, the resolved model key is written to the remote systemd/nohup
   environment. Use this only on a trusted remote account; the systemd unit is written with mode 0600.
   Set `credentialProxy: true` to keep the key local and proxy model traffic through the reverse SSH
@@ -236,7 +238,7 @@ remote model requests use it as well, not just the installer.
   reuse the tunneled credential endpoint.
 - Browser requests use DSH Connection's authenticated `/api` Fetch route. Tokens/credentials are stored
   in `0600` files and never returned to the browser.
-- File-tree, preview, and terminal traffic also stays inside the authenticated SSH tunnel.
+- File-tree, preview, directory-picker, and terminal traffic use the remote agent API inside the authenticated SSH tunnel; no additional SSH connection is opened per file or terminal operation.
 - Only connect trusted remote accounts; the remote DSH has that account's privileges.
 
 ## Configuration

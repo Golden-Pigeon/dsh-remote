@@ -34,32 +34,33 @@ export function registerTerminalApi(ctx: Context, terminals: RemoteTerminals): (
         if (action === 'context') return Response.json({ ok: true, mirrored: terminals.isMirrored(sessionId) })
         if (action === 'environment') return Response.json({ ok: true, value: terminals.environment(sessionId) })
         if (action === 'shells') return Response.json({ ok: true, value: terminals.shells() })
-        if (action === 'list') return Response.json({ ok: true, value: terminals.list(sessionId) })
+        if (action === 'list') return Response.json({ ok: true, value: await terminals.list(sessionId) })
         if (action === 'create') {
           return Response.json({
             ok: true,
-            value: terminals.create(sessionId, {
+            value: await terminals.create(sessionId, {
               ...typeof body.id === 'string' ? { id: body.id } : {},
               ...typeof body.cols === 'number' ? { cols: body.cols } : {},
               ...typeof body.rows === 'number' ? { rows: body.rows } : {},
+              ...typeof body.shellPath === 'string' ? { shellPath: body.shellPath } : {},
             }),
           })
         }
         const id = String(body.id ?? '')
         if (action === 'input') {
-          terminals.input(id, { type: 'write', sequence: Number(body.sequence ?? 0), data: String(body.data ?? '') })
+          await terminals.input(id, { type: 'write', sequence: Number(body.sequence ?? 0), data: String(body.data ?? '') })
           return Response.json({ ok: true, value: null })
         }
         if (action === 'resize') {
-          terminals.input(id, { type: 'resize', sequence: Number(body.sequence ?? 0), cols: Number(body.cols ?? 80), rows: Number(body.rows ?? 24) })
+          await terminals.input(id, { type: 'resize', sequence: Number(body.sequence ?? 0), cols: Number(body.cols ?? 80), rows: Number(body.rows ?? 24) })
           return Response.json({ ok: true, value: null })
         }
         if (action === 'rename') {
-          terminals.rename(id, String(body.title ?? ''))
+          await terminals.rename(id, String(body.title ?? ''))
           return Response.json({ ok: true, value: null })
         }
         if (action === 'close') {
-          terminals.close(id)
+          await terminals.close(id)
           return Response.json({ ok: true, value: null })
         }
         if (action === 'retain') {

@@ -28,7 +28,7 @@ export function apply(ctx: Context): void {
   const locale = (ctx as unknown as { locale: LocaleFace }).locale
   ctx.effect(() => locale.register(NS, { zh, en }), 'dsh-remote: locale dictionaries')
   const t = locale.bind(NS)
-  installNativeWorkspaceRouting(ctx, api)
+  installNativeWorkspaceRouting(ctx, api, t)
   installWorkspaceAddMenu(ctx, api, t)
   ctx.effect(() => installWorkspaceDeleteCopy(api), 'dsh-remote: mirrored workspace delete copy')
   ctx.inject(['remote.workspaceFiles'], child => {

@@ -19,6 +19,13 @@ export const AGENT_ROUTES = {
   webUrl: `${AGENT_API_PREFIX}/web-url`,
   approvalEvents: `${AGENT_API_PREFIX}/approvals/events`,
   approvalAnswer: `${AGENT_API_PREFIX}/approvals/answer`,
+  fileStat: `${AGENT_API_PREFIX}/files/stat`,
+  fileList: `${AGENT_API_PREFIX}/files/list`,
+  fileRead: `${AGENT_API_PREFIX}/files/read`,
+  fileBytes: `${AGENT_API_PREFIX}/files/bytes`,
+  fileWatch: `${AGENT_API_PREFIX}/files/watch`,
+  directories: `${AGENT_API_PREFIX}/directories`,
+  terminals: `${AGENT_API_PREFIX}/terminals`,
 } as const
 
 /** One decoded agent route. */
@@ -38,6 +45,17 @@ export type AgentRoute =
   | { readonly kind: 'web-url' }
   | { readonly kind: 'approval-events' }
   | { readonly kind: 'approval-answer' }
+  | { readonly kind: 'file-stat' }
+  | { readonly kind: 'file-list' }
+  | { readonly kind: 'file-read' }
+  | { readonly kind: 'file-bytes' }
+  | { readonly kind: 'file-watch' }
+  | { readonly kind: 'directory-list' }
+  | { readonly kind: 'terminals' }
+  | { readonly kind: 'terminal-attach'; readonly terminalId: string }
+  | { readonly kind: 'terminal-input'; readonly terminalId: string }
+  | { readonly kind: 'terminal-rename'; readonly terminalId: string }
+  | { readonly kind: 'terminal-close'; readonly terminalId: string }
 
 /** Path of the session list for one workspace. */
 export function workspaceSessionsPath(workspaceId: string): string {
@@ -80,6 +98,36 @@ export function sessionAssistantEventsPath(sessionId: string): string {
   return `${sessionPath(sessionId)}/assistant-events`
 }
 
+/** Path for one remote file watch stream. */
+export function fileWatchPath(path: string): string {
+  return `${AGENT_ROUTES.fileWatch}?path=${encodeURIComponent(path)}`
+}
+
+/** Path for one remote directory picker listing. */
+export function directoryListPath(path: string): string {
+  return `${AGENT_ROUTES.directories}?path=${encodeURIComponent(path)}`
+}
+
+/** Path of one terminal attachment stream. */
+export function terminalAttachPath(id: string): string {
+  return `${AGENT_ROUTES.terminals}/${encodeURIComponent(id)}/attach`
+}
+
+/** Path that accepts terminal input or resize. */
+export function terminalInputPath(id: string): string {
+  return `${AGENT_ROUTES.terminals}/${encodeURIComponent(id)}/input`
+}
+
+/** Path that renames one terminal. */
+export function terminalRenamePath(id: string): string {
+  return `${AGENT_ROUTES.terminals}/${encodeURIComponent(id)}/rename`
+}
+
+/** Path that closes one terminal. */
+export function terminalClosePath(id: string): string {
+  return `${AGENT_ROUTES.terminals}/${encodeURIComponent(id)}/close`
+}
+
 /** Encode a path segment after validating it is not empty. */
 function segment(value: string): string | undefined {
   if (value === '') return undefined
@@ -113,6 +161,34 @@ export function matchAgentRoute(pathname: string): AgentRoute | undefined {
       return { kind: 'approval-events' }
     case AGENT_ROUTES.approvalAnswer:
       return { kind: 'approval-answer' }
+    case AGENT_ROUTES.fileStat:
+      return { kind: 'file-stat' }
+    case AGENT_ROUTES.fileList:
+      return { kind: 'file-list' }
+    case AGENT_ROUTES.fileRead:
+      return { kind: 'file-read' }
+    case AGENT_ROUTES.fileBytes:
+      return { kind: 'file-bytes' }
+    case AGENT_ROUTES.fileWatch:
+      return { kind: 'file-watch' }
+    case AGENT_ROUTES.directories:
+      return { kind: 'directory-list' }
+    case AGENT_ROUTES.terminals:
+      return { kind: 'terminals' }
+  }
+
+  if (pathname.startsWith(`${AGENT_ROUTES.terminals}/`)) {
+    const rest = pathname.slice(`${AGENT_ROUTES.terminals}/`.length)
+    const parts = rest.split('/')
+    if (parts.length === 2) {
+      const terminalId = segment(parts[0] ?? '')
+      if (terminalId === undefined) return undefined
+      if (parts[1] === 'attach') return { kind: 'terminal-attach', terminalId }
+      if (parts[1] === 'input') return { kind: 'terminal-input', terminalId }
+      if (parts[1] === 'rename') return { kind: 'terminal-rename', terminalId }
+      if (parts[1] === 'close') return { kind: 'terminal-close', terminalId }
+    }
+    return undefined
   }
 
   if (pathname.startsWith(SESSION_PREFIX)) {

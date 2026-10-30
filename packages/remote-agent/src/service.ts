@@ -1,8 +1,9 @@
 /**
- * Remote-agent service: the read-only projection over one DSH host.
+ * Remote-agent service: projection and auxiliary services over one DSH host.
  *
- * Route handling lives in `http.ts`; this module owns state, discovery, and
- * the workspace/session snapshots so the HTTP layer stays a thin transport.
+ * Route handling lives in `http.ts`; this module owns state, discovery, the
+ * workspace/session snapshots, remote file access, and PTY terminals so the
+ * HTTP layer stays a thin transport.
  *
  * @module dsh-remote-agent/service
  */
@@ -62,6 +63,7 @@ import {
 import { AsyncQueue } from './queue.ts'
 import { followLiveSession } from './stream.ts'
 import { AGENT_VERSION, resolveDshVersion } from './version.ts'
+import { RemoteTerminalManager } from './terminal.ts'
 
 /** One page size used when a backend cannot report its event count. */
 const COLD_SCAN_PAGE = 500
@@ -81,6 +83,7 @@ export class RemoteAgentService {
   readonly token: string
   readonly startedAt: string
   readonly dshVersion: string
+  readonly terminals = new RemoteTerminalManager()
 
   #state: AgentState
   readonly #approvalEvents = new EventEmitter()
@@ -156,6 +159,13 @@ export class RemoteAgentService {
         'approval.follow',
         'approval.answer',
         'web.url',
+        'file.stat',
+        'file.list',
+        'file.read',
+        'file.bytes',
+        'file.watch',
+        'directory.list',
+        'terminal',
       ],
       workspaceCount: this.ctx.workspaceRegistry.list().length,
       modelBaseUrl: process.env.DEEPSEEK_BASE_URL ?? null,
@@ -577,6 +587,7 @@ export class RemoteAgentService {
 
   /** Publish the final state and wait for it to reach disk. */
   async dispose(): Promise<void> {
+    this.terminals.dispose()
     try {
       this.#state = withStopped(this.#state)
       await writeState(this.config.stateFile, this.#state)
