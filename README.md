@@ -30,15 +30,16 @@ This plugin is developed for the **official DSH Desktop application**. Supported
 |---|---|
 | [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3), [**0.2.1-rc.4**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.4), [**0.2.1-rc.5**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.5) (all tested) |
 | Plugin | [**0.8.15**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
-| Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) (provisioning default) or [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3) |
+| Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) (provisioning default) through [**0.2.1-rc.5**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.5) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
 
 Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and DSH versions outside
 `0.2.1-rc.2` through `0.2.1-rc.5` have **not** been tested. The package's dependency range is intentionally
 permissive for installation, but it is not a compatibility or support guarantee. The desktop client is
-tested on all four versions; the remote runtime is still provisioned at `0.2.1-rc.2` by default and accepts
-`0.2.1-rc.3` through the same plugin API.
+tested on all four versions; the remote runtime is still provisioned at `0.2.1-rc.2` by default and
+supports `0.2.1-rc.3` through `0.2.1-rc.5` through the same agent API. `0.2.1-rc.5` was also verified
+end-to-end against a real remote host, including file and terminal operations.
 
 ## What works now
 
