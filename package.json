@@ -13,7 +13,8 @@
     "test": "pnpm -r --workspace-concurrency=1 test",
     "verify": "pnpm build && pnpm test",
     "clean": "node scripts/clean.mjs",
-    "release:plugin": "node scripts/release-plugin.mjs"
+    "release:plugin": "node scripts/release-plugin.mjs",
+    "test:e2e": "pnpm build && node scripts/package-agent.mjs && node scripts/release-plugin.mjs && playwright test"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
@@ -29,6 +30,8 @@
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
     "@deepseek-ai/dsh-workspace": "0.2.1-rc.2",
     "@deepseek-ai/schemastery": "3.18.5",
+    "@dsh-remote/testkit": "workspace:*",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^24.10.0",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",

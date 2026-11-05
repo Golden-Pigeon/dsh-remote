@@ -208,6 +208,21 @@ async function dispatch(
       const localSessionId = await mirrors?.ensureRemoteSession(hostId, created.sessionId)
       return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
     }
+    case 'host/session/blank': {
+      if (mirrors === undefined) throw new LocalError('agent/unavailable', 'remote mirror service is unavailable')
+      const body = requireRecord(payload)
+      return mirrors.startBlankSession(requireStringField(body, 'hostId'), {
+        ...optionalStringField(body, 'localWorkspaceId') === undefined
+          ? {}
+          : { localWorkspaceId: optionalStringField(body, 'localWorkspaceId') },
+        ...optionalStringField(body, 'workspaceId') === undefined
+          ? {}
+          : { workspaceId: optionalStringField(body, 'workspaceId') },
+        ...optionalStringField(body, 'agentPreset') === undefined
+          ? {}
+          : { agentPreset: optionalStringField(body, 'agentPreset') },
+      })
+    }
     case 'host/session/prompt': {
       const body = requireRecord(payload)
       const mode = optionalStringField(body, 'mode')

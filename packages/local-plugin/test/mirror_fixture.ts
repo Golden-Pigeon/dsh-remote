@@ -59,6 +59,7 @@ function session(id: string, meta: Record<string, unknown>, seed: Snapshot['even
       createdAt: meta.createdAt ?? Date.now(),
       cwd: meta.cwd,
       isSeeded: false,
+      ...meta.agentPreset === undefined ? {} : { agentPreset: meta.agentPreset },
       ...meta.parentSession === undefined ? {} : { parentSession: meta.parentSession },
       ...meta.origin === undefined ? {} : { origin: meta.origin },
     },
@@ -82,6 +83,9 @@ export function harness() {
   const sessions = new Map<string, FakeSession>()
   const liveAgents = new Map<string, FixtureAgent>()
   const selections: unknown[] = []
+  const remoteCreates: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
+  const prompts: Array<{ sessionId: string; text: string; selection?: { provider: string; model: string } }> = []
+  let blankRemoteSeq = 0
   const attached: string[] = []
   const archived: string[] = []
   const warnings: string[] = []
@@ -157,6 +161,22 @@ export function harness() {
     async *followAssistantFrames() {},
     async setSandboxMode() {},
     async selectModel(_host: string, _session: string, selection: unknown) { selections.push(selection) },
+    async createSession(_host: string, request: { workspaceId?: string; cwd?: string; agentPreset?: string }) {
+      remoteCreates.push(request)
+      blankRemoteSeq += 1
+      const id = `session-local-blank-${blankRemoteSeq}`
+      remote = [...remote, {
+        sessionId: id, workspaceId: request.workspaceId ?? 'remote-workspace',
+        cwd: request.cwd ?? '/srv/project', createdAt: new Date().toISOString(),
+        live: true, eventCount: 0,
+      }]
+      snapshots.set(id, { cursor: 0, live: true, truncated: false, events: [] })
+      return { sessionId: id, ...request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset } }
+    },
+    async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
+      prompts.push({ sessionId, text, ...selection === undefined ? {} : { selection } })
+      return { accepted: true }
+    },
   } as unknown as RemoteHostsService
 
   const config = {
@@ -167,12 +187,16 @@ export function harness() {
   } as unknown as ResolvedConfig
 
   const service = new RemoteMirrorService(ctx, hosts, config)
+  const newService = (): RemoteMirrorService => new RemoteMirrorService(ctx, hosts, config)
 
   return {
     service,
+    newService,
     ctx,
     liveAgents,
     selections,
+    remoteCreates,
+    prompts,
     stateDir,
     sessions,
     attached,
