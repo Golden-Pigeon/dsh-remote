@@ -15,7 +15,7 @@ describe('installer options', () => {
     assert.equal(options.profile, 'web')
     assert.equal(options.port, 0)
     assert.equal(options.start, 'systemd')
-    assert.equal(options.dshVersion, '0.2.1-rc.2')
+    assert.equal(options.dshVersion, '0.2.2-rc.1')
     assert.equal(options.nodeVersion, '22.19.0')
     assert.equal(options.autoInstallNode, true)
     assert.equal(options.strictHostKeyChecking, 'accept-new')

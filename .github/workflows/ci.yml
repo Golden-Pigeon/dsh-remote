@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        dsh: ['0.2.1-rc.2', '0.2.1-rc.3']
+        dsh: ['0.2.1-rc.5', '0.2.2-rc.1']
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +30,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Select DSH compatibility target
-        if: matrix.dsh != '0.2.1-rc.2'
+        if: matrix.dsh != '0.2.2-rc.1'
         run: |
           node scripts/select_dsh_version.mjs '${{ matrix.dsh }}'
           pnpm install --no-frozen-lockfile

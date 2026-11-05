@@ -113,7 +113,7 @@ export function createFixtures(hostId = 'fake-host'): Fixtures {
     hostname: 'fake-remote',
     platform: 'linux',
     arch: 'x64',
-    dshVersion: '0.2.1-rc.2',
+    dshVersion: '0.2.2-rc.1',
     agentVersion: '0.1.0',
     home: '/home/fake',
     startedAt: new Date(t0).toISOString(),

@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { createScope, scopeTarget, type Scope } from '@deepseek-ai/dsh-scope'
 import type {} from '@deepseek-ai/dsh-user-approval'
-import type {} from '@deepseek-ai/dsh-agent'
+import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { Workspace, WorkspaceId, WorkspaceDomainState } from '@deepseek-ai/dsh-workspace'
@@ -116,6 +116,8 @@ interface MirrorRuntime {
   pendingUsers: PendingUser[]
   waiters: Array<() => void>
 }
+
+type ReasoningEffort = NonNullable<ModelSelection['reasoningEffort']>
 
 interface MirrorModelSelection {
   provider: string
@@ -283,7 +285,7 @@ class RemoteMirrorAgent implements MirrorAgent {
       this.session.append('model/selection', {
         provider: selection.provider,
         model: selection.model,
-        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as ReasoningEffort },
       })
     },
   }
@@ -363,7 +365,7 @@ class LazyRemoteMirrorAgent implements MirrorAgent {
       this.session.append('model/selection', {
         provider: selection.provider,
         model: selection.model,
-        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as ReasoningEffort },
       })
     },
   }
@@ -1143,7 +1145,7 @@ export class RemoteMirrorService {
       runtime.session.append('model/selection', {
         provider: selection.provider,
         model: selection.model,
-        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as ReasoningEffort },
       })
       Object.assign(runtime.agent.options, selection)
     }

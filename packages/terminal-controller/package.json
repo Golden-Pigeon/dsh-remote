@@ -41,7 +41,7 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-api-terminal-controller": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-api-terminal-controller": "0.2.2-rc.1"
   },
   "repository": {
     "type": "git",
