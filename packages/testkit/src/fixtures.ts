@@ -105,6 +105,8 @@ export function createFixtures(hostId = 'fake-host'): Fixtures {
     'session.snapshot',
     'session.follow',
     'web.url',
+    'directory.list',
+    'file.watch',
   ]
   const hostInfo: HostInfo = {
     hostId,

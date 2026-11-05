@@ -58,7 +58,7 @@ export interface HostsApi {
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly startBlankSession: (hostId: string, input: { localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }) => Promise<{ localSessionId: string }>
-  readonly claimOpenSession: () => Promise<{ localSessionId?: string }>
+  readonly claimOpenSession: () => Promise<{ localSessionId?: string; sourceSessionId?: string }>
   readonly openSession: (sessionId: string) => void
   readonly fileList: (sessionId: string, path: string, signal?: AbortSignal) => Promise<MirrorFileResult>
   readonly fileRead: (sessionId: string, path: string, offset?: number, limit?: number, signal?: AbortSignal) => Promise<MirrorFileResult>

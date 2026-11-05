@@ -62,7 +62,13 @@ export class FakeRemoteHost {
   readonly hostId: string
   readonly requests: FakeRequest[] = []
   readonly createRequests: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
-  readonly promptRequests: Array<{ sessionId: string; text: string; provider?: string; model?: string; reasoningEffort?: string }> = []
+  readonly promptRequests: Array<{ sessionId: string; text: string; provider?: string; model?: string; reasoningEffort?: string; content?: unknown }> = []
+  /** Fail the next session creation with an API error. */
+  failNextCreate = false
+  /** Fail the next accepted prompt with an API error. */
+  failNextPrompt = false
+  /** Fail one prompt whose text exactly matches this value. */
+  failPromptText: string | undefined
 
   readonly #protocolVersion: number
   readonly #fixtures: Fixtures
@@ -177,6 +183,10 @@ export class FakeRemoteHost {
             return
           }
           case 'sessions': {
+            if (this.failNextCreate) {
+              this.failNextCreate = false
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'forced create failure' })
+            }
             const record = body as { workspaceId?: unknown; cwd?: unknown; agentPreset?: unknown }
             this.createRequests.push({
               ...typeof record.workspaceId === 'string' ? { workspaceId: record.workspaceId } : {},
@@ -197,9 +207,14 @@ export class FakeRemoteHost {
             return
           }
           case 'session-prompt': {
-            const record = body as { text?: unknown; provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+            const record = body as { text?: unknown; provider?: unknown; model?: unknown; reasoningEffort?: unknown; content?: unknown }
             if (typeof record.text !== 'string' || record.text.trim() === '') {
               throw new RemoteProtocolError({ code: 'request/invalid', message: 'text is required' })
+            }
+            if (this.failNextPrompt || this.failPromptText === record.text) {
+              this.failNextPrompt = false
+              this.failPromptText = undefined
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'forced prompt failure' })
             }
             const session = this.#getSession(route.sessionId)
             this.promptRequests.push({
@@ -208,6 +223,7 @@ export class FakeRemoteHost {
               ...typeof record.provider === 'string' ? { provider: record.provider } : {},
               ...typeof record.model === 'string' ? { model: record.model } : {},
               ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
+              ...record.content === undefined ? {} : { content: record.content },
             })
             const time = Date.now()
             const userSeq = session.events.length
@@ -237,6 +253,19 @@ export class FakeRemoteHost {
         case 'workspaces':
           sendJson(res, { workspaces: this.#fixtures.workspaces })
           return
+        case 'directory-list': {
+          const requested = url.searchParams.get('path') ?? '~'
+          const base = requested === '~' ? '/home/tester' : requested.replace(/\/+$/u, '')
+          sendJson(res, {
+            path: base,
+            parent: base === '/home/tester' ? '/home' : '/home/tester',
+            entries: base === '/home/tester'
+              ? [{ name: 'project', path: '/home/tester/project' }]
+              : [],
+            truncated: false,
+          })
+          return
+        }
         case 'sessions': {
           const sessions = [...this.#sessions.values()].map(summarize)
           sendJson(res, { sessions })

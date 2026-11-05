@@ -29,6 +29,9 @@ export function apply(ctx: Context): void {
   ctx.effect(() => locale.register(NS, { zh, en }), 'dsh-remote: locale dictionaries')
   const t = locale.bind(NS)
   ctx.effect(() => {
+    // DSH compatibility note: uiWorkspace.mainReference is private. Replace
+    // this focus guard when DSH exposes a public current-session API.
+    const workspace = (ctx as unknown as { uiWorkspace?: { mainReference?: { sessionId?: string } } }).uiWorkspace
     const schedule = globalThis.setTimeout
     if (typeof schedule !== 'function') return () => {}
     let active = true
@@ -37,7 +40,14 @@ export function apply(ctx: Context): void {
       if (!active) return
       try {
         const claimed = await api.claimOpenSession()
-        if (active && claimed.localSessionId !== undefined) api.openSession(claimed.localSessionId)
+        if (active && claimed.localSessionId !== undefined) {
+          // Do not steal focus if the user moved on to another Session while
+          // the remote Session was being created.
+          const current = workspace?.mainReference?.sessionId
+          if (claimed.sourceSessionId === undefined || current === undefined || current === claimed.sourceSessionId) {
+            api.openSession(claimed.localSessionId)
+          }
+        }
       } catch {
         // A later poll retries after the host reconnects.
       }

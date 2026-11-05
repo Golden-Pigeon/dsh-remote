@@ -86,6 +86,9 @@ export function harness() {
   const remoteCreates: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
   const prompts: Array<{ sessionId: string; text: string; selection?: { provider: string; model: string } }> = []
   let blankRemoteSeq = 0
+  let failPrompt = false
+  let failEnter = false
+  let createdPreset: string | undefined
   const attached: string[] = []
   const archived: string[] = []
   const warnings: string[] = []
@@ -126,6 +129,7 @@ export function harness() {
 
   const agents = {
     enter(agent: FixtureAgent) {
+      if (failEnter) throw new Error('agent registration failed')
       if (liveAgents.has(agent.id)) throw new Error('agent already registered')
       liveAgents.set(agent.id, agent)
       return () => { liveAgents.delete(agent.id) }
@@ -136,7 +140,7 @@ export function harness() {
   ctx.provide('agents', agents as never)
   ctx.logger.warn = (message: unknown, ...args: unknown[]) => { warnings.push([message, ...args].map(String).join(' ')) }
 
-  const host = { id: 'host-test', label: 'Test host', phase: 'connected' }
+  const host: { id: string; label: string; phase: 'connected' | 'disconnected' } = { id: 'host-test', label: 'Test host', phase: 'connected' }
   const workspace = { workspaceId: 'remote-workspace', path: '/srv/project', title: 'project' }
   let remote: Summary[] = []
   const snapshots = new Map<string, Snapshot>()
@@ -171,9 +175,11 @@ export function harness() {
         live: true, eventCount: 0,
       }]
       snapshots.set(id, { cursor: 0, live: true, truncated: false, events: [] })
-      return { sessionId: id, ...request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset } }
+      const preset = createdPreset ?? request.agentPreset
+      return { sessionId: id, ...preset === undefined ? {} : { agentPreset: preset } }
     },
     async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
+      if (failPrompt) throw new Error('remote prompt failed')
       prompts.push({ sessionId, text, ...selection === undefined ? {} : { selection } })
       return { accepted: true }
     },
@@ -203,6 +209,10 @@ export function harness() {
     archived,
     warnings,
     setRemote(next: Summary[]) { remote = next },
+    setFailPrompt(value: boolean) { failPrompt = value },
+    setFailEnter(value: boolean) { failEnter = value },
+    setHostPhase(value: 'connected' | 'disconnected') { host.phase = value },
+    setCreatedPreset(value: string | undefined) { createdPreset = value },
     setSnapshot(id: string, snapshot: Snapshot) { snapshots.set(id, snapshot) },
     async state(): Promise<{ sessions: Record<string, { remoteSessionId: string; localSessionId: string; parentSessionId?: string }> }> {
       return JSON.parse(await readFile(join(stateDir, 'mirrors.json'), 'utf8'))

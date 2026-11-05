@@ -143,6 +143,15 @@ interface MirrorAgent {
   inject(message: unknown): void
 }
 
+/** In-flight promotion state for a native draft, retained across a failed retry. */
+interface PromotionState {
+  readonly hostId: string
+  readonly remoteWorkspaceId: string
+  remoteSessionId?: string
+  mirrorLocalId?: string
+  readonly sentMessageIds: Set<string>
+}
+
 /** A locally-created blank Session whose remote counterpart is created on the first prompt. */
 interface PendingBlankSession {
   readonly hostId: string
@@ -454,7 +463,8 @@ export class RemoteMirrorService {
   #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
   #pendingBlanks = new Map<string, PendingBlankSession>()
   #pendingDisposedOff: (() => void) | undefined
-  #openSessionId: string | undefined
+  #openSessions: Array<{ localSessionId: string; sourceSessionId?: string; expiresAt: number }> = []
+  #promotions = new Map<string, PromotionState>()
   #blankInFlight = new Map<string, Promise<{ localSessionId: string }>>()
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
@@ -498,7 +508,9 @@ export class RemoteMirrorService {
     this.#pendingWorkspaceDeletion = pending?.operation === 'delete' ? pending.workspaceId : undefined
     this.#workspaceOff.push(this.#ctx.on('dsh-remote/workspace-added', (hostId, workspace) =>
       this.#restoreWorkspace(hostId, workspace)))
-    const offCreated = this.#ctx.on('agent/created' as never, (async ({ agent }: { agent: { id: string } }) => {
+    const offCreated = this.#ctx.on('agent/created' as never, (async ({ agent }: {
+      agent: { id: SessionId; session: Session; ctx: Context }
+    }) => {
       // A resume must wait for persisted ownership before native queued work can be released.
       await loaded
       const mirrored = Object.values(this.#state.sessions).some(record => record.localSessionId === agent.id)
@@ -508,30 +520,42 @@ export class RemoteMirrorService {
       }
     }) as never, { global: true, prepend: true } as never)
     const offDisposed = this.#ctx.on('agent/disposed' as never, ((agent: { id: SessionId }) => {
+      this.#promotions.delete(String(agent.id))
       if (this.#disposed || !this.#pendingBlanks.has(String(agent.id))) return
       this.#pendingBlanks.delete(String(agent.id))
       this.#registrations.delete(String(agent.id))
     }) as never, { global: true } as never)
-    const offPreStep = this.#ctx.on('agent/pre-step' as never, (async (payload: {
+    const offPreStep = this.#ctx.root.on('agent/pre-step' as never, (async (payload: {
       agent: { id: SessionId; session: Session }
       messages: unknown[]
       turn: number
       step: number
       signal: AbortSignal
     }, next: () => Promise<{ kind: string }>) => {
-      if (payload.turn !== 1 || payload.step !== 1) return next()
       const agent = payload.agent
       if (agent instanceof RemoteMirrorAgent || agent instanceof LazyRemoteMirrorAgent) return next()
-      const target = this.#mirroredWorkspaceFor(agent.session)
-      if (target === undefined) return next()
+      if (agent.session.header.parentSession !== undefined) return next()
+      const retry = this.#promotions.has(String(agent.id))
+      if (!retry && (payload.turn !== 1 || payload.step !== 1)) return next()
+      const userMessages = payload.messages.filter(isUserPromptMessage)
+      if (userMessages.length === 0) {
+        if (retry) throw new Error('remote promotion retry has no user prompt')
+        return next()
+      }
       try {
-        await this.#promoteNativeDraft(agent, payload.messages, target)
+        await loaded
+        const target = this.#mirroredWorkspaceFor(agent.session)
+        if (target === undefined) {
+          if (retry) throw new Error('remote promotion target disappeared')
+          return next()
+        }
+        await this.#promoteNativeDraft(agent, userMessages, target)
         return { kind: 'reject' }
       } catch (error) {
         this.#ctx.logger.warn('dsh-remote-local: could not promote native draft %s: %s', agent.id, String(error))
         throw error
       }
-    }) as never, { global: true, prepend: true } as never)
+    }) as never)
     const offSelection = this.#ctx.on('session/event' as never, ((session: Session, event: SessionEvent) => {
       this.#onLocalSessionEvent(session, event)
     }) as never, { global: true } as never)
@@ -552,7 +576,10 @@ export class RemoteMirrorService {
     for (const off of this.#workspaceOff.splice(0)) off()
     this.#selectionOff?.()
     this.#selectionOff = undefined
-    this.#openSessionId = undefined
+    this.#openSessions = []
+    const unfinishedPromotions = [...this.#promotions.keys()]
+    this.#promotions.clear()
+    for (const sessionId of unfinishedPromotions) await this.#archive(sessionId as SessionId)
     for (const runtime of this.#runtimes.values()) {
       runtime.stopped = true
       if (runtime.timer !== undefined) clearTimeout(runtime.timer)
@@ -602,11 +629,26 @@ export class RemoteMirrorService {
     return undefined
   }
 
-  /** Consume the mirror Session that should be opened after promotion. */
+  /** Consume one mirror Session that should be revealed after promotion. */
+  takeOpenSession(): { localSessionId?: string; sourceSessionId?: string } {
+    const now = Date.now()
+    while (this.#openSessions.length > 0 && (this.#openSessions[0]?.expiresAt ?? 0) <= now) this.#openSessions.shift()
+    const claim = this.#openSessions.shift()
+    return claim === undefined
+      ? {}
+      : { localSessionId: claim.localSessionId, ...claim.sourceSessionId === undefined ? {} : { sourceSessionId: claim.sourceSessionId } }
+  }
+
+  /** Consume only the mirror id, retained for small unit tests. */
   takeOpenSessionId(): string | undefined {
-    const id = this.#openSessionId
-    this.#openSessionId = undefined
-    return id
+    return this.takeOpenSession().localSessionId
+  }
+
+  #queueOpenSession(localSessionId: string, sourceSessionId: string): void {
+    const now = Date.now()
+    this.#openSessions = this.#openSessions.filter(claim => claim.expiresAt > now)
+    this.#openSessions.push({ localSessionId, sourceSessionId, expiresAt: now + 60_000 })
+    if (this.#openSessions.length > 8) this.#openSessions.splice(0, this.#openSessions.length - 8)
   }
 
   /** Local workspace ids that represent remote workspaces. */
@@ -811,8 +853,16 @@ export class RemoteMirrorService {
   /** Route one prompt from the local Agent façade to the remote session. */
   prompt(runtime: MirrorRuntime, message: unknown, mode: PromptDeliveryMode): void {
     if (this.#detached(runtime)) return
-    const parts = promptParts(message)
-    if (parts.length === 0) return
+    if (promptParts(message).length === 0) return
+    void this.#sendPrompt(runtime, message, mode).catch(error => {
+      this.#reportPromptError(runtime, error)
+    })
+  }
+
+  /** Awaitable prompt used by promotion, which must not archive before acceptance. */
+  async #sendPrompt(runtime: MirrorRuntime, message: unknown, mode: PromptDeliveryMode): Promise<void> {
+    if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
+    if (promptParts(message).length === 0) throw new Error('prompt has no content')
     const pending: PendingUser = { message, localSeq: -1 }
     runtime.pendingUsers.push(pending)
     if (!runtime.running) {
@@ -829,9 +879,10 @@ export class RemoteMirrorService {
     }
     const selection = this.selectionFor(runtime)
     if (selection !== undefined) Object.assign(runtime.agent.options, selection)
-    void this.#promptContent(message).then(({ text, content }) => {
-      if (this.#detached(runtime)) return
-      return this.#hosts.promptSession(
+    try {
+      const { text, content } = await this.#promptContent(message)
+      if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
+      await this.#hosts.promptSession(
         runtime.record.hostId,
         runtime.record.remoteSessionId,
         text,
@@ -839,9 +890,8 @@ export class RemoteMirrorService {
         selection,
         content,
       )
-    }).then(() => {
-      if (this.#detached(runtime)) return
-      if (!runtime.pendingUsers.includes(pending)) return
+      if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
+      if (!runtime.pendingUsers.includes(pending)) throw new Error('prompt was cancelled')
       const before = (runtime.session as unknown as { seq: number }).seq
       try {
         runtime.session.append('user/message', messageData(message) as never, { surfaceOp: 'append' } as never)
@@ -851,22 +901,27 @@ export class RemoteMirrorService {
       } catch (error) {
         this.#ctx.logger.warn('dsh-remote-local: could not append accepted user message: %s', String(error))
       }
-    }).catch(error => {
+    } catch (error) {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       const index = runtime.pendingUsers.indexOf(pending)
       if (index >= 0) runtime.pendingUsers.splice(index, 1)
-      this.#ctx.logger.warn('dsh-remote-local: remote prompt failed: %s', runtime.lastError)
-      try {
-        const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
-        emit.call(this.#ctx, 'agent/error', {
-          agent: runtime.agent,
-          error: error instanceof Error ? error : new Error(String(error)),
-        })
-      } catch (emitError) {
-        this.#ctx.logger.warn('dsh-remote-local: prompt error notification failed: %s', String(emitError))
-      }
       this.#setRunning(runtime, false)
-    })
+      throw error
+    }
+  }
+
+  #reportPromptError(runtime: MirrorRuntime, error: unknown): void {
+    runtime.lastError = error instanceof Error ? error.message : String(error)
+    this.#ctx.logger.warn('dsh-remote-local: remote prompt failed: %s', runtime.lastError)
+    try {
+      const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
+      emit.call(this.#ctx, 'agent/error', {
+        agent: runtime.agent,
+        error: error instanceof Error ? error : new Error(String(error)),
+      })
+    } catch (emitError) {
+      this.#ctx.logger.warn('dsh-remote-local: prompt error notification failed: %s', String(emitError))
+    }
   }
 
   async #promptContent(message: unknown): Promise<{ text: string; content: PromptContentPart[] }> {
@@ -940,10 +995,17 @@ export class RemoteMirrorService {
     if (record === undefined || record.localWorkspaceId === undefined || record.remoteWorkspaceId === null) {
       throw new Error('mirrored workspace is not available')
     }
+    const requestedPreset = request.agentPreset
+    for (const pending of this.#pendingBlanks.values()) {
+      if (pending.hostId !== hostId || pending.localWorkspaceId !== record.localWorkspaceId) continue
+      if (pending.materializing !== undefined || pending.delegate !== undefined || pending.remoteSessionId !== undefined) continue
+      if (requestedPreset !== undefined && this.#agentPresetFor(pending.session) !== requestedPreset) continue
+      return { localSessionId: pending.localSessionId }
+    }
     return singleFlight(
       this.#blankInFlight,
       `${hostId}:${record.localWorkspaceId}`,
-      () => this.#createBlankSession(host, record, request.agentPreset),
+      () => this.#createBlankSession(host, record, requestedPreset),
     )
   }
 
@@ -985,21 +1047,46 @@ export class RemoteMirrorService {
     } as PendingBlankSession
     const agent = new LazyRemoteMirrorAgent(this, pending, this.#ctx, options)
     pending.agent = agent
-    const detach = this.#agents.enter(agent as never, undefined)
-    this.#registrations.set(localId, async () => { detach() })
-    this.#pendingBlanks.set(localId, pending)
-    await this.#save()
-    return { localSessionId: localId }
+    try {
+      const detach = this.#agents.enter(agent as never, undefined)
+      this.#registrations.set(localId, async () => { detach() })
+      this.#pendingBlanks.set(localId, pending)
+      await this.#save()
+      return { localSessionId: localId }
+    } catch (error) {
+      const dispose = this.#registrations.get(localId)
+      this.#registrations.delete(localId)
+      this.#pendingBlanks.delete(localId)
+      if (dispose !== undefined) {
+        try {
+          await dispose()
+        } catch (disposeError) {
+          this.#ctx.logger.debug('dsh-remote-local: blank rollback detach failed: %s', String(disposeError))
+        }
+      }
+      await this.#archive(session.id)
+      throw error
+    }
   }
 
   /** Resolve the mirrored workspace containing a native draft Session. */
   #mirroredWorkspaceFor(session: Session): WorkspaceRecord | undefined {
     const cwd = session.header.cwd
     if (typeof cwd !== 'string') return undefined
-    const root = canonicalPath(cwd)
+    let root: string
+    try {
+      root = canonicalPath(cwd)
+    } catch {
+      return undefined
+    }
     return Object.values(this.#state.workspaces).find(record => {
       if (record.remoteWorkspaceId === null || record.localWorkspaceId === undefined || this.#workspaceRemoved(record)) return false
-      const anchor = canonicalPath(record.anchor)
+      let anchor: string
+      try {
+        anchor = canonicalPath(record.anchor)
+      } catch {
+        return false
+      }
       return root === anchor || root.startsWith(`${anchor}/`)
     })
   }
@@ -1010,29 +1097,45 @@ export class RemoteMirrorService {
     messages: readonly unknown[],
     target: WorkspaceRecord,
   ): Promise<void> {
+    if (target.remoteWorkspaceId === null || target.localWorkspaceId === undefined) throw new Error('mirrored workspace is unavailable')
+    const promotionKey = String(agent.id)
+    let promotion = this.#promotions.get(promotionKey)
+    if (promotion === undefined) {
+      promotion = { hostId: target.hostId, remoteWorkspaceId: target.remoteWorkspaceId, sentMessageIds: new Set() }
+      this.#promotions.set(promotionKey, promotion)
+    } else if (promotion.hostId !== target.hostId || promotion.remoteWorkspaceId !== target.remoteWorkspaceId) {
+      throw new Error('remote promotion target changed')
+    }
     const host = this.#hosts.list().find(item => item.id === target.hostId && item.phase === 'connected')
     if (host === undefined) throw new Error('remote host is not connected')
-    if (target.remoteWorkspaceId === null || target.localWorkspaceId === undefined) throw new Error('mirrored workspace is unavailable')
     const workspace = this.#workspaceRegistry.get(target.localWorkspaceId as WorkspaceId)
     if (workspace === undefined) throw new Error('mirrored workspace is not attached')
-    const preset = this.#agentPresetFor(agent.session)
-    const created = await this.#hosts.createSession(target.hostId, {
-      workspaceId: target.remoteWorkspaceId,
-      ...preset === undefined ? {} : { agentPreset: preset },
-    })
-    if (preset !== undefined && created.agentPreset !== preset) {
-      throw new Error(`remote agent selected preset ${created.agentPreset ?? 'unknown'}, expected ${preset}`)
+    if (promotion.remoteSessionId === undefined) {
+      const preset = this.#agentPresetFor(agent.session)
+      const created = await this.#hosts.createSession(target.hostId, {
+        workspaceId: target.remoteWorkspaceId,
+        ...preset === undefined ? {} : { agentPreset: preset },
+      })
+      if (preset !== undefined && created.agentPreset !== preset) {
+        throw new Error(`remote agent selected preset ${created.agentPreset ?? 'unknown'}, expected ${preset}`)
+      }
+      promotion.remoteSessionId = created.sessionId
     }
+    const remoteSessionId = promotion.remoteSessionId
     const summary: RemoteSessionSummary = {
-      sessionId: created.sessionId,
+      sessionId: remoteSessionId,
       workspaceId: target.remoteWorkspaceId,
       cwd: target.remoteRoot ?? target.anchor,
       createdAt: new Date().toISOString(),
       live: true,
       eventCount: 0,
     }
+    // The remote protocol has no delete-session route. If mirror creation
+    // fails after createSession, the empty remote Session remains and the next
+    // sync may adopt it; the native draft is intentionally left intact.
     const record = await this.#ensureMirror(host, summary, { workspace, anchor: target.anchor })
     if (record === undefined) throw new Error('could not create the remote mirror')
+    promotion.mirrorLocalId = record.localSessionId
     const runtime = this.#runtimes.get(record.localSessionId)
     if (runtime === undefined) throw new Error('remote mirror Agent is unavailable')
     const selection = this.selectionForBlank(agent.session)
@@ -1044,12 +1147,14 @@ export class RemoteMirrorService {
       })
       Object.assign(runtime.agent.options, selection)
     }
-    const message = messages.find(candidate =>
-      typeof candidate === 'object' && candidate !== null
-      && (candidate as { role?: unknown }).role === 'user') ?? messages[0]
-    if (message === undefined) throw new Error('prompt message is unavailable')
-    this.prompt(runtime, message, 'queue')
-    this.#openSessionId = record.localSessionId
+    for (const message of messages) {
+      const id = messageIdentityOf(message)
+      if (id !== undefined && promotion.sentMessageIds.has(id)) continue
+      await this.#sendPrompt(runtime, message, 'queue')
+      if (id !== undefined) promotion.sentMessageIds.add(id)
+    }
+    this.#promotions.delete(promotionKey)
+    this.#queueOpenSession(record.localSessionId, promotionKey)
     setTimeout(() => { void this.#archive(agent.id) }, 0)
   }
 
@@ -2150,8 +2255,9 @@ export class RemoteMirrorService {
   async #archive(sessionId: SessionId): Promise<void> {
     try {
       await this.#workspaceRegistry.archiveSession(sessionId, { stopActivity: true })
-    } catch {
+    } catch (error) {
       // Missing/active sessions are left alone; the new mirror is still usable.
+      this.#ctx.logger.debug('dsh-remote-local: archive %s failed: %s', sessionId, String(error))
     }
   }
 
@@ -2353,6 +2459,21 @@ function latestRemoteSandboxMode(events: readonly RemoteSessionEvent[]): 'read-o
     if (mode === 'read-only' || mode === 'workspace-write' || mode === 'danger-full-access') return mode
   }
   return undefined
+}
+
+function messageIdentityOf(message: unknown): string | undefined {
+  if (typeof message !== 'object' || message === null) return undefined
+  const id = (message as { id?: unknown }).id
+  return typeof id === 'string' && id !== '' ? id : undefined
+}
+
+function isUserPromptMessage(message: unknown): boolean {
+  if (typeof message !== 'object' || message === null) return false
+  const record = message as { role?: unknown; source?: unknown }
+  if (record.role !== 'user') return false
+  if (record.source === undefined) return true
+  return typeof record.source === 'object' && record.source !== null
+    && (record.source as { kind?: unknown }).kind === 'user'
 }
 
 function promptParts(message: unknown): Array<{ type: 'text'; text: string } | { type: 'image'; attachment: unknown; name?: string }> {

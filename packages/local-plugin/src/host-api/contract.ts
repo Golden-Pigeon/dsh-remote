@@ -192,7 +192,7 @@ export interface HostApiValues {
   'host/sessions': SessionsResult
   'host/session': SessionSnapshot
   'host/session/create': HostCreateSessionResult
-  'host/session/open/claim': { localSessionId?: string }
+  'host/session/open/claim': { localSessionId?: string; sourceSessionId?: string }
   'host/session/blank': { localSessionId: string }
   'host/session/prompt': AcceptedResult
   'host/session/cancel': AcceptedResult

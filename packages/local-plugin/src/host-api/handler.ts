@@ -209,8 +209,7 @@ async function dispatch(
       return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
     }
     case 'host/session/open/claim': {
-      const localSessionId = mirrors?.takeOpenSessionId()
-      return localSessionId === undefined ? {} : { localSessionId }
+      return mirrors?.takeOpenSession() ?? {}
     }
     case 'host/session/blank': {
       if (mirrors === undefined) throw new LocalError('agent/unavailable', 'remote mirror service is unavailable')

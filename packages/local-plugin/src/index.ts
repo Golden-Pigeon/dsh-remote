@@ -22,7 +22,7 @@ import { installRemoteToolGuards, registerRemoteTools } from './tools.ts'
 export const name = 'dsh-remote-local'
 
 /** Connection owns the authenticated `/api` carrier; credentials stay local. */
-export const inject = ['connection', 'credentials']
+export const inject = ['connection', 'credentials', 'workspaceRegistry', 'agents', 'sessions']
 
 export { Config }
 export type { LocalConfig }

@@ -20,6 +20,7 @@ export interface E2EHost {
   readonly logPath: string
   readonly browser: Browser
   readonly page: Page
+  readonly restart: () => Promise<string>
   readonly close: () => Promise<void>
 }
 
@@ -139,6 +140,17 @@ export async function startE2EHost(): Promise<E2EHost> {
       logPath,
       browser,
       page,
+      async restart() {
+        const previous = child
+        previous.kill('SIGTERM')
+        await new Promise(resolveExit => {
+          if (previous.exitCode !== null) return resolveExit()
+          previous.once('exit', resolveExit)
+          setTimeout(resolveExit, 3_000)
+        })
+        child = startHost()
+        return waitForUrl(child)
+      },
       async close() {
         await browser?.close()
         child.kill('SIGTERM')
