@@ -76,8 +76,8 @@ export async function startE2EHost(): Promise<E2EHost> {
   }))
   chmodSync(FAKE_SSH, 0o755)
   install('web', PLUGIN_TARBALL, home)
-  install('web', '@deepseek-ai/dsh-workspace@0.2.1-rc.5', home)
-  install('web', '@deepseek-ai/dsh-api-terminal-controller@0.2.1-rc.5', home)
+  install('web', '@deepseek-ai/dsh-workspace@0.2.2-rc.1', home)
+  install('web', '@deepseek-ai/dsh-api-terminal-controller@0.2.2-rc.1', home)
   execFileSync('pnpm', ['add', join(ROOT, 'packages/terminal-controller')], {
     cwd: join(home, 'profiles', 'web'),
     env: { ...process.env, DSH_HOME: home },
