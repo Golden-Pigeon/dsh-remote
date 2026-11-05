@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.16
+
+- Restore native mode and model selection for new remote sessions. Mirrored
+  workspaces now open a process-local Lazy draft in DSH's native blank surface;
+  the first prompt creates the remote Session and forwards the selected preset,
+  model, and prompt content. Failed promotion retries reuse the same remote
+  Session and never silently fall back to local execution
+  ([#17](https://github.com/Golden-Pigeon/dsh-remote/pull/17)).
+- Keep workspace `+`, global New Session, local-workspace fallback, workspace
+  add/delete, host-disconnected failure, and two-window claim behavior covered by
+  Playwright E2E tests. Add testkit failure controls and fake directory listings
+  ([#17](https://github.com/Golden-Pigeon/dsh-remote/pull/17)).
+
 ## 0.8.15
 
 - Route remote files, directories, and terminals through the remote agent's authenticated APIs
