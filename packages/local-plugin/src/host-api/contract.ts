@@ -44,6 +44,7 @@ export type HostApiEndpoint =
   | 'host/session'
   | 'host/session/create'
   | 'host/session/blank'
+  | 'host/session/open/claim'
   | 'host/session/prompt'
   | 'host/session/cancel'
   | 'host/web-url'
@@ -153,6 +154,7 @@ export interface HostApiPayloads {
   'host/session': { hostId: string; sessionId: string; limit?: number }
   'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
   'host/session/blank': { hostId: string; localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }
+  'host/session/open/claim': undefined
   'host/session/prompt': {
     hostId: string
     sessionId: string
@@ -190,6 +192,7 @@ export interface HostApiValues {
   'host/sessions': SessionsResult
   'host/session': SessionSnapshot
   'host/session/create': HostCreateSessionResult
+  'host/session/open/claim': { localSessionId?: string }
   'host/session/blank': { localSessionId: string }
   'host/session/prompt': AcceptedResult
   'host/session/cancel': AcceptedResult

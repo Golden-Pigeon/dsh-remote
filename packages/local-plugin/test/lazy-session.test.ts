@@ -106,3 +106,37 @@ describe('ephemeral remote drafts', () => {
     }
   })
 })
+
+describe('native draft promotion', () => {
+  it('promotes the first native prompt into a remote mirror without running a local step', async () => {
+    const test = harness()
+    try {
+      await test.service.start()
+      const localWorkspaceId = test.service.localWorkspaceIds()[0]
+      assert.ok(localWorkspaceId)
+      const state = await test.state() as { workspaces: Record<string, { anchor: string }> }
+      const anchor = Object.values(state.workspaces)[0]?.anchor
+      assert.ok(anchor)
+      const sessions = test.ctx.get('sessions') as unknown as {
+        create(id: string, options: { meta: { cwd: string } }): { id: string; header: { cwd: string } }
+      }
+      const native = sessions.create('native-draft', { meta: { cwd: anchor } })
+      const message = { id: 'native-message', role: 'user', content: [{ type: 'text', text: 'promote me' }] }
+      const decision = await test.ctx.waterfall('agent/pre-step' as never, {
+        agent: { id: native.id, session: native },
+        messages: [message],
+        turn: 1,
+        step: 1,
+        signal: new AbortController().signal,
+      } as never, async () => ({ kind: 'enter', messages: [message] }) as never)
+      assert.equal((decision as { kind: string }).kind, 'reject')
+      assert.equal(test.remoteCreates.length, 1)
+      assert.equal(test.prompts.length, 1)
+      assert.equal(test.prompts[0]?.text, 'promote me')
+      assert.ok(test.service.takeOpenSessionId())
+    } finally {
+      await test.service.dispose()
+      await test.ctx.fiber.dispose()
+    }
+  })
+})

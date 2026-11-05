@@ -208,6 +208,10 @@ async function dispatch(
       const localSessionId = await mirrors?.ensureRemoteSession(hostId, created.sessionId)
       return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
     }
+    case 'host/session/open/claim': {
+      const localSessionId = mirrors?.takeOpenSessionId()
+      return localSessionId === undefined ? {} : { localSessionId }
+    }
     case 'host/session/blank': {
       if (mirrors === undefined) throw new LocalError('agent/unavailable', 'remote mirror service is unavailable')
       const body = requireRecord(payload)

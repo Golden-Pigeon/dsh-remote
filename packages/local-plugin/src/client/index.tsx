@@ -28,6 +28,27 @@ export function apply(ctx: Context): void {
   const locale = (ctx as unknown as { locale: LocaleFace }).locale
   ctx.effect(() => locale.register(NS, { zh, en }), 'dsh-remote: locale dictionaries')
   const t = locale.bind(NS)
+  ctx.effect(() => {
+    const schedule = globalThis.setTimeout
+    if (typeof schedule !== 'function') return () => {}
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = async (): Promise<void> => {
+      if (!active) return
+      try {
+        const claimed = await api.claimOpenSession()
+        if (active && claimed.localSessionId !== undefined) api.openSession(claimed.localSessionId)
+      } catch {
+        // A later poll retries after the host reconnects.
+      }
+      if (active) timer = schedule(() => { void poll() }, 500)
+    }
+    void poll()
+    return () => {
+      active = false
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }, 'dsh-remote: reveal promoted draft')
   installNativeWorkspaceRouting(ctx, api, t)
   installWorkspaceAddMenu(ctx, api, t)
   ctx.effect(() => installWorkspaceDeleteCopy(api), 'dsh-remote: mirrored workspace delete copy')

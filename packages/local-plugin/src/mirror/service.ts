@@ -454,6 +454,7 @@ export class RemoteMirrorService {
   #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
   #pendingBlanks = new Map<string, PendingBlankSession>()
   #pendingDisposedOff: (() => void) | undefined
+  #openSessionId: string | undefined
   #blankInFlight = new Map<string, Promise<{ localSessionId: string }>>()
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
@@ -511,10 +512,30 @@ export class RemoteMirrorService {
       this.#pendingBlanks.delete(String(agent.id))
       this.#registrations.delete(String(agent.id))
     }) as never, { global: true } as never)
+    const offPreStep = this.#ctx.on('agent/pre-step' as never, (async (payload: {
+      agent: { id: SessionId; session: Session }
+      messages: unknown[]
+      turn: number
+      step: number
+      signal: AbortSignal
+    }, next: () => Promise<{ kind: string }>) => {
+      if (payload.turn !== 1 || payload.step !== 1) return next()
+      const agent = payload.agent
+      if (agent instanceof RemoteMirrorAgent || agent instanceof LazyRemoteMirrorAgent) return next()
+      const target = this.#mirroredWorkspaceFor(agent.session)
+      if (target === undefined) return next()
+      try {
+        await this.#promoteNativeDraft(agent, payload.messages, target)
+        return { kind: 'reject' }
+      } catch (error) {
+        this.#ctx.logger.warn('dsh-remote-local: could not promote native draft %s: %s', agent.id, String(error))
+        throw error
+      }
+    }) as never, { global: true, prepend: true } as never)
     const offSelection = this.#ctx.on('session/event' as never, ((session: Session, event: SessionEvent) => {
       this.#onLocalSessionEvent(session, event)
     }) as never, { global: true } as never)
-    this.#selectionOff = () => { offSelection(); offCreated(); offDisposed() }
+    this.#selectionOff = () => { offSelection(); offCreated(); offDisposed(); offPreStep() }
     await loaded
     if (this.#disposed) return
     await this.#archiveRemovedSessions()
@@ -531,6 +552,7 @@ export class RemoteMirrorService {
     for (const off of this.#workspaceOff.splice(0)) off()
     this.#selectionOff?.()
     this.#selectionOff = undefined
+    this.#openSessionId = undefined
     for (const runtime of this.#runtimes.values()) {
       runtime.stopped = true
       if (runtime.timer !== undefined) clearTimeout(runtime.timer)
@@ -578,6 +600,13 @@ export class RemoteMirrorService {
       }
     }
     return undefined
+  }
+
+  /** Consume the mirror Session that should be opened after promotion. */
+  takeOpenSessionId(): string | undefined {
+    const id = this.#openSessionId
+    this.#openSessionId = undefined
+    return id
   }
 
   /** Local workspace ids that represent remote workspaces. */
@@ -961,6 +990,67 @@ export class RemoteMirrorService {
     this.#pendingBlanks.set(localId, pending)
     await this.#save()
     return { localSessionId: localId }
+  }
+
+  /** Resolve the mirrored workspace containing a native draft Session. */
+  #mirroredWorkspaceFor(session: Session): WorkspaceRecord | undefined {
+    const cwd = session.header.cwd
+    if (typeof cwd !== 'string') return undefined
+    const root = canonicalPath(cwd)
+    return Object.values(this.#state.workspaces).find(record => {
+      if (record.remoteWorkspaceId === null || record.localWorkspaceId === undefined || this.#workspaceRemoved(record)) return false
+      const anchor = canonicalPath(record.anchor)
+      return root === anchor || root.startsWith(`${anchor}/`)
+    })
+  }
+
+  /** Promote the first prompt of a native local draft into a fresh remote mirror. */
+  async #promoteNativeDraft(
+    agent: { id: SessionId; session: Session },
+    messages: readonly unknown[],
+    target: WorkspaceRecord,
+  ): Promise<void> {
+    const host = this.#hosts.list().find(item => item.id === target.hostId && item.phase === 'connected')
+    if (host === undefined) throw new Error('remote host is not connected')
+    if (target.remoteWorkspaceId === null || target.localWorkspaceId === undefined) throw new Error('mirrored workspace is unavailable')
+    const workspace = this.#workspaceRegistry.get(target.localWorkspaceId as WorkspaceId)
+    if (workspace === undefined) throw new Error('mirrored workspace is not attached')
+    const preset = this.#agentPresetFor(agent.session)
+    const created = await this.#hosts.createSession(target.hostId, {
+      workspaceId: target.remoteWorkspaceId,
+      ...preset === undefined ? {} : { agentPreset: preset },
+    })
+    if (preset !== undefined && created.agentPreset !== preset) {
+      throw new Error(`remote agent selected preset ${created.agentPreset ?? 'unknown'}, expected ${preset}`)
+    }
+    const summary: RemoteSessionSummary = {
+      sessionId: created.sessionId,
+      workspaceId: target.remoteWorkspaceId,
+      cwd: target.remoteRoot ?? target.anchor,
+      createdAt: new Date().toISOString(),
+      live: true,
+      eventCount: 0,
+    }
+    const record = await this.#ensureMirror(host, summary, { workspace, anchor: target.anchor })
+    if (record === undefined) throw new Error('could not create the remote mirror')
+    const runtime = this.#runtimes.get(record.localSessionId)
+    if (runtime === undefined) throw new Error('remote mirror Agent is unavailable')
+    const selection = this.selectionForBlank(agent.session)
+    if (selection !== undefined) {
+      runtime.session.append('model/selection', {
+        provider: selection.provider,
+        model: selection.model,
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+      })
+      Object.assign(runtime.agent.options, selection)
+    }
+    const message = messages.find(candidate =>
+      typeof candidate === 'object' && candidate !== null
+      && (candidate as { role?: unknown }).role === 'user') ?? messages[0]
+    if (message === undefined) throw new Error('prompt message is unavailable')
+    this.prompt(runtime, message, 'queue')
+    this.#openSessionId = record.localSessionId
+    setTimeout(() => { void this.#archive(agent.id) }, 0)
   }
 
   /** Materialize the remote Session behind one blank local Session. */
