@@ -206,18 +206,14 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     setBusy(`create:${host.id}:${workspaceId}`)
     setError(null)
     try {
-      const created = await api.createSession(host.id, { workspaceId })
+      const created = await api.startBlankSession(host.id, { workspaceId })
       const key = `${host.id}:${workspaceId}`
       setOpenWorkspace(current => ({ ...current, [key]: true }))
-      if (created.localSessionId !== undefined) {
-        api.openSession(created.localSessionId)
-        setNotice(t('settings.sessionOpening'))
-        window.setTimeout(() => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        }, 80)
-      } else {
-        setNotice(t('settings.sessionSyncing'))
-      }
+      api.openSession(created.localSessionId)
+      setNotice(t('settings.sessionOpening'))
+      window.setTimeout(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      }, 80)
       const result = await api.sessions(host.id, workspaceId)
       setSessions(current => ({ ...current, [key]: [...result.sessions] }))
       const refreshed = await api.workspaces(host.id)

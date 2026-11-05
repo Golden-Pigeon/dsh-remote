@@ -143,6 +143,22 @@ interface MirrorAgent {
   inject(message: unknown): void
 }
 
+/** A locally-created blank Session whose remote counterpart is created on the first prompt. */
+interface PendingBlankSession {
+  readonly hostId: string
+  readonly localSessionId: string
+  readonly localWorkspaceId: string
+  readonly remoteWorkspaceId: string
+  readonly remoteRoot: string
+  readonly anchor: string
+  readonly workspace: Workspace
+  readonly session: Session
+  agent: LazyRemoteMirrorAgent
+  remoteSessionId?: string
+  delegate?: RemoteMirrorAgent
+  materializing?: Promise<RemoteMirrorAgent>
+}
+
 interface MirrorInbox {
   readonly 'next-turn': unknown[]
   readonly 'next-step': unknown[]
@@ -303,6 +319,110 @@ class RemoteMirrorAgent implements MirrorAgent {
   }
 }
 
+/** A blank local Agent that creates its remote Session on the first prompt. */
+class LazyRemoteMirrorAgent implements MirrorAgent {
+  readonly id: SessionId
+  readonly session: Session
+  readonly options: MirrorModelSelection
+  readonly scope: Scope
+  readonly ctx: Context
+  readonly inbox: MirrorInbox
+  #mirror: RemoteMirrorService
+  #pending: PendingBlankSession
+  #delegate: RemoteMirrorAgent | undefined
+  #materializing: Promise<RemoteMirrorAgent> | undefined
+
+  constructor(mirror: RemoteMirrorService, pending: PendingBlankSession, ctx: Context, options: MirrorModelSelection) {
+    this.#mirror = mirror
+    this.#pending = pending
+    this.id = pending.session.id
+    this.session = pending.session
+    this.options = options
+    this.scope = createScope(ctx, this)
+    this.ctx = this.scope.ctx
+    this.inbox = createMirrorInbox(pending.session)
+    this.#delegate = pending.delegate
+  }
+
+  /** The preset is selected by the native blank-session surface, not here. */
+  readonly model = {
+    current: (): MirrorModelSelection | undefined => this.#mirror.selectionForBlank(this.session),
+    select: (selection: MirrorModelSelection): void => {
+      const previous = this.#mirror.selectionForBlank(this.session)
+      if (previous?.provider === selection.provider && previous.model === selection.model
+        && previous.reasoningEffort === selection.reasoningEffort) return
+      this.session.append('model/selection', {
+        provider: selection.provider,
+        model: selection.model,
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+      })
+    },
+  }
+
+  get status(): 'idle' | 'running' {
+    return this.#delegate?.status ?? 'idle'
+  }
+
+  cancel(): void {
+    if (this.#delegate !== undefined) {
+      this.#delegate.cancel()
+      return
+    }
+    this.inbox.clear()
+  }
+
+  whenIdle(): Promise<void> {
+    return this.#delegate?.whenIdle() ?? Promise.resolve()
+  }
+
+  runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.#delegate !== undefined) return this.#delegate.runMaintenance(task)
+    return task(new AbortController().signal)
+  }
+
+  send(message: unknown, target?: unknown, wakeup = false): void {
+    void this.#deliver('send', message, target, wakeup).catch(error => {
+      this.#mirror.reportBlankFailure(this, error)
+    })
+  }
+
+  followup(message: unknown): void {
+    void this.#deliver('followup', message).catch(error => {
+      this.#mirror.reportBlankFailure(this, error)
+    })
+  }
+
+  steer(message: unknown): void {
+    void this.#deliver('steer', message).catch(error => {
+      this.#mirror.reportBlankFailure(this, error)
+    })
+  }
+
+  inject(): void {}
+
+  async #deliver(kind: 'send' | 'followup' | 'steer', message: unknown, target?: unknown, wakeup = false): Promise<void> {
+    const delegate = await this.#ensure()
+    if (kind === 'send') delegate.send(message, target, wakeup)
+    else if (kind === 'followup') delegate.followup(message)
+    else delegate.steer(message)
+  }
+
+  async #ensure(): Promise<RemoteMirrorAgent> {
+    if (this.#delegate !== undefined) return this.#delegate
+    if (this.#materializing !== undefined) return this.#materializing
+    const operation = this.#mirror.materializeBlank(this.#pending)
+    this.#materializing = operation
+    try {
+      const delegate = await operation
+      this.#delegate = delegate
+      this.#pending.delegate = delegate
+      return delegate
+    } finally {
+      if (this.#materializing === operation) this.#materializing = undefined
+    }
+  }
+}
+
 /** Mirror remote sessions into local Sessions and custom Agents. */
 export class RemoteMirrorService {
   get #sessions(): Context['sessions'] {
@@ -332,6 +452,8 @@ export class RemoteMirrorService {
   #registrations = new Map<string, () => Promise<void>>()
   #approvalStreams = new Map<string, AbortController>()
   #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
+  #pendingBlanks = new Map<string, PendingBlankSession>()
+  #blankInFlight = new Map<string, Promise<{ localSessionId: string }>>()
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
   #timer: NodeJS.Timeout | undefined
@@ -378,7 +500,8 @@ export class RemoteMirrorService {
       // A resume must wait for persisted ownership before native queued work can be released.
       await loaded
       const mirrored = Object.values(this.#state.sessions).some(record => record.localSessionId === agent.id)
-      if (mirrored && !(agent instanceof RemoteMirrorAgent)) {
+      const pendingBlank = this.#pendingBlanks.has(agent.id)
+      if ((mirrored || pendingBlank) && !(agent instanceof RemoteMirrorAgent) && !(agent instanceof LazyRemoteMirrorAgent)) {
         throw new Error('Remote mirror is reconnecting; wait for the remote host before reopening this session.')
       }
     }) as never, { global: true, prepend: true } as never)
@@ -413,6 +536,7 @@ export class RemoteMirrorService {
     for (const controller of this.#approvalStreams.values()) controller.abort()
     this.#approvalStreams.clear()
     this.#runtimes.clear()
+    this.#pendingBlanks.clear()
     await this.#save()
   }
 
@@ -454,10 +578,10 @@ export class RemoteMirrorService {
   }
 
   /** Active mirrored workspaces with the titles shown in the local sidebar. */
-  mirroredWorkspaces(): Array<{ id: string; title: string }> {
+  mirroredWorkspaces(): Array<{ id: string; hostId: string; title: string }> {
     return Object.values(this.#state.workspaces)
       .filter(workspace => workspace.localWorkspaceId !== undefined && !this.#workspaceRemoved(workspace))
-      .map(workspace => ({ id: workspace.localWorkspaceId!, title: workspace.title }))
+      .map(workspace => ({ id: workspace.localWorkspaceId!, hostId: workspace.hostId, title: workspace.title }))
   }
 
   /** Whether the test-only manifest excludes this remote workspace from UI listings. */
@@ -533,7 +657,17 @@ export class RemoteMirrorService {
       this.#registrations.delete(id)
       if (dispose !== undefined) disposals.push(Promise.resolve().then(dispose))
     }
+    let pendingChanged = false
+    for (const [id, pending] of this.#pendingBlanks) {
+      if (pending.hostId !== record.hostId || pending.anchor !== record.anchor) continue
+      const dispose = this.#registrations.get(id)
+      this.#registrations.delete(id)
+      this.#pendingBlanks.delete(id)
+      pendingChanged = true
+      if (dispose !== undefined) disposals.push(Promise.resolve().then(dispose))
+    }
     await Promise.all([persistence, ...disposals])
+    if (pendingChanged) await this.#save()
     // Keep the local history but hide its rows from the sidebar. The workspace
     // row is already gone, so leaving these sessions active makes the browser
     // group them under the synthetic "ungrouped" bucket. Archive only after
@@ -748,6 +882,200 @@ export class RemoteMirrorService {
       // Keep the local Agent running so the UI can offer Stop again.
       this.#setRunning(runtime, true)
     })
+  }
+
+  /**
+   * Create a blank local Session for a mirrored workspace. The native
+   * new-task surface owns its Agent preset selector; the remote Session is
+   * created only when the first prompt arrives.
+   */
+  async startBlankSession(
+    hostId: string,
+    request: { localWorkspaceId?: string; workspaceId?: string; agentPreset?: string },
+  ): Promise<{ localSessionId: string }> {
+    const host = this.#hosts.list().find(item => item.id === hostId && item.phase === 'connected')
+    if (host === undefined) throw new Error('remote host is not connected')
+    const record = Object.values(this.#state.workspaces).find(workspace => {
+      if (workspace.hostId !== hostId || this.#workspaceRemoved(workspace)) return false
+      if (request.localWorkspaceId !== undefined) return workspace.localWorkspaceId === request.localWorkspaceId
+      return request.workspaceId !== undefined && workspace.remoteWorkspaceId === request.workspaceId
+    })
+    if (record === undefined || record.localWorkspaceId === undefined || record.remoteWorkspaceId === null) {
+      throw new Error('mirrored workspace is not available')
+    }
+    return singleFlight(
+      this.#blankInFlight,
+      `${hostId}:${record.localWorkspaceId}`,
+      () => this.#createBlankSession(host, record, request.agentPreset),
+    )
+  }
+
+  async #createBlankSession(
+    host: HostView,
+    record: WorkspaceRecord,
+    requestedPreset: string | undefined,
+  ): Promise<{ localSessionId: string }> {
+    const localWorkspaceId = record.localWorkspaceId
+    const remoteWorkspaceId = record.remoteWorkspaceId
+    if (localWorkspaceId === undefined || remoteWorkspaceId === null) throw new Error('mirrored workspace is not available')
+    const workspace = this.#workspaceRegistry.get(localWorkspaceId as WorkspaceId)
+    if (workspace === undefined) throw new Error('mirrored workspace is not attached')
+    await mkdir(record.anchor, { recursive: true })
+    const localId = `session-${randomUUID()}`
+    const preset = requestedPreset ?? this.#defaultAgentPreset()
+    const session = this.#sessions.create(localId as SessionId, {
+      meta: {
+        cwd: record.anchor,
+        ...preset === undefined ? {} : { agentPreset: preset },
+      },
+    })
+    await this.#attach(workspace, session.id)
+    try {
+      await this.#sessions.flush(session)
+    } catch (error) {
+      this.#ctx.logger.debug('dsh-remote-local: blank session flush failed: %s', String(error))
+    }
+    const options = this.#defaultSelection() ?? { provider: 'deepseek-official', model: 'deepseek-flash' }
+    const pending = {
+      hostId: host.id,
+      localSessionId: localId,
+      localWorkspaceId,
+      remoteWorkspaceId,
+      remoteRoot: record.remoteRoot ?? record.anchor,
+      anchor: record.anchor,
+      workspace,
+      session,
+    } as PendingBlankSession
+    const agent = new LazyRemoteMirrorAgent(this, pending, this.#ctx, options)
+    pending.agent = agent
+    const detach = this.#agents.enter(agent as never, undefined)
+    this.#registrations.set(localId, async () => { detach() })
+    this.#pendingBlanks.set(localId, pending)
+    await this.#save()
+    return { localSessionId: localId }
+  }
+
+  /** Materialize the remote Session behind one blank local Session. */
+  async materializeBlank(pending: PendingBlankSession): Promise<RemoteMirrorAgent> {
+    if (pending.delegate !== undefined) return pending.delegate
+    if (pending.materializing !== undefined) return pending.materializing
+    const operation = this.#materializeBlankOnce(pending)
+    pending.materializing = operation
+    try {
+      return await operation
+    } finally {
+      if (pending.materializing === operation) pending.materializing = undefined
+    }
+  }
+
+  async #materializeBlankOnce(pending: PendingBlankSession): Promise<RemoteMirrorAgent> {
+    const host = this.#hosts.list().find(item => item.id === pending.hostId && item.phase === 'connected')
+    if (host === undefined) throw new Error('remote host is not connected')
+    const requestedPreset = this.#agentPresetFor(pending.session)
+    if (pending.remoteSessionId === undefined) {
+      const created = await this.#hosts.createSession(pending.hostId, {
+        workspaceId: pending.remoteWorkspaceId,
+        ...requestedPreset === undefined ? {} : { agentPreset: requestedPreset },
+      })
+      if (requestedPreset !== undefined && created.agentPreset !== requestedPreset) {
+        throw new Error(`remote agent selected preset ${created.agentPreset ?? 'unknown'}, expected ${requestedPreset}`)
+      }
+      pending.remoteSessionId = created.sessionId
+    }
+    const remoteSessionId = pending.remoteSessionId
+    const ref = key(pending.hostId, remoteSessionId)
+    if (this.#state.sessions[ref] === undefined) {
+      this.#state.sessions[ref] = {
+        hostId: pending.hostId,
+        remoteSessionId,
+        localSessionId: pending.localSessionId,
+        remoteWorkspaceId: pending.remoteWorkspaceId,
+        anchor: pending.anchor,
+        lastSeq: 0,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+    const summary: RemoteSessionSummary = {
+      sessionId: remoteSessionId,
+      workspaceId: pending.remoteWorkspaceId,
+      cwd: pending.remoteRoot,
+      createdAt: new Date().toISOString(),
+      live: true,
+      eventCount: 0,
+    }
+    let record
+    try {
+      record = await this.#ensureMirror(host, summary, {
+        workspace: pending.workspace,
+        anchor: pending.anchor,
+      })
+      if (record === undefined) throw new Error('could not create the remote mirror')
+    } catch (error) {
+      if (!this.#runtimes.has(pending.localSessionId) && !this.#registrations.has(pending.localSessionId)) {
+        try {
+          const detach = this.#agents.enter(pending.agent as never, undefined)
+          this.#registrations.set(pending.localSessionId, async () => { detach() })
+        } catch (restoreError) {
+          this.#ctx.logger.warn('dsh-remote-local: could not restore lazy Agent %s: %s', pending.localSessionId, String(restoreError))
+        }
+      }
+      throw error
+    }
+    const runtime = this.#runtimes.get(record.localSessionId)
+    if (runtime === undefined) throw new Error('remote mirror Agent is unavailable')
+    this.#pendingBlanks.delete(pending.localSessionId)
+    return runtime.agent as RemoteMirrorAgent
+  }
+
+  /** Read the blank Session's selected Agent preset, falling back to its header. */
+  #agentPresetFor(session: Session): string | undefined {
+    const projections = this.#ctx.get('sessionProjections') as unknown as {
+      stateOf?: (session: Session, key: string) => unknown
+    } | undefined
+    const selected = projections?.stateOf?.(session, 'agentPreset')
+    if (typeof selected === 'string' && selected !== '') return selected
+    const header = session.header as { agentPreset?: unknown }
+    return typeof header.agentPreset === 'string' && header.agentPreset !== '' ? header.agentPreset : undefined
+  }
+
+  #defaultAgentPreset(): string | undefined {
+    const presets = this.#ctx.get('agentPresets') as { defaultId?: string } | undefined
+    return presets?.defaultId
+  }
+
+  /** Log a lazy materialization failure without turning the blank Session into a local run. */
+  reportBlankFailure(agent: LazyRemoteMirrorAgent, error: unknown): void {
+    this.#ctx.logger.warn('dsh-remote-local: could not start remote Session for %s: %s', agent.id, String(error))
+    try {
+      const emit = this.#ctx.emit as unknown as (name: string, payload: unknown) => void
+      emit.call(this.#ctx, 'agent/error', {
+        agent,
+        error: error instanceof Error ? error : new Error(String(error)),
+      })
+    } catch (emitError) {
+      this.#ctx.logger.warn('dsh-remote-local: blank Session error notification failed: %s', String(emitError))
+    }
+  }
+
+  /** Initial model selection used by a blank Agent before the mirror exists. */
+  selectionForBlank(session: Session): MirrorModelSelection | undefined {
+    const projections = this.#ctx.get('sessionProjections') as unknown as {
+      stateOf?: (session: Session, key: string) => unknown
+    } | undefined
+    const state = projections?.stateOf?.(session, 'modelSelection') as
+      | { pending?: unknown; lastUsed?: unknown }
+      | undefined
+    const read = (candidate: unknown): MirrorModelSelection | undefined => {
+      if (typeof candidate !== 'object' || candidate === null) return undefined
+      const record = candidate as { provider?: unknown; model?: unknown; reasoningEffort?: unknown }
+      if (typeof record.provider !== 'string' || typeof record.model !== 'string') return undefined
+      return {
+        provider: record.provider,
+        model: record.model,
+        ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
+      }
+    }
+    return read(state?.pending) ?? read(state?.lastUsed) ?? latestSelection(session) ?? this.#defaultSelection()
   }
 
   /** Read the recorded mirror choice, optionally falling back to its initial options. */

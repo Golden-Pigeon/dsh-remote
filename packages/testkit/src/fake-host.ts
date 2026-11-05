@@ -61,6 +61,8 @@ export class FakeRemoteHost {
   readonly token: string
   readonly hostId: string
   readonly requests: FakeRequest[] = []
+  readonly createRequests: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
+  readonly promptRequests: Array<{ sessionId: string; text: string; provider?: string; model?: string; reasoningEffort?: string }> = []
 
   readonly #protocolVersion: number
   readonly #fixtures: Fixtures
@@ -176,6 +178,11 @@ export class FakeRemoteHost {
           }
           case 'sessions': {
             const record = body as { workspaceId?: unknown; cwd?: unknown; agentPreset?: unknown }
+            this.createRequests.push({
+              ...typeof record.workspaceId === 'string' ? { workspaceId: record.workspaceId } : {},
+              ...typeof record.cwd === 'string' ? { cwd: record.cwd } : {},
+              ...typeof record.agentPreset === 'string' ? { agentPreset: record.agentPreset } : {},
+            })
             const sessionId = `session-created-${this.#sessions.size + 1}`
             const session: FakeSession = {
               sessionId,
@@ -190,11 +197,18 @@ export class FakeRemoteHost {
             return
           }
           case 'session-prompt': {
-            const record = body as { text?: unknown }
+            const record = body as { text?: unknown; provider?: unknown; model?: unknown; reasoningEffort?: unknown }
             if (typeof record.text !== 'string' || record.text.trim() === '') {
               throw new RemoteProtocolError({ code: 'request/invalid', message: 'text is required' })
             }
             const session = this.#getSession(route.sessionId)
+            this.promptRequests.push({
+              sessionId: route.sessionId,
+              text: record.text,
+              ...typeof record.provider === 'string' ? { provider: record.provider } : {},
+              ...typeof record.model === 'string' ? { model: record.model } : {},
+              ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
+            })
             const time = Date.now()
             const userSeq = session.events.length
             session.events.push({ seq: userSeq, type: 'user/message', time, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: record.text }], id: `msg-${userSeq}` } })

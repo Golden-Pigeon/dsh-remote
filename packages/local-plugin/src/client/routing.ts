@@ -19,6 +19,17 @@ interface StartSessionOptions {
 
 interface WorkspaceService {
   startSession(workspaceId?: unknown, options?: StartSessionOptions): void
+  readonly mainReference?: { readonly sessionId?: string }
+  readonly workspaces?: {
+    readonly list?: {
+      getSnapshot?: () => {
+        readonly items?: readonly {
+          readonly workspaceId: string
+          readonly sessionIds: readonly string[]
+        }[]
+      }
+    }
+  }
 }
 
 /** Install the sidebar routing adapter once per client mount. */
@@ -27,13 +38,14 @@ export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi, t: Tr
   if (workspace === undefined || typeof workspace.startSession !== 'function') return
   const original = workspace.startSession.bind(workspace)
   workspace.startSession = (workspaceId, options) => {
-    if (workspaceId === undefined) {
+    const target = workspaceId ?? currentWorkspaceId(workspace)
+    if (target === undefined) {
       original(workspaceId, options)
       return
     }
-    void route(api, String(workspaceId)).then(result => {
+    void route(api, String(target), options).then(result => {
       if (result === 'local') {
-        original(workspaceId, options)
+        original(target, options)
         return
       }
       if (result === 'blocked') {
@@ -45,28 +57,32 @@ export function installNativeWorkspaceRouting(ctx: Context, api: HostsApi, t: Tr
   }
 }
 
-async function route(api: HostsApi, localWorkspaceId: string): Promise<'handled' | 'blocked' | 'local'> {
+async function route(
+  api: HostsApi,
+  localWorkspaceId: string,
+  options?: StartSessionOptions,
+): Promise<'handled' | 'blocked' | 'local'> {
   const state = await api.state()
-  const mirrored = Array.isArray(state.mirroredWorkspaceIds) ? state.mirroredWorkspaceIds : []
-  if (!mirrored.includes(localWorkspaceId)) return 'local'
-  for (const host of state.hosts) {
-    if (host.phase !== 'connected') continue
-    let result
-    try {
-      result = await api.workspaces(host.id)
-    } catch {
-      continue
-    }
-    const workspace = result.workspaces.find(item => item.localWorkspaceId === localWorkspaceId)
-    if (workspace === undefined) continue
-    const created = await api.createSession(host.id, { workspaceId: workspace.workspaceId })
-    if (created.localSessionId !== undefined) {
-      api.openSession(created.localSessionId)
-      return 'handled'
-    }
-    return 'blocked'
-  }
-  return 'blocked'
+  const mirrored = state.mirroredWorkspaces.find(workspace => workspace.id === localWorkspaceId)
+  if (mirrored === undefined) return 'local'
+  const host = state.hosts.find(item => item.id === mirrored.hostId)
+  if (host === undefined || host.phase !== 'connected') return 'blocked'
+  // Keep the native new-task surface: create only a blank local Session here.
+  // Its selected Agent preset is forwarded when the first prompt creates the
+  // remote Session.
+  const created = await api.startBlankSession(host.id, {
+    localWorkspaceId,
+    ...options?.agentPreset === undefined ? {} : { agentPreset: options.agentPreset },
+  })
+  api.openSession(created.localSessionId)
+  return 'handled'
+}
+
+function currentWorkspaceId(workspace: WorkspaceService): string | undefined {
+  const sessionId = workspace.mainReference?.sessionId
+  if (sessionId === undefined) return undefined
+  const items = workspace.workspaces?.list?.getSnapshot?.().items
+  return items?.find(item => item.sessionIds.includes(sessionId))?.workspaceId
 }
 
 function showToast(text: string): void {
