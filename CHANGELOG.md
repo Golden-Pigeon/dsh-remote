@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.17
+
+- Support DSH 0.2.2-rc.1: align the Cordis dependency line, adapt the branded
+  reasoning-effort type, and test both DSH 0.2.1-rc.5 and 0.2.2-rc.1 in CI
+  ([#18](https://github.com/Golden-Pigeon/dsh-remote/pull/18)).
+- Provision remote DSH 0.2.2-rc.1 by default. The updated agent was verified on
+  two real remote hosts, including workspace discovery, session creation, and a
+  first prompt through an isolated local profile
+  ([#18](https://github.com/Golden-Pigeon/dsh-remote/pull/18)).
+- Update the Playwright harness and testkit fixtures for the current DSH package
+  line ([#18](https://github.com/Golden-Pigeon/dsh-remote/pull/18)).
+
 ## 0.8.16
 
 - Restore native mode and model selection for new remote sessions. Mirrored
