@@ -97,3 +97,18 @@ describe('native new-session routing', () => {
   })
 
 })
+
+describe('global new-session fallback', () => {
+  it('keeps the original path when no current workspace can be resolved', () => {
+    let called: { workspaceId?: unknown; options?: unknown } | undefined
+    const ctx = {
+      uiWorkspace: {
+        startSession(workspaceId?: unknown, options?: unknown) { called = { workspaceId, options } },
+      },
+    }
+    const api = { state: async () => ({ mirroredWorkspaces: [], hosts: [] }) }
+    installNativeWorkspaceRouting(ctx as never, api as never, (key: string) => key)
+    ctx.uiWorkspace.startSession(undefined, { agentPreset: 'ptc' })
+    assert.deepEqual(called, { workspaceId: undefined, options: { agentPreset: 'ptc' } })
+  })
+})

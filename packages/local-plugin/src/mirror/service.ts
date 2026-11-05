@@ -453,6 +453,7 @@ export class RemoteMirrorService {
   #approvalStreams = new Map<string, AbortController>()
   #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
   #pendingBlanks = new Map<string, PendingBlankSession>()
+  #pendingDisposedOff: (() => void) | undefined
   #blankInFlight = new Map<string, Promise<{ localSessionId: string }>>()
   #syncing = false
   #saveQueue: Promise<void> = Promise.resolve()
@@ -505,10 +506,15 @@ export class RemoteMirrorService {
         throw new Error('Remote mirror is reconnecting; wait for the remote host before reopening this session.')
       }
     }) as never, { global: true, prepend: true } as never)
+    const offDisposed = this.#ctx.on('agent/disposed' as never, ((agent: { id: SessionId }) => {
+      if (this.#disposed || !this.#pendingBlanks.has(String(agent.id))) return
+      this.#pendingBlanks.delete(String(agent.id))
+      this.#registrations.delete(String(agent.id))
+    }) as never, { global: true } as never)
     const offSelection = this.#ctx.on('session/event' as never, ((session: Session, event: SessionEvent) => {
       this.#onLocalSessionEvent(session, event)
     }) as never, { global: true } as never)
-    this.#selectionOff = () => { offSelection(); offCreated() }
+    this.#selectionOff = () => { offSelection(); offCreated(); offDisposed() }
     await loaded
     if (this.#disposed) return
     await this.#archiveRemovedSessions()
@@ -536,7 +542,9 @@ export class RemoteMirrorService {
     for (const controller of this.#approvalStreams.values()) controller.abort()
     this.#approvalStreams.clear()
     this.#runtimes.clear()
+    const pendingBlanks = [...this.#pendingBlanks.values()]
     this.#pendingBlanks.clear()
+    for (const pending of pendingBlanks) await this.#archive(pending.localSessionId as SessionId)
     await this.#save()
   }
 

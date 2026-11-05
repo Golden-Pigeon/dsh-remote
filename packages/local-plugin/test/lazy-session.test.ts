@@ -90,3 +90,19 @@ describe('blank remote Session deduplication', () => {
     }
   })
 })
+
+describe('ephemeral remote drafts', () => {
+  it('archives an unsent draft when the plugin is disposed', async () => {
+    const test = harness()
+    try {
+      await test.service.start()
+      const localWorkspaceId = test.service.localWorkspaceIds()[0]
+      assert.ok(localWorkspaceId)
+      const blank = await test.service.startBlankSession('host-test', { localWorkspaceId })
+      await test.service.dispose()
+      assert.equal(test.archived.includes(blank.localSessionId), true)
+    } finally {
+      await test.ctx.fiber.dispose()
+    }
+  })
+})
