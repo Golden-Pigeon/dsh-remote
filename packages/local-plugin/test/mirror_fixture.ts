@@ -59,6 +59,7 @@ function session(id: string, meta: Record<string, unknown>, seed: Snapshot['even
       createdAt: meta.createdAt ?? Date.now(),
       cwd: meta.cwd,
       isSeeded: false,
+      ...meta.agentPreset === undefined ? {} : { agentPreset: meta.agentPreset },
       ...meta.parentSession === undefined ? {} : { parentSession: meta.parentSession },
       ...meta.origin === undefined ? {} : { origin: meta.origin },
     },
@@ -82,6 +83,12 @@ export function harness() {
   const sessions = new Map<string, FakeSession>()
   const liveAgents = new Map<string, FixtureAgent>()
   const selections: unknown[] = []
+  const remoteCreates: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
+  const prompts: Array<{ sessionId: string; text: string; selection?: { provider: string; model: string } }> = []
+  let blankRemoteSeq = 0
+  let failPrompt = false
+  let failEnter = false
+  let createdPreset: string | undefined
   const attached: string[] = []
   const archived: string[] = []
   const warnings: string[] = []
@@ -122,6 +129,7 @@ export function harness() {
 
   const agents = {
     enter(agent: FixtureAgent) {
+      if (failEnter) throw new Error('agent registration failed')
       if (liveAgents.has(agent.id)) throw new Error('agent already registered')
       liveAgents.set(agent.id, agent)
       return () => { liveAgents.delete(agent.id) }
@@ -132,7 +140,7 @@ export function harness() {
   ctx.provide('agents', agents as never)
   ctx.logger.warn = (message: unknown, ...args: unknown[]) => { warnings.push([message, ...args].map(String).join(' ')) }
 
-  const host = { id: 'host-test', label: 'Test host', phase: 'connected' }
+  const host: { id: string; label: string; phase: 'connected' | 'disconnected' } = { id: 'host-test', label: 'Test host', phase: 'connected' }
   const workspace = { workspaceId: 'remote-workspace', path: '/srv/project', title: 'project' }
   let remote: Summary[] = []
   const snapshots = new Map<string, Snapshot>()
@@ -157,6 +165,24 @@ export function harness() {
     async *followAssistantFrames() {},
     async setSandboxMode() {},
     async selectModel(_host: string, _session: string, selection: unknown) { selections.push(selection) },
+    async createSession(_host: string, request: { workspaceId?: string; cwd?: string; agentPreset?: string }) {
+      remoteCreates.push(request)
+      blankRemoteSeq += 1
+      const id = `session-local-blank-${blankRemoteSeq}`
+      remote = [...remote, {
+        sessionId: id, workspaceId: request.workspaceId ?? 'remote-workspace',
+        cwd: request.cwd ?? '/srv/project', createdAt: new Date().toISOString(),
+        live: true, eventCount: 0,
+      }]
+      snapshots.set(id, { cursor: 0, live: true, truncated: false, events: [] })
+      const preset = createdPreset ?? request.agentPreset
+      return { sessionId: id, ...preset === undefined ? {} : { agentPreset: preset } }
+    },
+    async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
+      if (failPrompt) throw new Error('remote prompt failed')
+      prompts.push({ sessionId, text, ...selection === undefined ? {} : { selection } })
+      return { accepted: true }
+    },
   } as unknown as RemoteHostsService
 
   const config = {
@@ -167,18 +193,26 @@ export function harness() {
   } as unknown as ResolvedConfig
 
   const service = new RemoteMirrorService(ctx, hosts, config)
+  const newService = (): RemoteMirrorService => new RemoteMirrorService(ctx, hosts, config)
 
   return {
     service,
+    newService,
     ctx,
     liveAgents,
     selections,
+    remoteCreates,
+    prompts,
     stateDir,
     sessions,
     attached,
     archived,
     warnings,
     setRemote(next: Summary[]) { remote = next },
+    setFailPrompt(value: boolean) { failPrompt = value },
+    setFailEnter(value: boolean) { failEnter = value },
+    setHostPhase(value: 'connected' | 'disconnected') { host.phase = value },
+    setCreatedPreset(value: string | undefined) { createdPreset = value },
     setSnapshot(id: string, snapshot: Snapshot) { snapshots.set(id, snapshot) },
     async state(): Promise<{ sessions: Record<string, { remoteSessionId: string; localSessionId: string; parentSessionId?: string }> }> {
       return JSON.parse(await readFile(join(stateDir, 'mirrors.json'), 'utf8'))

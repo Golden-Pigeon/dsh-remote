@@ -292,14 +292,6 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
           path: selectedPath,
           title,
         })
-        const session = await flow.api.createSession(destination.host.id, {
-          workspaceId: workspace.workspaceId,
-        })
-        if (session.localSessionId !== undefined) {
-          close()
-          flow.api.openSession(session.localSessionId)
-          return
-        }
         const localId = await waitForLocalWorkspace(flow.api, destination.host.id, workspace.workspaceId)
         if (localId === undefined) {
           error.textContent = flow.t('dialog.selectedFallback')
@@ -308,8 +300,9 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
           create.textContent = flow.t('dialog.create')
           return
         }
+        const session = await flow.api.startBlankSession(destination.host.id, { localWorkspaceId: localId })
         close()
-        flow.ctx.uiWorkspace.startSession(localId as never)
+        flow.api.openSession(session.localSessionId)
       } catch (failure) {
         error.textContent = localizedError(flow.t, failure, flow.t('dialog.createFailed'))
         create.disabled = false

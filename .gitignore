@@ -12,3 +12,6 @@ coverage/
 # Local publish credentials (never commit)
 .secret
 .secret/
+test-results/
+playwright-report/
+.playwright/

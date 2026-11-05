@@ -28,6 +28,37 @@ export function apply(ctx: Context): void {
   const locale = (ctx as unknown as { locale: LocaleFace }).locale
   ctx.effect(() => locale.register(NS, { zh, en }), 'dsh-remote: locale dictionaries')
   const t = locale.bind(NS)
+  ctx.effect(() => {
+    // DSH compatibility note: uiWorkspace.mainReference is private. Replace
+    // this focus guard when DSH exposes a public current-session API.
+    const workspace = (ctx as unknown as { uiWorkspace?: { mainReference?: { sessionId?: string } } }).uiWorkspace
+    const schedule = globalThis.setTimeout
+    if (typeof schedule !== 'function') return () => {}
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = async (): Promise<void> => {
+      if (!active) return
+      try {
+        const claimed = await api.claimOpenSession()
+        if (active && claimed.localSessionId !== undefined) {
+          // Do not steal focus if the user moved on to another Session while
+          // the remote Session was being created.
+          const current = workspace?.mainReference?.sessionId
+          if (claimed.sourceSessionId === undefined || current === undefined || current === claimed.sourceSessionId) {
+            api.openSession(claimed.localSessionId)
+          }
+        }
+      } catch {
+        // A later poll retries after the host reconnects.
+      }
+      if (active) timer = schedule(() => { void poll() }, 500)
+    }
+    void poll()
+    return () => {
+      active = false
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }, 'dsh-remote: reveal promoted draft')
   installNativeWorkspaceRouting(ctx, api, t)
   installWorkspaceAddMenu(ctx, api, t)
   ctx.effect(() => installWorkspaceDeleteCopy(api), 'dsh-remote: mirrored workspace delete copy')
