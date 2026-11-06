@@ -41,7 +41,8 @@
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-slots",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-session"
       ]
     },
     "compatibility": {
@@ -63,7 +64,8 @@
     "dsh-remote-terminal-controller": "workspace:*",
     "@goldenpigeon/dsh-remote-agent": "workspace:*",
     "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.1",
-    "@deepseek-ai/cordis": "4.1.0"
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.2-rc.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.5 <4.2.0",
@@ -84,7 +86,8 @@
     "@deepseek-ai/dsh-user-approval": ">=0.2.1-rc.1 <0.3.0-0",
     "@deepseek-ai/dsh-api-workspace-files": ">=0.2.1-rc.1 <0.3.0-0",
     "@deepseek-ai/dsh-api-terminal-controller": ">=0.2.1-rc.1 <0.3.0-0",
-    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-rc.1 <0.3.0-0"
+    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-session": ">=0.2.1-rc.1 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -142,6 +145,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-api-session-controller": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-session": {
       "optional": true
     }
   },

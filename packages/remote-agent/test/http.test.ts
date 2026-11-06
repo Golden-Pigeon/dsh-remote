@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { RemoteAgentClient } from '@dsh-remote/protocol'
+import { RemoteAgentClient, sessionArchivePath } from '@dsh-remote/protocol'
 import { handleAgentRequest } from '../src/http.ts'
 import type { RemoteAgentService } from '../src/service.ts'
 import { RemoteTerminalManager } from '../src/terminal.ts'
@@ -16,10 +16,15 @@ describe('agent HTTP file and terminal surface', () => {
   let dir: string
   const manager = new RemoteTerminalManager()
   const token = 'http-test-token'
+  const archiveCalls: Array<{ sessionId: string; stopActivity: boolean }> = []
   const service = {
     admitsPeer: () => true,
     token,
     terminals: manager,
+    async archiveSession(sessionId: string, stopActivity: boolean) {
+      archiveCalls.push({ sessionId, stopActivity })
+      return { accepted: true }
+    },
   } as unknown as RemoteAgentService
 
   before(async () => {
@@ -56,6 +61,22 @@ describe('agent HTTP file and terminal surface', () => {
     }
     assert.equal(frames[0]?.kind, 'ready')
     assert.equal(frames[1]?.kind, 'change')
+  })
+
+  it('archives a session through the agent route', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    await client.archiveSession('s1')
+    assert.deepEqual(archiveCalls, [{ sessionId: 's1', stopActivity: true }])
+  })
+
+  it('rejects GET on the archive route', async () => {
+    const response = await fetch(`${baseUrl}${sessionArchivePath('s1')}`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-dsh-remote-protocol': '1',
+      },
+    })
+    assert.equal(response.status, 405)
   })
 
   it('serves terminal create, attach, input, list, and close', async () => {

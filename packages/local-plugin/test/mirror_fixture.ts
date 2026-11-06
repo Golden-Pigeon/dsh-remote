@@ -91,6 +91,7 @@ export function harness() {
   let createdPreset: string | undefined
   const attached: string[] = []
   const archived: string[] = []
+  const remoteArchived: string[] = []
   const warnings: string[] = []
   let workspaceSeq = 0
 
@@ -178,6 +179,7 @@ export function harness() {
       const preset = createdPreset ?? request.agentPreset
       return { sessionId: id, ...preset === undefined ? {} : { agentPreset: preset } }
     },
+    async archiveSession(_host: string, sessionId: string) { remoteArchived.push(sessionId) },
     async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
       if (failPrompt) throw new Error('remote prompt failed')
       prompts.push({ sessionId, text, ...selection === undefined ? {} : { selection } })
@@ -207,6 +209,7 @@ export function harness() {
     sessions,
     attached,
     archived,
+    remoteArchived,
     warnings,
     setRemote(next: Summary[]) { remote = next },
     setFailPrompt(value: boolean) { failPrompt = value },

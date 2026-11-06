@@ -522,10 +522,18 @@ export class RemoteMirrorService {
       }
     }) as never, { global: true, prepend: true } as never)
     const offDisposed = this.#ctx.on('agent/disposed' as never, ((agent: { id: SessionId }) => {
+      const abandoned = this.#promotions.get(String(agent.id))
       this.#promotions.delete(String(agent.id))
+      if (abandoned !== undefined) void this.#archiveAbandonedPromotion(abandoned)
       if (this.#disposed || !this.#pendingBlanks.has(String(agent.id))) return
+      const pending = this.#pendingBlanks.get(String(agent.id))
+      const hasMirror = pending !== undefined
+        && (this.#runtimes.has(pending.localSessionId) || this.#registrations.has(pending.localSessionId))
       this.#pendingBlanks.delete(String(agent.id))
       this.#registrations.delete(String(agent.id))
+      if (pending?.remoteSessionId !== undefined && !hasMirror) {
+        void this.#archiveRemoteSession(pending.hostId, pending.remoteSessionId)
+      }
     }) as never, { global: true } as never)
     const offPreStep = this.#ctx.root.on('agent/pre-step' as never, (async (payload: {
       agent: { id: SessionId; session: Session }
@@ -579,9 +587,12 @@ export class RemoteMirrorService {
     this.#selectionOff?.()
     this.#selectionOff = undefined
     this.#openSessions = []
-    const unfinishedPromotions = [...this.#promotions.keys()]
+    const unfinishedPromotions = [...this.#promotions.entries()]
     this.#promotions.clear()
-    for (const sessionId of unfinishedPromotions) await this.#archive(sessionId as SessionId)
+    for (const [sessionId, promotion] of unfinishedPromotions) {
+      await this.#archive(sessionId as SessionId)
+      await this.#archiveAbandonedPromotion(promotion)
+    }
     for (const runtime of this.#runtimes.values()) {
       runtime.stopped = true
       if (runtime.timer !== undefined) clearTimeout(runtime.timer)
@@ -595,7 +606,14 @@ export class RemoteMirrorService {
     this.#runtimes.clear()
     const pendingBlanks = [...this.#pendingBlanks.values()]
     this.#pendingBlanks.clear()
-    for (const pending of pendingBlanks) await this.#archive(pending.localSessionId as SessionId)
+    for (const pending of pendingBlanks) {
+      await this.#archive(pending.localSessionId as SessionId)
+      if (pending.remoteSessionId !== undefined
+        && !this.#runtimes.has(pending.localSessionId)
+        && !this.#registrations.has(pending.localSessionId)) {
+        await this.#archiveRemoteSession(pending.hostId, pending.remoteSessionId)
+      }
+    }
     await this.#save()
   }
 
@@ -1496,6 +1514,25 @@ export class RemoteMirrorService {
     if (this.#workspaceRemoved(this.#state.workspaces[ref]!)) return undefined
     await this.#save()
     return workspace
+  }
+
+  /** Best-effort archive of a remote Session created before its local mirror existed. */
+  async #archiveAbandonedPromotion(promotion: PromotionState): Promise<void> {
+    if (promotion.remoteSessionId === undefined || promotion.mirrorLocalId !== undefined) return
+    await this.#archiveRemoteSession(promotion.hostId, promotion.remoteSessionId)
+  }
+
+  /** Archive one remote Session left behind by a failed materialization. */
+  async #archiveRemoteSession(hostId: string, remoteSessionId: string): Promise<void> {
+    try {
+      await this.#hosts.archiveSession(hostId, remoteSessionId)
+    } catch (error) {
+      this.#ctx.logger.warn(
+        'dsh-remote-local: could not archive abandoned remote Session %s: %s',
+        remoteSessionId,
+        String(error),
+      )
+    }
   }
 
   async #ensureUngroupedWorkspace(host: HostView, cwd: string): Promise<{ workspace: Workspace; anchor: string } | undefined> {

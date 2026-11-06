@@ -132,6 +132,12 @@ export async function handleAgentRequest(
         case 'session-cancel':
           sendJson(res, service.cancelSession(route.sessionId))
           return
+        case 'session-archive':
+          sendJson(res, await service.archiveSession(
+            route.sessionId,
+            (body as { stopActivity?: unknown }).stopActivity !== false,
+          ))
+          return
         case 'approval-answer':
           sendJson(res, asApprovalAnswer(body, service))
           return
@@ -238,6 +244,7 @@ export async function handleAgentRequest(
         return
       case 'session-prompt':
       case 'session-cancel':
+      case 'session-archive':
       case 'approval-answer':
         throw new RemoteProtocolError({ code: 'request/invalid', message: 'POST is required', httpStatus: 405 })
     }

@@ -625,6 +625,16 @@ export class RemoteHostsService {
     }
   }
 
+  /** Archive a remote Session whose local mirror was never materialized. */
+  async archiveSession(id: string, sessionId: string): Promise<void> {
+    const client = this.#requireClient(id)
+    try {
+      await client.archiveSession(sessionId)
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
   /** Resolve the remote Web UI behind this host's tunnel. */
   async webUrl(id: string): Promise<{ url: string }> {
     const client = this.#requireClient(id)

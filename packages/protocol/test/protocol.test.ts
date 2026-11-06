@@ -12,6 +12,7 @@ import {
   matchAgentRoute,
   negotiateProtocol,
   parseSseStream,
+  sessionArchivePath,
   sessionAssistantEventsPath,
   sessionEventsPath,
   sessionPath,
@@ -77,6 +78,10 @@ describe('route table', () => {
       kind: 'session-assistant-events',
       sessionId: 'session-1',
     })
+    assert.deepEqual(matchAgentRoute(sessionArchivePath('session-1')), {
+      kind: 'session-archive',
+      sessionId: 'session-1',
+    })
     assert.deepEqual(matchAgentRoute(workspaceSessionsPath('workspace/a')), {
       kind: 'workspace-sessions',
       workspaceId: 'workspace/a',
@@ -123,6 +128,7 @@ describe('SSE parser', () => {
 describe('RemoteAgentClient', () => {
   let server: Server
   let baseUrl: string
+  let archivedPath: string | undefined
   const token = 'test-token'
 
   before(async () => {
@@ -185,6 +191,16 @@ describe('RemoteAgentClient', () => {
         })
         return
       }
+      if (url.pathname === sessionArchivePath('s1')) {
+        archivedPath = url.pathname
+        json(res, 200, {
+          ok: true,
+          protocolVersion: PROTOCOL_VERSION,
+          serverTime: new Date().toISOString(),
+          data: { accepted: true },
+        })
+        return
+      }
       if (url.pathname === sessionEventsPath('s1').split('?')[0]) {
         res.writeHead(200, { 'content-type': 'text/event-stream' })
         res.write(': hi\n\n')
@@ -226,6 +242,12 @@ describe('RemoteAgentClient', () => {
     assert.equal(health.workspaceCount, 1)
     const workspaces = await client.listWorkspaces()
     assert.equal(workspaces[0]?.workspaceId, 'w1')
+  })
+
+  it('archives a remote session through the agent route', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    await client.archiveSession('s1')
+    assert.equal(archivedPath, sessionArchivePath('s1'))
   })
 
   it('surfaces stable auth errors', async () => {

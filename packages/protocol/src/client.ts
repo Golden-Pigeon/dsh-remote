@@ -14,6 +14,7 @@ import { RemoteProtocolError } from './errors.ts'
 import {
   sessionAssistantEventsPath,
   sessionCancelPath,
+  sessionArchivePath,
   sessionEventsPath,
   sessionModelPath,
   sessionSandboxModePath,
@@ -239,6 +240,14 @@ export class RemoteAgentClient {
     await this.#request(sessionCancelPath(sessionId), isAcceptedResult, {
       method: 'POST',
       body: {},
+    })
+  }
+
+  /** Archive a remote session so it no longer appears in the workspace list. */
+  async archiveSession(sessionId: string, stopActivity = true): Promise<void> {
+    await this.#request(sessionArchivePath(sessionId), isAcceptedResult, {
+      method: 'POST',
+      body: { stopActivity },
     })
   }
 

@@ -107,6 +107,7 @@ export type { CursorAcceptance } from './cursor.ts'
 export {
   AGENT_ROUTES,
   matchAgentRoute,
+  sessionArchivePath,
   sessionAssistantEventsPath,
   sessionCancelPath,
   sessionEventsPath,
