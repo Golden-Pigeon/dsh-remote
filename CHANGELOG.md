@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.18
+
+- Replace the private DSH current-session field with the public
+  `uiSession` current binding, so the claim focus guard does not depend on
+  private workspace UI state
+  ([#19](https://github.com/Golden-Pigeon/dsh-remote/pull/19)).
+- Archive remote Sessions left behind when a native draft promotion or blank
+  materialization fails before its local mirror exists. The remote agent now
+  exposes an archive route, filters archived Sessions from workspace/session
+  lists, and ships as `0.2.11`
+  ([#19](https://github.com/Golden-Pigeon/dsh-remote/pull/19)).
+- Add protocol, agent HTTP, mirror lifecycle, and client bundle coverage for the
+  archive and focus-guard paths
+  ([#19](https://github.com/Golden-Pigeon/dsh-remote/pull/19)).
+
 ## 0.8.17
 
 - Support DSH 0.2.2-rc.1: align the Cordis dependency line, adapt the branded
