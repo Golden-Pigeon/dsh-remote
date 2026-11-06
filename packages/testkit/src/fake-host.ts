@@ -203,7 +203,13 @@ export class FakeRemoteHost {
               events: [],
             }
             this.#sessions.set(sessionId, session)
-            sendJson(res, { sessionId, ...typeof record.agentPreset === 'string' ? { agentPreset: record.agentPreset } : {} })
+            sendJson(res, { sessionId, ...typeof record.agentPreset === 'string' ? { agentPreset: record.agentPreset } : {}})
+            return
+          }
+          case 'session-archive': {
+            const session = this.#sessions.get(route.sessionId)
+            if (session !== undefined) this.#sessions.delete(route.sessionId)
+            sendJson(res, { accepted: true })
             return
           }
           case 'session-prompt': {

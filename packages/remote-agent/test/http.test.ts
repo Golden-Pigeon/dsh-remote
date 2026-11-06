@@ -16,10 +16,15 @@ describe('agent HTTP file and terminal surface', () => {
   let dir: string
   const manager = new RemoteTerminalManager()
   const token = 'http-test-token'
+  const archiveCalls: Array<{ sessionId: string; stopActivity: boolean }> = []
   const service = {
     admitsPeer: () => true,
     token,
     terminals: manager,
+    async archiveSession(sessionId: string, stopActivity: boolean) {
+      archiveCalls.push({ sessionId, stopActivity })
+      return { accepted: true }
+    },
   } as unknown as RemoteAgentService
 
   before(async () => {
@@ -56,6 +61,12 @@ describe('agent HTTP file and terminal surface', () => {
     }
     assert.equal(frames[0]?.kind, 'ready')
     assert.equal(frames[1]?.kind, 'change')
+  })
+
+  it('archives a session through the agent route', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    await client.archiveSession('s1')
+    assert.deepEqual(archiveCalls, [{ sessionId: 's1', stopActivity: true }])
   })
 
   it('serves terminal create, attach, input, list, and close', async () => {

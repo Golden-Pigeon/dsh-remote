@@ -132,6 +132,12 @@ export async function handleAgentRequest(
         case 'session-cancel':
           sendJson(res, service.cancelSession(route.sessionId))
           return
+        case 'session-archive':
+          sendJson(res, await service.archiveSession(
+            route.sessionId,
+            (body as { stopActivity?: unknown }).stopActivity !== false,
+          ))
+          return
         case 'approval-answer':
           sendJson(res, asApprovalAnswer(body, service))
           return

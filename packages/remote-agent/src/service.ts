@@ -156,6 +156,7 @@ export class RemoteAgentService {
         'session.create',
         'session.prompt',
         'session.cancel',
+        'session.archive',
         'approval.follow',
         'approval.answer',
         'web.url',
@@ -178,8 +179,14 @@ export class RemoteAgentService {
 
   /** Project the workspace registry. */
   listWorkspaces(): ListWorkspacesResult {
+    const archived = this.#archivedSessionIds()
     const workspaces = this.ctx.workspaceRegistry.list()
-    return { workspaces: projectWorkspaces(workspaces.map(toWorkspaceLike)) }
+    return {
+      workspaces: projectWorkspaces(workspaces.map(workspace => {
+        const projected = toWorkspaceLike(workspace)
+        return { ...projected, sessionIds: projected.sessionIds.filter(id => !archived.has(id)) }
+      })),
+    }
   }
 
   /** List sessions in one workspace, or every visible session. */
@@ -194,6 +201,7 @@ export class RemoteAgentService {
     }
 
     const persisted = await this.#persistedBySession()
+    const archived = this.#archivedSessionIds()
     const owner = new Map<string, string>()
     for (const workspace of workspaces) {
       for (const sessionId of workspace.sessionIds) owner.set(String(sessionId), String(workspace.id))
@@ -202,7 +210,7 @@ export class RemoteAgentService {
     const summaries: RemoteSessionSummary[] = []
     const seen = new Set<string>()
     const add = (sessionId: string): void => {
-      if (seen.has(sessionId)) return
+      if (archived.has(sessionId) || seen.has(sessionId)) return
       seen.add(sessionId)
       const sessionWorkspace = owner.get(sessionId) ?? null
       if (workspaceId !== undefined && sessionWorkspace !== workspaceId) return
@@ -262,6 +270,24 @@ export class RemoteAgentService {
       sessionId: String(created.sessionId),
       ...created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset },
     }
+  }
+
+  /** Archive one remote session and stop its activity when requested. */
+  async archiveSession(sessionId: string, stopActivity: boolean): Promise<AcceptedResult> {
+    try {
+      await this.ctx.workspaceRegistry.archiveSession(
+        sessionId as never,
+        stopActivity ? { stopActivity: true } : {},
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteProtocolError({
+        code: 'internal',
+        message,
+        httpStatus: 409,
+      })
+    }
+    return { accepted: true }
   }
 
   /** Select and install the model/reasoning effort for one remote session. */
@@ -607,6 +633,10 @@ export class RemoteAgentService {
     const url = this.ctx.webServer.getOrigin()
     this.#state = withListener(this.#state, { port, url })
     await writeState(this.config.stateFile, this.#state)
+  }
+
+  #archivedSessionIds(): Set<string> {
+    return new Set(this.ctx.workspaceRegistry.archivedSessionIds.map(String))
   }
 
   async #persistedBySession(): Promise<Map<string, SessionPersistenceSnapshot>> {

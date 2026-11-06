@@ -41,6 +41,7 @@ export type AgentRoute =
   | { readonly kind: 'session-sandbox'; readonly sessionId: string }
   | { readonly kind: 'session-prompt'; readonly sessionId: string }
   | { readonly kind: 'session-cancel'; readonly sessionId: string }
+  | { readonly kind: 'session-archive'; readonly sessionId: string }
   | { readonly kind: 'workspace-sessions'; readonly workspaceId: string }
   | { readonly kind: 'web-url' }
   | { readonly kind: 'approval-events' }
@@ -85,6 +86,11 @@ export function sessionPromptPath(sessionId: string): string {
 /** Path that cancels one session's active turn. */
 export function sessionCancelPath(sessionId: string): string {
   return `${sessionPath(sessionId)}/cancel`
+}
+
+/** Path that archives one remote session. */
+export function sessionArchivePath(sessionId: string): string {
+  return `${sessionPath(sessionId)}/archive`
 }
 
 /** Path of one session's live event stream. */
@@ -207,6 +213,7 @@ export function matchAgentRoute(pathname: string): AgentRoute | undefined {
       if (parts[1] === 'sandbox') return { kind: 'session-sandbox', sessionId }
       if (parts[1] === 'prompt') return { kind: 'session-prompt', sessionId }
       if (parts[1] === 'cancel') return { kind: 'session-cancel', sessionId }
+      if (parts[1] === 'archive') return { kind: 'session-archive', sessionId }
     }
     return undefined
   }

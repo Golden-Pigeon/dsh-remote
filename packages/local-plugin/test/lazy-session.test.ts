@@ -228,6 +228,38 @@ describe('lazy remote Session creation', () => {
     }
   })
 
+  it('archives the remote Session when promotion cannot create its mirror', async () => {
+    const test = harness()
+    try {
+      await test.service.start()
+      const state = await test.state() as { workspaces: Record<string, { anchor: string }> }
+      const anchor = Object.values(state.workspaces)[0]?.anchor
+      assert.ok(anchor)
+      const sessions = test.ctx.get('sessions') as unknown as {
+        create(id: string, options: { meta: { cwd: string } }): { id: string; header: { cwd: string } }
+      }
+      const native = sessions.create('native-remote-cleanup', { meta: { cwd: anchor } })
+      const agent = { id: native.id, session: native, ctx: test.ctx }
+      const agentScope = createScope(test.ctx, agent)
+      agent.ctx = agentScope.ctx
+      try {
+        const dispatch = agentEvents(test.ctx, agent as never)
+        const message = { id: 'cleanup-message', role: 'user', content: [{ type: 'text', text: 'clean me' }] }
+        test.setFailEnter(true)
+        await assert.rejects(dispatch.waterfall('agent/pre-step' as never, {
+          messages: [message], turn: 1, step: 1, signal: new AbortController().signal,
+        } as never, async () => ({ kind: 'enter', messages: [message] }) as never))
+        assert.equal(test.remoteCreates.length, 1)
+        await test.service.dispose()
+        assert.deepEqual(test.remoteArchived, ['session-local-blank-1'])
+      } finally {
+        await agentScope.dispose()
+      }
+    } finally {
+      await test.ctx.fiber.dispose()
+    }
+  })
+
   it('archives an unfinished promoted native draft when the plugin releases it', async () => {
     const test = harness()
     try {
