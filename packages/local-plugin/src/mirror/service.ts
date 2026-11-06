@@ -527,11 +527,11 @@ export class RemoteMirrorService {
       if (abandoned !== undefined) void this.#archiveAbandonedPromotion(abandoned)
       if (this.#disposed || !this.#pendingBlanks.has(String(agent.id))) return
       const pending = this.#pendingBlanks.get(String(agent.id))
+      const hasMirror = pending !== undefined
+        && (this.#runtimes.has(pending.localSessionId) || this.#registrations.has(pending.localSessionId))
       this.#pendingBlanks.delete(String(agent.id))
       this.#registrations.delete(String(agent.id))
-      if (pending?.remoteSessionId !== undefined
-        && !this.#runtimes.has(pending.localSessionId)
-        && !this.#registrations.has(pending.localSessionId)) {
+      if (pending?.remoteSessionId !== undefined && !hasMirror) {
         void this.#archiveRemoteSession(pending.hostId, pending.remoteSessionId)
       }
     }) as never, { global: true } as never)
