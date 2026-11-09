@@ -154,7 +154,7 @@ export interface HostApiPayloads {
   'host/session': { hostId: string; sessionId: string; limit?: number }
   'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
   'host/session/blank': { hostId: string; localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }
-  'host/session/open/claim': undefined
+  'host/session/open/claim': { visibleSessionId?: string } | undefined
   'host/session/prompt': {
     hostId: string
     sessionId: string

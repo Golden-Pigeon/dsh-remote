@@ -43,6 +43,8 @@ import type { RemoteHostsService } from '../service.ts'
 
 
 const MIRROR_VERSION = 1
+/** How long a client's last visible-Session report keeps approvals eligible to dispatch. */
+const VISIBLE_SESSION_TTL_MS = 5_000
 const SURFACE_TYPES = new Set([
   'system/message',
   'developer/message',
@@ -460,6 +462,9 @@ export class RemoteMirrorService {
   #state: MirrorState = { version: MIRROR_VERSION, sessions: {}, workspaces: {}, testHidden: [] }
   #testVisibility: TestVisibility = { hiddenPaths: [], hiddenWorkspaceIds: [] }
   #runtimes = new Map<string, MirrorRuntime>()
+  #pendingApprovals = new Map<string, RemoteApprovalRequest[]>()
+  #approvingApprovals = new Set<string>()
+  #visibleSessions = new Map<string, number>()
   #registrations = new Map<string, () => Promise<void>>()
   #approvalStreams = new Map<string, AbortController>()
   #mirrorsInFlight = new Map<string, Promise<MirrorRecord | undefined>>()
@@ -647,6 +652,24 @@ export class RemoteMirrorService {
       }
     }
     return undefined
+  }
+
+  /** Record the local Session a client currently shows, refreshing its freshness window. */
+  reportVisibleSession(sessionId: string | undefined): void {
+    const now = Date.now()
+    for (const [id, at] of this.#visibleSessions) {
+      if (now - at > VISIBLE_SESSION_TTL_MS) this.#visibleSessions.delete(id)
+    }
+    if (sessionId === undefined) return
+    this.#visibleSessions.set(sessionId, now)
+    const runtime = [...this.#runtimes.values()].find(item => item.record.localSessionId === sessionId)
+    if (runtime !== undefined) this.#flushPendingApprovals(runtime.record)
+  }
+
+  /** Whether a connected client reported this Session visible within the freshness window. */
+  isSessionVisible(sessionId: string): boolean {
+    const at = this.#visibleSessions.get(sessionId)
+    return at !== undefined && Date.now() - at <= VISIBLE_SESSION_TTL_MS
   }
 
   /** Consume one mirror Session that should be revealed after promotion. */
@@ -1596,6 +1619,19 @@ export class RemoteMirrorService {
   }
 
   async #handleApproval(hostId: string, request: RemoteApprovalRequest): Promise<void> {
+    // A reconnecting approval stream replays pending requests. The same remote
+    // approval must become one local pending event, not one per replay/client.
+    const approvalKey = `${hostId}\u0000${request.sessionId}\u0000${request.id}`
+    if (this.#approvingApprovals.has(approvalKey)) return
+    this.#approvingApprovals.add(approvalKey)
+    try {
+      await this.#dispatchApproval(hostId, request)
+    } finally {
+      this.#approvingApprovals.delete(approvalKey)
+    }
+  }
+
+  async #dispatchApproval(hostId: string, request: RemoteApprovalRequest): Promise<void> {
     const runtime = [...this.#runtimes.values()].find(
       item => item.record.hostId === hostId && item.record.remoteSessionId === request.sessionId,
     )
@@ -1605,7 +1641,17 @@ export class RemoteMirrorService {
       // Leave this decision to another client or the remote approval policy.
       if (mirror !== undefined && Object.values(this.#state.workspaces).some(workspace =>
         workspace.hostId === hostId && workspace.anchor === mirror.anchor && workspace.removed)) return
-      await this.#hosts.answerApproval(hostId, request.id, 'unavailable').catch(() => undefined)
+      // The mirror Session may not be mounted yet (the approval stream starts
+      // before the first session sync). Hold the request and dispatch it when
+      // the local runtime exists instead of denying it here.
+      this.#enqueueApproval(hostId, request)
+      return
+    }
+    // Keep native waiting semantics: an approval nobody is currently showing
+    // stays queued until a client reports the Session visible, then it reaches
+    // the ordinary approval UI. Never answer it on the user's behalf.
+    if (!this.isSessionVisible(runtime.record.localSessionId)) {
+      this.#enqueueApproval(hostId, request)
       return
     }
     const local = new AbortController()
@@ -1874,6 +1920,7 @@ export class RemoteMirrorService {
     }
     this.#runtimes.set(record.localSessionId, runtime)
     this.#registrations.set(record.localSessionId, async () => { detach(); await agent.scope.dispose() })
+    this.#flushPendingApprovals(record)
     const localMode = this.#localSandboxMode(session)
     const remoteMode = latestRemoteSandboxMode(snapshot.events)
     if (localMode !== undefined && remoteMode !== undefined && localMode !== remoteMode) {
@@ -1887,6 +1934,25 @@ export class RemoteMirrorService {
       this.#startStream(runtime)
       this.#startAssistantStream(runtime)
     }
+  }
+
+  /** Hold one approval until its mirror runtime exists and a client shows it. */
+  #enqueueApproval(hostId: string, request: RemoteApprovalRequest): void {
+    const pendingKey = key(hostId, request.sessionId)
+    const queued = this.#pendingApprovals.get(pendingKey)
+    if (queued === undefined) this.#pendingApprovals.set(pendingKey, [request])
+    else if (!queued.some(item => item.id === request.id)) queued.push(request)
+  }
+
+  /** Hand queued approvals to the local UI once the mirror is mounted and visible. */
+  #flushPendingApprovals(record: MirrorRecord): void {
+    if (!this.isSessionVisible(record.localSessionId)) return
+    if (!this.#runtimes.has(record.localSessionId)) return
+    const pendingKey = key(record.hostId, record.remoteSessionId)
+    const queued = this.#pendingApprovals.get(pendingKey)
+    if (queued === undefined) return
+    this.#pendingApprovals.delete(pendingKey)
+    for (const request of queued) void this.#handleApproval(record.hostId, request)
   }
 
   #schedule(runtime: MirrorRuntime): void {

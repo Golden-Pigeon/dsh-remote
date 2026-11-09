@@ -209,6 +209,8 @@ async function dispatch(
       return { ...created, ...localSessionId === undefined ? {} : { localSessionId } }
     }
     case 'host/session/open/claim': {
+      const body = payload === undefined ? undefined : requireRecord(payload)
+      mirrors?.reportVisibleSession(body === undefined ? undefined : optionalStringField(body, 'visibleSessionId'))
       return mirrors?.takeOpenSession() ?? {}
     }
     case 'host/session/blank': {

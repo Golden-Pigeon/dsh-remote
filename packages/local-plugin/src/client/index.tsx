@@ -41,7 +41,9 @@ export function apply(ctx: Context): void {
     const poll = async (): Promise<void> => {
       if (!active) return
       try {
-        const claimed = await api.claimOpenSession()
+        // The claim poll doubles as the visibility heartbeat: the host only
+        // dispatches approvals while a client shows the mirrored Session.
+        const claimed = await api.claimOpenSession(currentSessionId())
         if (active && claimed.localSessionId !== undefined) {
           // Do not steal focus if the user moved on to another Session while
           // the remote Session was being created. uiSession is the public
