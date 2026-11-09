@@ -99,7 +99,9 @@ export function nodePathPrelude(): string {
     "/usr/local/bin"; do
     if [ -d "$candidate" ]; then PATH="$candidate:$PATH"; fi
   done
-  NODE_BIN_DIR="$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
+  # Best-effort nvm probe: without a match ls exits non-zero, and pipefail
+  # would abort this script before the Node auto-install step runs.
+  NODE_BIN_DIR="$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1 || true)"
   if [ -n "$NODE_BIN_DIR" ]; then PATH="$NODE_BIN_DIR:$PATH"; fi
   if ! command -v node >/dev/null 2>&1; then
     LOGIN_SHELL="\${SHELL:-}"
