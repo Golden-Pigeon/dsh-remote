@@ -36,4 +36,12 @@ await writeFile(join(here, '..', 'lib', 'client.js'), output)
 await writeFile(join(here, '..', 'lib', 'index.js'), `// Host half: keep the stock TerminalController implementation unchanged. The
 // client half is what routes local versus mirrored Sessions.
 export { TerminalController as default, TerminalController } from '@deepseek-ai/dsh-api-terminal-controller'\n`)
+// The stock row is disabled, so this package must own the host Typert face or
+// the gateway loses every terminal endpoint. Re-own the stock manifest because
+// the loader requires TYPERT.package to equal the exporting package name.
+await writeFile(join(here, '..', 'lib', 'typert.host.js'), `import { TYPERT as STOCK } from '@deepseek-ai/dsh-api-terminal-controller/typert'
+
+export const TYPERT = { ...STOCK, package: 'dsh-remote-terminal-controller' }
+`)
+await writeFile(join(here, '..', 'lib', 'typert.host.d.ts'), 'export declare const TYPERT: unknown\n')
 process.stdout.write('built dsh-remote-terminal-controller client\n')

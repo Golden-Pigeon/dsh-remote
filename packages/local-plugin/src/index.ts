@@ -14,6 +14,7 @@ import { Config, resolveConfig, type Config as LocalConfig } from './config.ts'
 import { registerHostApi } from './host-api/handler.ts'
 import { RemoteMirrorService } from './mirror/service.ts'
 import { installRemoteWorkspaceFiles } from './remote/files.ts'
+import { installRemoteTerminalController } from './remote/terminal-controller.ts'
 import { RemoteTerminals } from './remote/terminal.ts'
 import { registerTerminalApi } from './host-api/terminal.ts'
 import { RemoteHostsService } from './service.ts'
@@ -64,6 +65,14 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   ctx.effect(() => registerTerminalApi(ctx, terminals), 'dsh-remote-local: remote terminal route')
   ctx.inject(['workspaceFiles'], child => {
     installRemoteWorkspaceFiles(child, mirrors, service)
+  })
+  ctx.inject(['terminalController'], child => {
+    const controller = child.get('terminalController')
+    if (controller === undefined) return
+    child.effect(
+      () => installRemoteTerminalController(child, controller, terminals),
+      'dsh-remote-local: gateway terminal routing',
+    )
   })
 
   ctx.effect(

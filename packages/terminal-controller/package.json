@@ -8,6 +8,10 @@
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -30,7 +34,8 @@
     }
   },
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --import tsx --test test/*.test.ts"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-api-terminal-controller": ">=0.2.1-rc.1 <0.3.0-0"
