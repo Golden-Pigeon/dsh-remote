@@ -58,7 +58,7 @@ export interface HostsApi {
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly startBlankSession: (hostId: string, input: { localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }) => Promise<{ localSessionId: string }>
-  readonly claimOpenSession: () => Promise<{ localSessionId?: string; sourceSessionId?: string }>
+  readonly claimOpenSession: (visibleSessionId?: string) => Promise<{ localSessionId?: string; sourceSessionId?: string }>
   readonly openSession: (sessionId: string) => void
   readonly fileList: (sessionId: string, path: string, signal?: AbortSignal) => Promise<MirrorFileResult>
   readonly fileRead: (sessionId: string, path: string, offset?: number, limit?: number, signal?: AbortSignal) => Promise<MirrorFileResult>
@@ -98,7 +98,8 @@ export function createHostsApi(ctx: Context): HostsApi {
     }),
     createSession: (hostId, input) => call('host/session/create', { hostId, ...input }),
     startBlankSession: (hostId, input) => call('host/session/blank', { hostId, ...input }),
-    claimOpenSession: () => call('host/session/open/claim', undefined),
+    claimOpenSession: visibleSessionId => call('host/session/open/claim',
+      visibleSessionId === undefined ? undefined : { visibleSessionId }),
     openSession: sessionId => { ctx.uiWorkspace.openSession(sessionId as never) },
     fileList: (sessionId, path, signal) => call('host/files/list', { sessionId, path }, signal),
     fileRead: (sessionId, path, offset, limit, signal) => call('host/files/read', {

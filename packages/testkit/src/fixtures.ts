@@ -107,6 +107,8 @@ export function createFixtures(hostId = 'fake-host'): Fixtures {
     'web.url',
     'directory.list',
     'file.watch',
+    'approval.follow',
+    'approval.answer',
   ]
   const hostInfo: HostInfo = {
     hostId,

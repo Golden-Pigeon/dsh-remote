@@ -12,6 +12,11 @@ export const FAKE_SSH = join(ROOT, 'test/playwright/fake-ssh.mjs')
 const LOCAL_PLUGIN = JSON.parse(readFileSync(join(ROOT, 'packages/local-plugin/package.json'), 'utf8')) as { version: string }
 export const PLUGIN_TARBALL = join(ROOT, `packages/local-plugin/dsh-remote-local-plugin-${LOCAL_PLUGIN.version}.tgz`)
 
+export interface E2EHostOptions {
+  /** Queue fake remote state before the local DSH host starts (e.g. approvals). */
+  readonly beforeStart?: (fake: FakeRemoteHost) => void
+}
+
 export interface E2EHost {
   readonly fake: FakeRemoteHost
   readonly home: string
@@ -55,11 +60,12 @@ function waitForUrl(child: ChildProcess): Promise<string> {
 }
 
 /** Start an isolated DSH web host wired to a fake remote agent through a fake ssh binary. */
-export async function startE2EHost(): Promise<E2EHost> {
+export async function startE2EHost(options: E2EHostOptions = {}): Promise<E2EHost> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-remote-playwright-'))
   const token = 'playwright-token-0123456789'
   const started = await startFakeHost({ hostId: 'playwright-host', token })
   const fake = started.host
+  options.beforeStart?.(fake)
   const now = new Date().toISOString()
   const stateFile = join(home, 'fake-state.json')
   const fakeSshLog = join(home, 'fake-ssh.log')

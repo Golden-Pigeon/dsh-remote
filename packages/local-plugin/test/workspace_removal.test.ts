@@ -23,7 +23,8 @@ describe('local remote-workspace removal', () => {
       await f.requestApproval(f.host.id, { id: 'removed-approval', sessionId: 'remote-session', toolName: 'shell' })
       assert.deepEqual(f.answers, [])
       await f.requestApproval(f.host.id, { id: 'unknown-approval', sessionId: 'unknown-session', toolName: 'shell' })
-      assert.deepEqual(f.answers, [{ hostId: f.host.id, requestId: 'unknown-approval', outcome: 'unavailable' }])
+      // Unknown Sessions wait for their mirror instead of being denied.
+      assert.deepEqual(f.answers, [])
     } finally { await f.close() }
   })
 
@@ -38,6 +39,9 @@ describe('local remote-workspace removal', () => {
     }) as never, { global: true } as never)
     try {
       await f.service.start()
+      const localId = f.service.localSessionId(f.host.id, 'remote-session')
+      assert.ok(localId)
+      f.service.reportVisibleSession(localId)
       await f.requestApproval(f.host.id, { id: 'pending-approval', sessionId: 'remote-session', toolName: 'shell' })
       await timeout(entered.promise)
       await f.registry.delete(f.service.localWorkspaceId(f.host.id, f.workspace.workspaceId)!)
@@ -52,6 +56,9 @@ describe('local remote-workspace removal', () => {
     f.hostB.phase = 'disconnected'
     try {
       await f.service.start()
+      const localId = f.service.localSessionId(f.host.id, 'remote-session')
+      assert.ok(localId)
+      f.service.reportVisibleSession(localId)
       f.ctx.reflect.set('workspaceRegistry', undefined as never)
       await f.requestApproval(f.host.id, { id: 'active-approval', sessionId: 'remote-session', toolName: 'shell' })
       assert.deepEqual(f.answers, [{ hostId: f.host.id, requestId: 'active-approval', outcome: 'unavailable' }])

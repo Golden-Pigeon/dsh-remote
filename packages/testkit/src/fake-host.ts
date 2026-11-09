@@ -25,7 +25,9 @@ import {
   parseProtocolHeader,
   type ApiFailure,
   type ApiSuccess,
+  type ApprovalOutcome,
   type HostInfo,
+  type RemoteApprovalRequest,
   type RemoteSessionEvent,
   type SessionSnapshot,
   type SessionStreamFrame,
@@ -63,6 +65,8 @@ export class FakeRemoteHost {
   readonly requests: FakeRequest[] = []
   readonly createRequests: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
   readonly promptRequests: Array<{ sessionId: string; text: string; provider?: string; model?: string; reasoningEffort?: string; content?: unknown }> = []
+  /** Approval answers accepted by this fake host, for end-to-end assertions. */
+  readonly approvalAnswers: Array<{ id: string; outcome: ApprovalOutcome }> = []
   /** Fail the next session creation with an API error. */
   failNextCreate = false
   /** Fail the next accepted prompt with an API error. */
@@ -76,6 +80,9 @@ export class FakeRemoteHost {
   readonly #heartbeatMs: number
   readonly #sessions = new Map<string, FakeSession>()
   readonly #streams = new Map<string, ServerResponse[]>()
+  readonly #approvals = new Map<string, RemoteApprovalRequest>()
+  readonly #approvalStreams = new Set<ServerResponse>()
+  readonly #approvalTimers = new Map<ServerResponse, NodeJS.Timeout>()
   #server: Server | undefined
 
   constructor(options: FakeHostOptions = {}) {
@@ -103,12 +110,27 @@ export class FakeRemoteHost {
     return { baseUrl: `http://127.0.0.1:${address.port}`, port: address.port }
   }
 
+  /** Queue one approval request for the next/connected approval stream. */
+  requestApproval(request: RemoteApprovalRequest): void {
+    this.#approvals.set(request.id, request)
+    for (const response of this.#approvalStreams) {
+      writeApprovalFrame(response, { type: 'request', request })
+    }
+  }
+
   /** Stop the listener and close active streams. */
   async stop(): Promise<void> {
     for (const streams of this.#streams.values()) {
       for (const response of streams) response.end()
     }
     this.#streams.clear()
+    for (const response of this.#approvalStreams) {
+      const timer = this.#approvalTimers.get(response)
+      if (timer !== undefined) clearInterval(timer)
+      response.end()
+    }
+    this.#approvalStreams.clear()
+    this.#approvalTimers.clear()
     const server = this.#server
     this.#server = undefined
     if (server === undefined) return
@@ -243,6 +265,20 @@ export class FakeRemoteHost {
             this.#getSession(route.sessionId)
             sendJson(res, { accepted: true })
             return
+          case 'approval-answer': {
+            const record = body as { id?: unknown; outcome?: unknown }
+            const outcomes: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+            if (typeof record.id !== 'string' || typeof record.outcome !== 'string' || !outcomes.includes(record.outcome as ApprovalOutcome)) {
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'approval id and outcome are required' })
+            }
+            if (!this.#approvals.has(record.id)) {
+              throw new RemoteProtocolError({ code: 'request/invalid', message: `approval ${record.id} is not pending` })
+            }
+            this.#approvals.delete(record.id)
+            this.approvalAnswers.push({ id: record.id, outcome: record.outcome as ApprovalOutcome })
+            sendJson(res, { accepted: true })
+            return
+          }
           default:
             throw new RemoteProtocolError({ code: 'request/invalid', message: 'POST is not supported here', httpStatus: 405 })
         }
@@ -307,6 +343,9 @@ export class FakeRemoteHost {
         }
         case 'session-events':
           this.#stream(req, res, route.sessionId, url.searchParams.get('cursor'))
+          return
+        case 'approval-events':
+          this.#streamApprovals(req, res)
           return
         case 'web-url':
           sendJson(res, { path: '/?token=fake-browser-token' })
@@ -410,6 +449,31 @@ export class FakeRemoteHost {
     })
   }
 
+  #streamApprovals(req: IncomingMessage, res: ServerResponse): void {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store',
+      connection: 'keep-alive',
+    })
+    res.write('retry: 5000\n\n')
+    writeApprovalFrame(res, { type: 'ready' })
+    for (const request of this.#approvals.values()) writeApprovalFrame(res, { type: 'request', request })
+    this.#approvalStreams.add(res)
+    const cleanup = (): void => {
+      const timer = this.#approvalTimers.get(res)
+      if (timer !== undefined) clearInterval(timer)
+      this.#approvalTimers.delete(res)
+      this.#approvalStreams.delete(res)
+    }
+    req.on('close', cleanup)
+    res.on('close', cleanup)
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded) res.write('event: heartbeat\ndata: {}\n\n')
+    }, this.#heartbeatMs)
+    heartbeat.unref?.()
+    this.#approvalTimers.set(res, heartbeat)
+  }
+
   #getSession(sessionId: string): FakeSession {
     const session = this.#sessions.get(sessionId)
     if (session === undefined) throw new RemoteProtocolError({ code: 'session/not-found', message: 'unknown session' })
@@ -445,6 +509,11 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
 function writeFrame(res: ServerResponse, frame: SessionStreamFrame): void {
   if (res.writableEnded) return
   res.write(`event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`)
+}
+
+function writeApprovalFrame(res: ServerResponse, frame: { readonly type: 'ready' } | { readonly type: 'request'; readonly request: RemoteApprovalRequest }): void {
+  if (res.writableEnded) return
+  res.write(`event: frame\ndata: ${JSON.stringify(frame)}\n\n`)
 }
 
 function parseLimit(raw: string | null, fallback: number): number {
