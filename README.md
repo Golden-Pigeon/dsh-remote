@@ -29,7 +29,7 @@ This plugin is developed for the **official DSH Desktop application**. Supported
 | Component | Version |
 |---|---|
 | [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3), [**0.2.1-rc.4**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.4), [**0.2.1-rc.5**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.5), [**0.2.2-rc.1**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1) (all tested) |
-| Plugin | [**0.8.18**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
+| Plugin | [**0.8.19**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
 | Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) through [**0.2.2-rc.1**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1) (provisioning default) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
@@ -80,7 +80,7 @@ If npmjs.com still resolves an older `latest` tag for a newly published release,
 current version instead:
 
 ```text
-dsh-remote-local-plugin@0.8.18
+dsh-remote-local-plugin@0.8.19
 ```
 
 Keep this pinned version in sync with each release.
