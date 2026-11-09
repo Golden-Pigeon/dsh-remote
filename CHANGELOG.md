@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.19
+
+- Keep first-time remote provisioning running on hosts without Node or nvm.
+  The nvm probe no longer aborts the bootstrap before the configured Node
+  auto-install step; verified on an isolated host with no Node
+  ([#20](https://github.com/Golden-Pigeon/dsh-remote/issues/20),
+  [#24](https://github.com/Golden-Pigeon/dsh-remote/pull/24)).
+  Thanks [@Solaris136](https://github.com/Solaris136)!
+- Browse mirrored workspaces from Windows clients. Remote POSIX roots stay
+  POSIX while the local anchor keeps Windows paths, so `/home/ubuntu` is no
+  longer sent to the remote agent as `C:\home\ubuntu`
+  ([#21](https://github.com/Golden-Pigeon/dsh-remote/issues/21),
+  [#25](https://github.com/Golden-Pigeon/dsh-remote/pull/25)).
+  Thanks [@Solaris136](https://github.com/Solaris136)!
+- Show mirrored approvals instead of answering them unavailable before the user
+  can see them. Approval requests wait until the mirror runtime exists and a
+  client is showing the Session, then use the native approval UI. Replayed
+  requests are deduplicated, and a two-client E2E test covers one client
+  answering while the other dismisses
+  ([#22](https://github.com/Golden-Pigeon/dsh-remote/issues/22),
+  [#27](https://github.com/Golden-Pigeon/dsh-remote/pull/27)).
+  Thanks [@Solaris136](https://github.com/Solaris136)!
+- Restore gateway terminal endpoints for third-party clients when the
+  terminal-controller fork replaces the stock row. The fork now exports its own
+  Typert host face and routes gateway terminals for mirrored Sessions through
+  the remote PTY; the bundled terminal-controller is `0.1.3`
+  ([#23](https://github.com/Golden-Pigeon/dsh-remote/issues/23),
+  [#26](https://github.com/Golden-Pigeon/dsh-remote/pull/26)).
+  Thanks [@simonsysun](https://github.com/simonsysun)!
+
 ## 0.8.18
 
 - Replace the private DSH current-session field with the public
