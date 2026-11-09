@@ -9,7 +9,8 @@
  * @module dsh-remote-local/remote/files
  */
 
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import * as localPath from 'node:path'
+import * as remotePath from 'node:path/posix'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-workspace-files'
 import type {
@@ -25,14 +26,7 @@ import type { AgentCapability, RemoteAgentClient } from '@dsh-remote/protocol'
 import { LocalError } from '../errors.ts'
 import type { RemoteHostsService } from '../service.ts'
 import type { RemoteMirrorService } from '../mirror/service.ts'
-
-interface RemoteFileTarget {
-  readonly hostId: string
-  readonly localPath: string
-  readonly remotePath: string
-  readonly relativePath: string
-  readonly workspaceRoot: string
-}
+import { resolveRemoteFileTarget, type RemoteFileTarget } from './remote-path.ts'
 
 /** Install the adapter over the host's workspace-files service. */
 export function installRemoteWorkspaceFiles(
@@ -121,55 +115,14 @@ function targetOf(
 ): RemoteFileTarget | undefined {
   const context = mirrors.remoteFileContext(workspaceRoot)
   if (context === undefined) return undefined
-  const anchor = resolve(workspaceRoot)
-  const remoteRoot = resolve(context.remoteRoot)
-  const candidate = isAbsolute(path) ? resolve(path) : resolve(anchor, path)
-  const contains = (root: string, value: string): boolean => {
-    const rel = relative(root, value)
-    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-  }
-
-  // Tool cards and transcript links use the remote absolute path. The sidebar
-  // uses the local anchor. Accept both and normalize to the remote workspace.
-  if (isAbsolute(path) && contains(remoteRoot, candidate)) {
-    const rel = relative(remoteRoot, candidate)
-    return {
-      hostId: context.hostId,
-      localPath: rel === '' ? anchor : resolve(anchor, rel),
-      remotePath: candidate,
-      relativePath: rel.split(sep).join('/'),
-      workspaceRoot: anchor,
-    }
-  }
-
-  if (contains(anchor, candidate)) {
-    const rel = relative(anchor, candidate)
-    const remotePath = rel === '' ? remoteRoot : join(remoteRoot, rel)
-    return {
-      hostId: context.hostId,
-      localPath: candidate,
-      remotePath,
-      relativePath: rel.split(sep).join('/'),
-      workspaceRoot: anchor,
-    }
-  }
-  // Remote transcript links and editor paths are not confined to the
-  // workspace root. A mirrored workspace identifies the host; an absolute
-  // path is then read by that host's agent rather than the local filesystem.
-  if (isAbsolute(path)) {
-    return {
-      hostId: context.hostId,
-      localPath: path,
-      remotePath: path,
-      relativePath: path,
-      workspaceRoot: anchor,
-    }
-  }
-
-  throw Object.assign(
-    new Error(`remote file path is outside the mirrored workspace: ${path}`),
-    { code: 'workspace-file/not-found' },
-  )
+  return resolveRemoteFileTarget({
+    hostId: context.hostId,
+    workspaceRoot,
+    remoteRoot: context.remoteRoot,
+    path,
+    localPath,
+    remotePath,
+  })
 }
 
 async function* watchAgent(
