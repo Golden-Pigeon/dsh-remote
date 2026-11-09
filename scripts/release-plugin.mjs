@@ -24,6 +24,7 @@ for (const required of [
   join(pluginDir, 'assets'),
   join(terminalDir, 'lib', 'index.js'),
   join(terminalDir, 'lib', 'client.js'),
+  join(terminalDir, 'lib', 'typert.host.js'),
 ]) {
   if (!existsSync(required)) throw new Error(`release-plugin: missing build output ${required}; run pnpm -r build first`)
 }
