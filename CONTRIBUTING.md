@@ -52,9 +52,18 @@ node scripts/release-plugin.mjs
 
 The resulting tarball includes the terminal-controller fork as a bundled dependency.
 
+## Issues before pull requests
+
+Every pull request must be tied to a GitHub issue that was opened for discussion first. Opening the
+issue and the pull request at the same time is allowed, but a pull request without a corresponding
+issue is not. Link the issue in the pull request description, and allow maintainers to discuss the
+problem and the proposed approach in the issue before code review. Pull requests submitted without
+an issue will be closed without review.
+
 ## Pull requests
 
 - Keep changes focused and include tests where behavior changes. CI runs the build, typecheck, and test suite against both supported DSH versions.
+- Reference the corresponding issue in the pull request description.
 - Run `pnpm -r typecheck`, `pnpm -r test`, and `pnpm -r build` before opening a PR.
 - Do not rewrite published tags or history.
 - Describe security-sensitive changes explicitly, especially anything touching credentials, remote
