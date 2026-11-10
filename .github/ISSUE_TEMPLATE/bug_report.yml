@@ -50,3 +50,14 @@ body:
     attributes:
       label: Relevant logs
       description: Redact tokens, paths, hostnames, and credentials.
+  - type: dropdown
+    id: pr-intent
+    attributes:
+      label: Do you intend to submit a PR?
+      description: This helps maintainers discuss the approach before code review.
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure yet"
+    validations:
+      required: true

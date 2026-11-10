@@ -2,6 +2,12 @@
 
 <!-- What changed and why. -->
 
+## Issue
+
+- [ ] I have opened a related GitHub issue for discussion (opening it together with this PR is allowed).
+
+Linked issue: #
+
 ## Verification
 
 - [ ] `pnpm -r typecheck`

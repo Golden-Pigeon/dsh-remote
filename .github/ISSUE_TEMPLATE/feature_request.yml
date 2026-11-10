@@ -19,3 +19,14 @@ body:
     id: alternatives
     attributes:
       label: Alternatives considered
+  - type: dropdown
+    id: pr-intent
+    attributes:
+      label: Do you intend to submit a PR?
+      description: This helps maintainers discuss the approach before code review.
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure yet"
+    validations:
+      required: true
