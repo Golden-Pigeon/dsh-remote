@@ -52,6 +52,8 @@ export interface HostInfo {
   readonly agentVersion: string
   /** Agent home directory used for state and diagnostics. */
   readonly home: string
+  /** POSIX login shell of the account running the agent; absent on older agents. */
+  readonly loginShell?: string
   /** ISO-8601 instant at which the agent plugin started. */
   readonly startedAt: string
   /** Protocol revision advertised by this agent. */

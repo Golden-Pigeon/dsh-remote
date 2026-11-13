@@ -8,8 +8,10 @@
  * @module dsh-remote-agent/terminal
  */
 
+import { accessSync, constants } from 'node:fs'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { userInfo } from 'node:os'
 import { basename, resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { RemoteProtocolError, type RemoteTerminalCreateRequest, type RemoteTerminalFrame, type RemoteTerminalInfo, type RemoteTerminalInput } from '@dsh-remote/protocol'
@@ -18,12 +20,53 @@ const MAX_BUFFERED_BYTES = 512 * 1024
 const MAX_COLS = 240
 const MAX_ROWS = 80
 
+/** The passwd login shell, when the platform can report it. */
+function passwdLoginShell(): string | undefined {
+  try {
+    return userInfo().shell ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Resolve the remote user's login shell.
+ * Prefer the passwd entry, then $SHELL; accept only an executable absolute path.
+ * @param env - process environment; `SHELL` is the second candidate.
+ * @param loginShell - passwd shell; defaults to the running account's entry.
+ * @param executable - executable check, injectable for tests.
+ * @returns the login shell, or `/bin/bash` when no candidate is executable.
+ */
+export function resolveLoginShell(
+  env: NodeJS.ProcessEnv = process.env,
+  loginShell: string | undefined = passwdLoginShell(),
+  executable: (path: string) => boolean = path => {
+    try {
+      accessSync(path, constants.X_OK)
+      return true
+    } catch {
+      return false
+    }
+  },
+): string {
+  for (const candidate of [loginShell, env.SHELL]) {
+    const path = candidate?.trim()
+    if (path === undefined || path === '' || !path.startsWith('/')) continue
+    if (executable(path)) return path
+  }
+  return '/bin/bash'
+}
+
 const PTY_HELPER = String.raw`
-import fcntl, json, os, pty, select, struct, sys, termios
+import fcntl, json, os, pty, pwd, select, struct, sys, termios
 cwd = sys.argv[1]
 rows = max(1, min(int(sys.argv[2]), 200))
 cols = max(1, min(int(sys.argv[3]), 500))
-shell = sys.argv[4] if len(sys.argv) > 4 else '/bin/bash'
+try:
+    passwd_shell = pwd.getpwuid(os.getuid()).pw_shell
+except Exception:
+    passwd_shell = None
+shell = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else (passwd_shell or '/bin/bash')
 pid, fd = pty.fork()
 if pid == 0:
     try:
@@ -106,7 +149,7 @@ export class RemoteTerminalManager {
     const cwd = resolve(request.cwd)
     const cols = clamp(request.cols ?? 80, 1, MAX_COLS)
     const rows = clamp(request.rows ?? 24, 1, MAX_ROWS)
-    const shell = request.shellPath?.trim() || '/bin/bash'
+    const shell = request.shellPath?.trim() || resolveLoginShell()
     let child
     try {
       child = spawn('python3', ['-u', '-c', PTY_HELPER, cwd, String(rows), String(cols), shell], {

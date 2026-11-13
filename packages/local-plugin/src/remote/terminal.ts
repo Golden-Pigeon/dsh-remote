@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { basename } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { TerminalFrame, TerminalInput, TerminalShell, WebTerminalInfo } from '@deepseek-ai/dsh-api-terminal-controller'
 import type { RemoteAgentClient } from '@dsh-remote/protocol'
@@ -20,6 +21,11 @@ import type { RemoteMirrorService } from '../mirror/service.ts'
 interface AgentTerminalRecord {
   readonly sessionId: string
   info: WebTerminalInfo
+}
+
+/** Remote agent PTYs are user-owned; rc.2's WebTerminalInfo requires the ownership fields. */
+function userTerminal(info: WebTerminalInfo): WebTerminalInfo {
+  return { ...info, origin: 'user', control: 'user' }
 }
 
 /** One host-side terminal manager. */
@@ -53,9 +59,12 @@ export class RemoteTerminals {
     }
   }
 
-  /** One remote shell candidate. */
-  shells(): TerminalShell[] {
-    return [{ path: '/bin/bash', name: 'Remote Bash', args: [] }]
+  /** The remote user's login shell for one Session, falling back to bash for older agents. */
+  shells(sessionId?: string): TerminalShell[] {
+    const context = sessionId === undefined ? undefined : this.#context(sessionId)
+    const loginShell = context === undefined ? undefined : this.#hosts.hostInfoFor(context.hostId)?.loginShell
+    const path = loginShell !== undefined && loginShell.trim() !== '' ? loginShell.trim() : '/bin/bash'
+    return [{ path, name: basename(path), args: [] }]
   }
 
   /** Terminals retained for one Session. */
@@ -69,7 +78,7 @@ export class RemoteTerminals {
     }
     for (const info of live) {
       const tracked = this.#terminals.get(info.id)
-      if (tracked !== undefined) this.#terminals.set(info.id, { ...tracked, info: info as unknown as WebTerminalInfo })
+      if (tracked !== undefined) this.#terminals.set(info.id, { ...tracked, info: userTerminal(info as unknown as WebTerminalInfo) })
     }
     return [...this.#terminals.values()]
       .filter(item => item.sessionId === sessionId)
@@ -83,14 +92,14 @@ export class RemoteTerminals {
     const id = request.id ?? randomUUID()
     const existing = this.#terminals.get(id)
     if (existing !== undefined) return existing.info
-    const info = await this.#client(context.hostId).createTerminal({
+    const info = userTerminal(await this.#client(context.hostId).createTerminal({
       id,
       cwd: context.remoteRoot,
       title: `Remote · ${context.remoteRoot.split('/').at(-1) ?? context.remoteRoot}`,
       ...request.shellPath === undefined ? {} : { shellPath: request.shellPath },
       cols: request.cols ?? 80,
       rows: request.rows ?? 24,
-    }) as unknown as WebTerminalInfo
+    }) as unknown as WebTerminalInfo)
     this.#terminals.set(id, { sessionId, info })
     return info
   }

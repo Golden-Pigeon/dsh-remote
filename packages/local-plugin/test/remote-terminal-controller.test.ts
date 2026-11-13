@@ -17,6 +17,10 @@ function fakeController() {
     },
     shells() { calls.push('local:shells'); return Promise.resolve([]) },
     list() { calls.push('local:list'); return [] },
+    watch(sessionId: string) {
+      calls.push(`local:watch:${sessionId}`)
+      return (async function* () { yield [] })()
+    },
     create() { calls.push('local:create'); return Promise.resolve(info) },
     retain() { calls.push('local:retain'); return (async function* () { yield { type: 'retained' } })() },
     attach() { calls.push('local:attach'); return (async function* () { yield { type: 'state', sequence: 0, info, writable: true } })() },
@@ -69,9 +73,11 @@ describe('gateway terminal routing', () => {
     assert.deepEqual(await controller.list('mirror'), [info])
     assert.deepEqual(await controller.create(mirror, { id: 't1', cols: 80, rows: 24 }, signal), info)
 
-    const retained: any[] = []
-    for await (const frame of controller.retain('mirror', 't1', signal)) retained.push(frame)
-    assert.deepEqual(retained, [{ type: 'retained' }])
+    const retention = new AbortController()
+    const retainIterator = controller.retain('mirror', 't1', retention.signal)[Symbol.asyncIterator]()
+    assert.deepEqual((await retainIterator.next()).value, { type: 'retained' })
+    retention.abort()
+    assert.equal((await retainIterator.next()).done, true)
 
     controller.ctx = {
       invocation: {
@@ -108,5 +114,24 @@ describe('gateway terminal routing', () => {
 
     restore()
     assert.deepEqual(controller.environment(local, signal).cwd, '/local')
+  })
+
+  it('routes the rc.2 terminal roster stream by Session', async () => {
+    const { controller } = fakeController()
+    const { terminals, calls: remoteCalls, info } = fakeTerminals()
+    const ctx = { logger: { warn: () => {} } }
+    const restore = installRemoteTerminalController(ctx as never, controller as never, terminals as never)
+
+    const mirror = new AbortController()
+    const iterator = controller.watch('mirror', mirror.signal)[Symbol.asyncIterator]()
+    assert.deepEqual((await iterator.next()).value, [info])
+    mirror.abort()
+    assert.equal((await iterator.next()).done, true)
+
+    const localFrames: any[] = []
+    for await (const roster of controller.watch('local', new AbortController().signal)) localFrames.push(roster)
+    assert.deepEqual(localFrames, [[]])
+    assert.deepEqual(remoteCalls, ['remote:list:mirror'])
+    restore()
   })
 })

@@ -34,6 +34,25 @@ test.describe('remote new-session mode selection', () => {
     await expect(page.locator('button').filter({ hasText: /^(Standard|PTC|Minimal|Creator) mode$/ })).toBeVisible({ timeout: 20_000 })
   }
 
+  async function openModelMenu(): Promise<void> {
+    const page = host.page
+    const trigger = page.getByRole('button', { name: 'Select model' })
+    const modelItem = page.getByRole('menuitem', { name: /^Model/ })
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!await modelItem.isVisible().catch(() => false)) {
+        await trigger.click()
+        try {
+          await modelItem.waitFor({ state: 'visible', timeout: 5_000 })
+        } catch {
+          continue
+        }
+      }
+      await modelItem.click()
+      return
+    }
+    await modelItem.click()
+  }
+
   async function selectMode(name: string): Promise<void> {
     const page = host.page
     const label = page.locator('button').filter({ hasText: new RegExp(`^${name} mode$`) })
@@ -53,9 +72,7 @@ test.describe('remote new-session mode selection', () => {
     await dismissOverlays()
     await openBlank(/Playwright Remote · Alpha/)
     await expect(page.getByRole('button', { name: 'Select model' })).toBeVisible()
-    await page.getByRole('button', { name: 'Select model' }).click()
-    await page.waitForTimeout(500)
-    await page.getByRole('menuitem', { name: /^Model/ }).click()
+    await openModelMenu()
     await page.getByText('DeepSeek-V4-Pro', { exact: true }).click()
     await selectMode('PTC')
     expect(host.fake.createRequests).toHaveLength(0)
@@ -364,9 +381,7 @@ test.describe('remote new-session mode selection', () => {
     await page.getByRole('button', { name: 'Choose workspace' }).click()
     await page.getByRole('menuitem', { name: /Playwright Remote · Beta/ }).click()
     await expect(page.locator('button').filter({ hasText: /^(Standard|PTC|Minimal|Creator) mode$/ })).toBeVisible({ timeout: 30_000 })
-    await page.getByRole('button', { name: 'Select model' }).click()
-    await page.waitForTimeout(500)
-    await page.getByRole('menuitem', { name: /^Model/ }).click()
+    await openModelMenu()
     await page.getByText('DeepSeek-V4.1-Flash', { exact: true }).click()
     await selectMode('PTC')
     const before = host.fake.createRequests.length

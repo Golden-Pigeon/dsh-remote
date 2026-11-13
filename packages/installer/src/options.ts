@@ -50,7 +50,7 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
   let port = 0
   let installDir = '$HOME/.local/share/dsh-remote'
   let dshHome = '$HOME/.dsh'
-  let dshVersion = '0.2.2-rc.1'
+  let dshVersion = '0.2.2-rc.2'
   let pnpmVersion = '11.21.0'
   let nodeVersion = '22.19.0'
   let autoInstallNode = true
@@ -212,7 +212,7 @@ Options:
   --port                   Remote DSH Web port, 0 lets the OS pick (default: 0)
   --install-dir            Remote install root (default: $HOME/.local/share/dsh-remote)
   --dsh-home               Remote DSH home (default: $HOME/.dsh)
-  --dsh-version            @deepseek-ai/dsh version (default: 0.2.2-rc.1)
+  --dsh-version            @deepseek-ai/dsh version (default: 0.2.2-rc.2)
   --pnpm-version           pnpm version installed into --install-dir (default: 11.21.0)
   --node-version           Node.js version to install when none is usable (default: 22.19.0)
   --no-auto-install-node   Fail instead of downloading Node.js

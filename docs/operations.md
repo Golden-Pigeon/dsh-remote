@@ -145,7 +145,7 @@ Local plugin profile override:
     autoProvision: true
     remoteDshHome: ~/.dsh
     remoteInstallDir: ~/.local/share/dsh-remote
-    remoteDshVersion: 0.2.1-rc.2
+    remoteDshVersion: 0.2.2-rc.2
     remotePnpmVersion: 11.21.0
     remoteNodeVersion: 22.19.0
     autoInstallNode: true

@@ -33,7 +33,7 @@ export function registerTerminalApi(ctx: Context, terminals: RemoteTerminals): (
         const sessionId = String(body.sessionId ?? '')
         if (action === 'context') return Response.json({ ok: true, mirrored: terminals.isMirrored(sessionId) })
         if (action === 'environment') return Response.json({ ok: true, value: terminals.environment(sessionId) })
-        if (action === 'shells') return Response.json({ ok: true, value: terminals.shells() })
+        if (action === 'shells') return Response.json({ ok: true, value: terminals.shells(sessionId) })
         if (action === 'list') return Response.json({ ok: true, value: await terminals.list(sessionId) })
         if (action === 'create') {
           return Response.json({
@@ -64,7 +64,18 @@ export function registerTerminalApi(ctx: Context, terminals: RemoteTerminals): (
           return Response.json({ ok: true, value: null })
         }
         if (action === 'retain') {
-          return new Response(sse([{ type: 'retained' }].map(frame => `event: frame\ndata: ${JSON.stringify(frame)}\n\n`).join('')), {
+          const encoder = new TextEncoder()
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode('event: frame\ndata: {"type":"retained"}\n\n'))
+              const close = (): void => {
+                try { controller.close() } catch { /* already closed */ }
+              }
+              if (request.signal.aborted) close()
+              else request.signal.addEventListener('abort', close, { once: true })
+            },
+          })
+          return new Response(stream, {
             headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' },
           })
         }
@@ -99,8 +110,4 @@ export function registerTerminalApi(ctx: Context, terminals: RemoteTerminals): (
       }
     },
   })
-}
-
-function sse(value: string): string {
-  return value
 }

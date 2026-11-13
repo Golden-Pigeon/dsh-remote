@@ -15,6 +15,10 @@ export const PLUGIN_TARBALL = join(ROOT, `packages/local-plugin/dsh-remote-local
 export interface E2EHostOptions {
   /** Queue fake remote state before the local DSH host starts (e.g. approvals). */
   readonly beforeStart?: (fake: FakeRemoteHost) => void
+  /** Prepare the isolated DSH home before the tested plugin is installed (e.g. install an older release). */
+  readonly prepareHome?: (home: string) => void
+  /** Plugin tarball or registry spec to install; defaults to the freshly built tarball. */
+  readonly pluginSpec?: string
 }
 
 export interface E2EHost {
@@ -29,11 +33,11 @@ export interface E2EHost {
   readonly close: () => Promise<void>
 }
 
-function install(profile: string, spec: string, home: string): void {
+export function installPlugin(profile: string, spec: string, home: string): void {
   execFileSync(APP, ['plugin', '--profile', profile, 'add', spec], {
     env: { ...process.env, DSH_HOME: home },
     stdio: 'pipe',
-    timeout: 60_000,
+    timeout: 180_000,
   })
 }
 
@@ -41,7 +45,7 @@ function waitForUrl(child: ChildProcess): Promise<string> {
   return new Promise((resolveUrl, reject) => {
     let output = ''
     let error = ''
-    const timer = setTimeout(() => reject(new Error(`DSH host did not start:\n${output}\n${error}`)), 30_000)
+    const timer = setTimeout(() => reject(new Error(`DSH host did not start:\n${output}\n${error}`)), 60_000)
     const onData = (chunk: Buffer): void => {
       output += chunk.toString()
       const match = /dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=\S+)/u.exec(output)
@@ -62,6 +66,7 @@ function waitForUrl(child: ChildProcess): Promise<string> {
 /** Start an isolated DSH web host wired to a fake remote agent through a fake ssh binary. */
 export async function startE2EHost(options: E2EHostOptions = {}): Promise<E2EHost> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-remote-playwright-'))
+  options.prepareHome?.(home)
   const token = 'playwright-token-0123456789'
   const started = await startFakeHost({ hostId: 'playwright-host', token })
   const fake = started.host
@@ -76,19 +81,19 @@ export async function startE2EHost(options: E2EHostOptions = {}): Promise<E2EHos
     pid: process.pid,
     startedAt: now,
     updatedAt: now,
-    agentVersion: '0.2.10',
-    dshVersion: '0.2.1-rc.5',
+    agentVersion: '0.2.12',
+    dshVersion: '0.2.2-rc.2',
     url: `http://127.0.0.1:${started.port}`,
   }))
   chmodSync(FAKE_SSH, 0o755)
-  install('web', PLUGIN_TARBALL, home)
-  install('web', '@deepseek-ai/dsh-workspace@0.2.2-rc.1', home)
-  install('web', '@deepseek-ai/dsh-api-terminal-controller@0.2.2-rc.1', home)
+  installPlugin('web', options.pluginSpec ?? PLUGIN_TARBALL, home)
+  installPlugin('web', '@deepseek-ai/dsh-workspace@0.2.2-rc.2', home)
+  installPlugin('web', '@deepseek-ai/dsh-api-terminal-controller@0.2.2-rc.2', home)
   execFileSync('pnpm', ['add', join(ROOT, 'packages/terminal-controller')], {
     cwd: join(home, 'profiles', 'web'),
     env: { ...process.env, DSH_HOME: home },
     stdio: 'pipe',
-    timeout: 60_000,
+    timeout: 180_000,
   })
   mkdirSync(join(home, 'remote'), { recursive: true })
   writeFileSync(join(home, 'remote', 'hosts.json'), JSON.stringify({

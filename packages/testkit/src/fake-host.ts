@@ -29,6 +29,9 @@ import {
   type HostInfo,
   type RemoteApprovalRequest,
   type RemoteSessionEvent,
+  type RemoteTerminalFrame,
+  type RemoteTerminalInfo,
+  type RemoteTerminalInput,
   type SessionSnapshot,
   type SessionStreamFrame,
 } from '@dsh-remote/protocol'
@@ -73,6 +76,12 @@ export class FakeRemoteHost {
   failNextPrompt = false
   /** Fail one prompt whose text exactly matches this value. */
   failPromptText: string | undefined
+  /** Terminals created through the agent API, for assertions. */
+  readonly terminalCreates: Array<{ readonly id: string; readonly cwd: string; readonly title?: string; readonly shellPath?: string }> = []
+  /** Input/resize commands accepted by the fake PTYs, for assertions. */
+  readonly terminalInputs: Array<{ readonly id: string; readonly input: RemoteTerminalInput }> = []
+  /** Terminals closed through the agent API, for assertions. */
+  readonly terminalCloses: string[] = []
 
   readonly #protocolVersion: number
   readonly #fixtures: Fixtures
@@ -81,6 +90,9 @@ export class FakeRemoteHost {
   readonly #sessions = new Map<string, FakeSession>()
   readonly #streams = new Map<string, ServerResponse[]>()
   readonly #approvals = new Map<string, RemoteApprovalRequest>()
+  readonly #terminals = new Map<string, RemoteTerminalInfo>()
+  readonly #terminalStreams = new Map<string, Set<ServerResponse>>()
+  #terminalSequence = 0
   readonly #approvalStreams = new Set<ServerResponse>()
   readonly #approvalTimers = new Map<ServerResponse, NodeJS.Timeout>()
   #server: Server | undefined
@@ -124,6 +136,10 @@ export class FakeRemoteHost {
       for (const response of streams) response.end()
     }
     this.#streams.clear()
+    for (const streams of this.#terminalStreams.values()) {
+      for (const response of streams) response.end()
+    }
+    this.#terminalStreams.clear()
     for (const response of this.#approvalStreams) {
       const timer = this.#approvalTimers.get(response)
       if (timer !== undefined) clearInterval(timer)
@@ -148,6 +164,13 @@ export class FakeRemoteHost {
         cursor: event.seq + 1,
         event,
       })
+    }
+  }
+
+  /** Write one attachment frame to every live attachment of a fake terminal. */
+  #writeTerminal(id: string, frame: RemoteTerminalFrame): void {
+    for (const response of this.#terminalStreams.get(id) ?? []) {
+      if (!response.writableEnded) response.write(`event: frame\ndata: ${JSON.stringify(frame)}\n\n`)
     }
   }
 
@@ -279,6 +302,63 @@ export class FakeRemoteHost {
             sendJson(res, { accepted: true })
             return
           }
+          case 'terminals': {
+            const record = body as { id?: unknown; cwd?: unknown; title?: unknown; shellPath?: unknown; cols?: unknown; rows?: unknown }
+            const id = typeof record.id === 'string' && record.id !== '' ? record.id : `terminal-${this.#terminals.size + 1}`
+            const cwd = typeof record.cwd === 'string' && record.cwd !== '' ? record.cwd : '/home/tester'
+            const title = typeof record.title === 'string' && record.title !== '' ? record.title : 'Remote terminal'
+            const info: RemoteTerminalInfo = {
+              id,
+              title,
+              cwd,
+              shell: { path: typeof record.shellPath === 'string' ? record.shellPath : '/bin/bash', name: 'bash', args: [] },
+              cols: typeof record.cols === 'number' ? record.cols : 80,
+              rows: typeof record.rows === 'number' ? record.rows : 24,
+              state: 'running',
+              exitCode: null,
+            }
+            this.#terminals.set(id, info)
+            this.terminalCreates.push({
+              id,
+              cwd,
+              title,
+              ...typeof record.shellPath === 'string' ? { shellPath: record.shellPath } : {},
+            })
+            sendJson(res, info)
+            return
+          }
+          case 'terminal-input': {
+            const input = body as RemoteTerminalInput
+            if (input.type !== 'write' && input.type !== 'resize') {
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'terminal input must be write or resize' })
+            }
+            this.terminalInputs.push({ id: route.terminalId, input })
+            if (input.type === 'write') {
+              this.#terminalSequence += 1
+              this.#writeTerminal(route.terminalId, { type: 'output', sequence: this.#terminalSequence, data: input.data })
+            }
+            sendJson(res, { accepted: true })
+            return
+          }
+          case 'terminal-rename': {
+            const info = this.#terminals.get(route.terminalId)
+            if (info === undefined) throw new RemoteProtocolError({ code: 'request/invalid', message: 'unknown terminal' })
+            const title = (body as { title?: unknown }).title
+            if (typeof title !== 'string' || title.trim() === '') {
+              throw new RemoteProtocolError({ code: 'request/invalid', message: 'title is required' })
+            }
+            this.#terminals.set(route.terminalId, { ...info, title })
+            sendJson(res, { accepted: true })
+            return
+          }
+          case 'terminal-close': {
+            this.terminalCloses.push(route.terminalId)
+            this.#terminals.delete(route.terminalId)
+            for (const response of this.#terminalStreams.get(route.terminalId) ?? []) response.end()
+            this.#terminalStreams.delete(route.terminalId)
+            sendJson(res, { accepted: true })
+            return
+          }
           default:
             throw new RemoteProtocolError({ code: 'request/invalid', message: 'POST is not supported here', httpStatus: 405 })
         }
@@ -350,6 +430,31 @@ export class FakeRemoteHost {
         case 'web-url':
           sendJson(res, { path: '/?token=fake-browser-token' })
           return
+        case 'terminals':
+          sendJson(res, { terminals: [...this.#terminals.values()] })
+          return
+        case 'terminal-attach': {
+          const info = this.#terminals.get(route.terminalId)
+          if (info === undefined) throw new RemoteProtocolError({ code: 'request/invalid', message: 'unknown terminal' })
+          res.writeHead(200, {
+            'content-type': 'text/event-stream; charset=utf-8',
+            'cache-control': 'no-store, no-transform',
+            connection: 'keep-alive',
+          })
+          res.write('retry: 5000\n\n')
+          const snapshot: RemoteTerminalFrame = { type: 'snapshot', sequence: 0, screen: '', info, writable: true }
+          res.write(`event: frame\ndata: ${JSON.stringify(snapshot)}\n\n`)
+          const streams = this.#terminalStreams.get(route.terminalId) ?? new Set<ServerResponse>()
+          streams.add(res)
+          this.#terminalStreams.set(route.terminalId, streams)
+          const cleanup = (): void => {
+            streams.delete(res)
+            if (streams.size === 0) this.#terminalStreams.delete(route.terminalId)
+          }
+          req.on('close', cleanup)
+          res.on('close', cleanup)
+          return
+        }
       }
     } catch (error) {
       if (res.headersSent) {

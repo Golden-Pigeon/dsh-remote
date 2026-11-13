@@ -40,6 +40,7 @@ export function installRemoteTerminalController(
     environment: controller.environment.bind(controller),
     shells: controller.shells.bind(controller),
     list: controller.list.bind(controller),
+    watch: controller.watch.bind(controller),
     create: controller.create.bind(controller),
     retain: controller.retain.bind(controller),
     attach: controller.attach.bind(controller),
@@ -55,17 +56,24 @@ export function installRemoteTerminalController(
   }
   controller.shells = (agent: Agent, signal: AbortSignal): Promise<TerminalShell[]> => {
     signal.throwIfAborted()
-    return isMirror(agent) ? Promise.resolve(terminals.shells()) : original.shells(agent, signal)
+    return isMirror(agent) ? Promise.resolve(terminals.shells(String(agent.id))) : original.shells(agent, signal)
   }
   controller.list = ((sessionId: SessionId): WebTerminalInfo[] | Promise<WebTerminalInfo[]> =>
     isMirrorSession(sessionId) ? terminals.list(String(sessionId)) : original.list(sessionId)) as TerminalController['list']
   controller.create = (agent: Agent, request: TerminalCreateRequest, signal: AbortSignal): Promise<WebTerminalInfo> =>
     isMirror(agent) ? terminals.create(String(agent.id), request) : original.create(agent, request, signal)
+  controller.watch = (sessionId: SessionId, signal: AbortSignal): AsyncIterable<WebTerminalInfo[]> => {
+    if (!isMirrorSession(sessionId)) return original.watch(sessionId, signal)
+    return watchRemoteTerminals(terminals, String(sessionId), signal,
+      message => ctx.logger.warn('dsh-remote-local: remote terminal roster failed: %s', message))
+  }
   controller.retain = (sessionId: SessionId, id: WebTerminalId, signal: AbortSignal): AsyncIterable<TerminalRetentionFrame> => {
     if (!isMirrorSession(sessionId)) return original.retain(sessionId, id, signal)
     return (async function* () {
       signal.throwIfAborted()
+      // rc.2 TerminalWindowHold treats an ended retention stream as unavailable.
       yield { type: 'retained' as const }
+      await holdUntilAborted(signal)
     })()
   }
   controller.attach = function (this: TerminalController, agent: Agent, id: WebTerminalId, signal: AbortSignal): AsyncIterable<TerminalFrame> {
@@ -94,9 +102,70 @@ export function installRemoteTerminalController(
     controller.shells = original.shells
     controller.list = original.list
     controller.create = original.create
+    controller.watch = original.watch
     controller.retain = original.retain
     controller.attach = original.attach
     controller.rename = original.rename
     controller.close = original.close
   }
+}
+
+/** Poll interval for a mirrored Session's whole terminal roster. */
+const WATCH_POLL_MS = 1_500
+
+/**
+ * Stream a mirrored Session's remote terminal roster to the rc.2 client.
+ * @param terminals - host-side remote terminal manager.
+ * @param sessionId - mirrored Session identity.
+ * @param signal - stream cancellation.
+ * @param warn - diagnostic sink for poll failures.
+ * @returns each whole roster when it changes.
+ */
+async function* watchRemoteTerminals(
+  terminals: RemoteTerminals,
+  sessionId: string,
+  signal: AbortSignal,
+  warn: (message: string) => void,
+): AsyncIterable<WebTerminalInfo[]> {
+  let previous = ''
+  let previousError = ''
+  while (!signal.aborted) {
+    try {
+      const roster = await terminals.list(sessionId)
+      const key = JSON.stringify(roster.map(info => [
+        info.id, info.title, info.state, info.cols, info.rows, info.exitCode, info.error, info.origin, info.control,
+      ]))
+      previousError = ''
+      if (key !== previous) {
+        previous = key
+        yield roster
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message !== previousError) {
+        previousError = message
+        warn(message)
+      }
+    }
+    await sleep(WATCH_POLL_MS, signal)
+  }
+}
+
+/** Resolve when the stream is cancelled. */
+function holdUntilAborted(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise(resolve => signal.addEventListener('abort', () => { resolve() }, { once: true }))
+}
+
+/** Resolve after a delay or when the stream is cancelled. */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise(resolve => {
+    const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve() }, ms)
+    function onAbort(): void {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
 }
