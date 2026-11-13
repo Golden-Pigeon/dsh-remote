@@ -4,6 +4,9 @@
   "description": "Terminal controller fork that routes terminals by Session: local Sessions keep the local PTY, mirrored remote Sessions use the plugin's SSH PTY route.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "dsh": ">=0.2.2-rc.2 <0.3.0-0"
+  },
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -30,7 +33,7 @@
       ]
     },
     "compatibility": {
-      "dsh": ">=0.2.1-rc.1 <0.3.0-0"
+      "dsh": ">=0.2.2-rc.2 <0.3.0-0"
     }
   },
   "scripts": {
@@ -38,7 +41,7 @@
     "test": "node scripts/build.mjs && node --import tsx --test test/*.test.ts"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-api-terminal-controller": ">=0.2.1-rc.1 <0.3.0-0"
+    "@deepseek-ai/dsh-api-terminal-controller": ">=0.2.2-rc.2 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-api-terminal-controller": {
@@ -46,7 +49,7 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-api-terminal-controller": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-api-terminal-controller": "0.2.2-rc.2"
   },
   "repository": {
     "type": "git",

@@ -92,13 +92,21 @@ describe('remote terminal over the agent', () => {
     const hosts = {
       supportsAgent: () => true,
       agentFor: () => client,
+      hostInfoFor: () => ({ loginShell: '/bin/zsh' }),
     }
     const sessions = { get: () => ({ header: { cwd: '/anchor/work' } }) }
     const ctx = { get: (name: string) => name === 'sessions' ? sessions : undefined }
     const mirrors = { remoteFileContext: () => ({ hostId: 'h', remoteRoot: '/remote/work' }) }
     const terminals = new RemoteTerminals(ctx as never, hosts as never, mirrors as never)
-    assert.equal((await terminals.create('s1', { id: 't1' })).id, 't1')
-    assert.equal((await terminals.list('s1'))[0]?.id, 't1')
+    assert.equal(terminals.shells('s1')[0]?.path, '/bin/zsh')
+    const created = await terminals.create('s1', { id: 't1' })
+    assert.equal(created.id, 't1')
+    assert.equal(created.origin, 'user')
+    assert.equal(created.control, 'user')
+    const listed = (await terminals.list('s1'))[0]
+    assert.equal(listed?.id, 't1')
+    assert.equal(listed?.origin, 'user')
+    assert.equal(listed?.control, 'user')
     await terminals.input('t1', { type: 'write', sequence: 1, data: 'echo hi\n' })
     await terminals.rename('t1', 'new')
     const frames = []

@@ -69,6 +69,7 @@ function isHostInfo(value: unknown): value is HostInfo {
     && isString(value.dshVersion)
     && isString(value.agentVersion)
     && isString(value.home)
+    && (value.loginShell === undefined || isString(value.loginShell))
     && isIsoString(value.startedAt)
     && typeof value.protocolVersion === 'number'
     && Array.isArray(value.capabilities)

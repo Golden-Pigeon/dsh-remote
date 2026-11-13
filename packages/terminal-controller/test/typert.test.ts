@@ -43,10 +43,11 @@ describe('terminal-controller host face', () => {
 
   it('keeps every gateway terminal endpoint', () => {
     const methods = new Set(TYPERT.invocations.map(invocation => invocation.method))
-    for (const method of ['attach', 'close', 'create', 'environment', 'list', 'rename', 'retain', 'shells']) {
+    for (const method of ['attach', 'close', 'create', 'environment', 'list', 'rename', 'retain', 'shells', 'watch']) {
       assert.ok(methods.has(method), `missing terminal/${method}`)
     }
     assert.ok(TYPERT.invocations.some(invocation => invocation.method === 'attach' && invocation.mode === 'stream'))
     assert.ok(TYPERT.invocations.some(invocation => invocation.method === 'retain' && invocation.mode === 'stream'))
+    assert.ok(TYPERT.invocations.some(invocation => invocation.method === 'watch' && invocation.mode === 'stream'))
   })
 })

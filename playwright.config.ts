@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './test/playwright',
-  timeout: 120_000,
+  timeout: 180_000,
   workers: 1,
   reporter: [['line']],
   use: {

@@ -600,6 +600,11 @@ export class RemoteHostsService {
     return this.#requireClient(id)
   }
 
+  /** Connected host health document for auxiliary host adapters. */
+  hostInfoFor(id: string): import('@dsh-remote/protocol').HostInfo | undefined {
+    return this.#runtimeFor(id).hostInfo ?? undefined
+  }
+
   /** Whether the connected agent advertises one capability. */
   supportsAgent(id: string, capability: import('@dsh-remote/protocol').AgentCapability): boolean {
     return this.#runtimeFor(id).hostInfo?.capabilities.includes(capability) === true

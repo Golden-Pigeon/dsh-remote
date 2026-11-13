@@ -28,18 +28,16 @@ This plugin is developed for the **official DSH Desktop application**. Supported
 
 | Component | Version |
 |---|---|
-| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2), [**0.2.1-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.3), [**0.2.1-rc.4**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.4), [**0.2.1-rc.5**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.5), [**0.2.2-rc.1**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1) (all tested) |
+| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.2-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.2) (tested) |
 | Plugin | [**0.8.19**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
-| Remote DSH runtime | [**0.2.1-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-rc.2) through [**0.2.2-rc.1**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.1) (provisioning default) |
+| Remote DSH runtime | [**0.2.2-rc.2**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.2) (provisioning default) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
 
-Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and DSH versions outside
-`0.2.1-rc.2` through `0.2.2-rc.1` have **not** been tested. The package's dependency range is intentionally
-permissive for installation, but it is not a compatibility or support guarantee. The desktop client is
-tested on all five versions; the remote runtime is provisioned at `0.2.2-rc.1` by default and the
-same agent API supports `0.2.1-rc.2` through `0.2.2-rc.1`. `0.2.2-rc.1` and the preceding version were
-verified end-to-end against real remote hosts, including file and terminal operations.
+Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and DSH versions other than
+`0.2.2-rc.2` have **not** been tested. The package's dependency range is intentionally permissive for
+installation, but it is not a compatibility or support guarantee. The desktop client is tested on
+`0.2.2-rc.2`; the remote runtime is provisioned at `0.2.2-rc.2` by default.
 
 ## What works now
 
@@ -250,7 +248,7 @@ remote model requests use it as well, not just the installer.
     autoProvision: true
     remoteDshHome: ~/.dsh
     remoteInstallDir: ~/.local/share/dsh-remote
-    remoteDshVersion: 0.2.2-rc.1
+    remoteDshVersion: 0.2.2-rc.2
     remotePnpmVersion: 11.21.0
     remoteNodeVersion: 22.19.0
     # Remote-visible proxy for Node/npm/DSH downloads. Empty means inspect the remote login shell.

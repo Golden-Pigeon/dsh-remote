@@ -19,7 +19,7 @@ function visit(value) {
 visit(installed)
 if (names.size === 0) throw new Error('Install the frozen workspace before selecting a compatibility target')
 const overrides = Object.fromEntries([...names].sort().map(name => [name, version]))
-// Cordis must match the DSH family; 0.2.1 uses the 4.0 line and 0.2.2 the 4.1 line.
-overrides['@deepseek-ai/cordis'] = version.startsWith('0.2.2') ? '4.1.0' : '4.0.5'
+// Cordis must match the DSH family; the supported 0.2.2 line uses 4.1.0.
+overrides['@deepseek-ai/cordis'] = '4.1.0'
 execFileSync('pnpm', ['config', 'set', '--location=project', '--json', 'overrides', JSON.stringify(overrides)], { cwd, stdio: 'inherit' })
 console.log(`Pinned ${names.size} DSH packages and peers to ${version}`)

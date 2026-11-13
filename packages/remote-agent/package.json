@@ -1,6 +1,6 @@
 {
   "name": "@goldenpigeon/dsh-remote-agent",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "DSH remote agent: loopback HTTP/SSE companion for the dsh-remote-local-plugin.",
   "keywords": [
     "dsh",
@@ -11,6 +11,9 @@
   ],
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "dsh": ">=0.2.2-rc.2 <0.3.0-0"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -30,23 +33,23 @@
       "patch": "./cordis.patch.yml"
     },
     "compatibility": {
-      "dsh": ">=0.2.1-rc.1 <0.3.0-0"
+      "dsh": ">=0.2.2-rc.2 <0.3.0-0"
     }
   },
   "devDependencies": {
     "@dsh-remote/protocol": "workspace:*",
-    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-user-approval": "0.2.2-rc.2",
     "@deepseek-ai/cordis": "4.1.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.5 <4.2.0",
-    "@deepseek-ai/dsh-host-webserver": ">=0.2.1-rc.1 <0.3.0-0",
-    "@deepseek-ai/dsh-session": ">=0.2.1-rc.1 <0.3.0-0",
-    "@deepseek-ai/dsh-session-persistence": ">=0.2.1-rc.1 <0.3.0-0",
-    "@deepseek-ai/dsh-workspace": ">=0.2.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.2-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-session": ">=0.2.2-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-session-persistence": ">=0.2.2-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-workspace": ">=0.2.2-rc.2 <0.3.0-0",
     "@deepseek-ai/schemastery": ">=3.18.0 <4.0.0",
-    "@deepseek-ai/dsh-api-session-controller": ">=0.2.1-rc.1 <0.3.0-0",
-    "@deepseek-ai/dsh-user-approval": ">=0.2.1-rc.1 <0.3.0-0"
+    "@deepseek-ai/dsh-api-session-controller": ">=0.2.2-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-user-approval": ">=0.2.2-rc.2 <0.3.0-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {

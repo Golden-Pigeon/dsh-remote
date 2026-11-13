@@ -40,13 +40,21 @@ function routeTerminal(original) {
     close: unary('close'),
     retain: (sessionId, id, signal) => (async function* () {
       if (await isMirror(sessionId)) {
+        // rc.2 TerminalWindowHold treats an ended retention stream as an
+        // unavailable terminal, so the mirror hold must stay open.
         yield { type: 'retained' }
+        await holdUntilAborted(signal)
         return
       }
       yield* original.retain(sessionId, id, signal)
     })(),
     attach: (sessionId, id, signal) => new RoutedTerminalHandle(original, sessionId, id, signal, isMirror),
   }
+}
+
+function holdUntilAborted(signal) {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))
 }
 
 function terminalPayload(name, args) {

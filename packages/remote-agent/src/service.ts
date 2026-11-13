@@ -63,7 +63,7 @@ import {
 import { AsyncQueue } from './queue.ts'
 import { followLiveSession } from './stream.ts'
 import { AGENT_VERSION, resolveDshVersion } from './version.ts'
-import { RemoteTerminalManager } from './terminal.ts'
+import { RemoteTerminalManager, resolveLoginShell } from './terminal.ts'
 
 /** One page size used when a backend cannot report its event count. */
 const COLD_SCAN_PAGE = 500
@@ -143,6 +143,7 @@ export class RemoteAgentService {
       dshVersion: this.dshVersion,
       agentVersion: AGENT_VERSION,
       home: resolveDshHome(),
+      loginShell: resolveLoginShell(),
       startedAt: this.startedAt,
       protocolVersion: PROTOCOL_VERSION,
       capabilities: [

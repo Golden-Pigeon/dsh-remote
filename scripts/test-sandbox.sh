@@ -31,7 +31,7 @@ cd "$ROOT"
 TARBALL="$(node scripts/release-plugin.mjs)"
 "$DSH_BIN" plugin --profile "$PROFILE" add "$TARBALL" >/dev/null
 # The standalone web shell needs the sidebar package outside the desktop app.
-(cd "$DSH_HOME/profiles/$PROFILE" && pnpm add @deepseek-ai/dsh-client-ui-sidebar@0.2.1-rc.2 >/dev/null 2>&1 || true)
+(cd "$DSH_HOME/profiles/$PROFILE" && pnpm add @deepseek-ai/dsh-client-ui-sidebar@0.2.2-rc.2 >/dev/null 2>&1 || true)
 
 mkdir -p "$DSH_HOME/remote"
 cat > "$DSH_HOME/remote/test-visibility.json" <<JSON

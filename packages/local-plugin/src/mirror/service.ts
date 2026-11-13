@@ -1091,7 +1091,7 @@ export class RemoteMirrorService {
     const agent = new LazyRemoteMirrorAgent(this, pending, this.#ctx, options)
     pending.agent = agent
     try {
-      const detach = this.#agents.enter(agent as never, undefined)
+      const detach = this.#agents.enter(agent as never)
       this.#registrations.set(localId, async () => { detach() })
       this.#pendingBlanks.set(localId, pending)
       await this.#save()
@@ -1259,7 +1259,7 @@ export class RemoteMirrorService {
     } catch (error) {
       if (!this.#runtimes.has(pending.localSessionId) && !this.#registrations.has(pending.localSessionId)) {
         try {
-          const detach = this.#agents.enter(pending.agent as never, undefined)
+          const detach = this.#agents.enter(pending.agent as never)
           this.#registrations.set(pending.localSessionId, async () => { detach() })
         } catch (restoreError) {
           this.#ctx.logger.warn('dsh-remote-local: could not restore lazy Agent %s: %s', pending.localSessionId, String(restoreError))
@@ -1913,7 +1913,7 @@ export class RemoteMirrorService {
     runtime.agent = agent
     let detach: () => void
     try {
-      detach = this.#agents.enter(agent as never, undefined)
+      detach = this.#agents.enter(agent as never)
     } catch (error) {
       await agent.scope.dispose()
       throw error
