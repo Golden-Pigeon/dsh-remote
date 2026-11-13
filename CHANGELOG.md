@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.20
+
+- Support DSH 0.2.2-rc.2 only: require `>=0.2.2-rc.2 <0.3.0-0` through
+  `engines.dsh`, align peer ranges, runtime defaults, CI, and docs, and drop
+  older DSH support.
+- Rebuild the terminal-controller fork client from the rc.2 artifact, route the
+  rc.2 `watch`/roster face for mirrored Sessions, and keep mirror retain streams
+  open so rc.2 no longer reports "This terminal no longer exists".
+- Use the remote account's login shell for mirrored terminals (passwd shell,
+  fallback `$SHELL`, then `/bin/bash`); the bundled remote agent is `0.2.12`.
+- Add mirrored-terminal and install/upgrade Playwright coverage plus
+  login-shell and client-bundle unit tests
+  ([#28](https://github.com/Golden-Pigeon/dsh-remote/pull/28)).
+
 ## 0.8.19
 
 - Keep first-time remote provisioning running on hosts without Node or nvm.
