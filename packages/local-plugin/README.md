@@ -7,7 +7,7 @@ Remote development that appears as ordinary local sessions.
 This plugin targets the official **DSH Desktop** application. Supported versions:
 
 - [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.2-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.2)
-- Plugin [`0.8.19`](https://www.npmjs.com/package/dsh-remote-local-plugin)
+- Plugin [`0.8.20`](https://www.npmjs.com/package/dsh-remote-local-plugin)
 - Remote DSH [`0.2.2-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.2) (provisioning default)
 - Remote [Node.js `22.19+`](https://nodejs.org/en/download) on Linux/macOS
 
@@ -55,7 +55,7 @@ If npmjs.com resolves an older `latest` tag for a newly published release, insta
 version instead:
 
 ```text
-dsh-remote-local-plugin@0.8.19
+dsh-remote-local-plugin@0.8.20
 ```
 
 Keep this pinned version in sync with each release.
