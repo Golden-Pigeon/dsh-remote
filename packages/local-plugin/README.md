@@ -6,14 +6,15 @@ Remote development that appears as ordinary local sessions.
 
 This plugin targets the official **DSH Desktop** application. Supported versions:
 
-- [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.2-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.2)
+- [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.2-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.3)
 - Plugin [`0.8.20`](https://www.npmjs.com/package/dsh-remote-local-plugin)
-- Remote DSH [`0.2.2-rc.2`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.2) (provisioning default)
+- Remote DSH [`0.2.2-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.3) (tested; new installs follow the local DSH version)
 - Remote [Node.js `22.19+`](https://nodejs.org/en/download) on Linux/macOS
 
-Other DSH GUI plugins, forks, modified clients, and DSH versions other than `0.2.2-rc.2` have not been
-tested. The remote runtime defaults to `0.2.2-rc.2`. The package dependency range is permissive for
-installation only; it is not a support guarantee.
+Other DSH GUI plugins, forks, modified clients, and other DSH versions have not been tested. The
+desktop client and the remote runtime are tested on `0.2.2-rc.3`; new remote installs follow the
+local DSH runtime version by default. Pin `remoteDshVersion` to override it. The package dependency
+range is permissive for installation only; it is not a support guarantee.
 
 ## What it does
 

@@ -16,7 +16,7 @@
     autoProvision: true
     remoteDshHome: ~/.dsh
     remoteInstallDir: ~/.local/share/dsh-remote
-    remoteDshVersion: 0.2.2-rc.2
+    # remoteDshVersion: 0.2.2-rc.2  # pin a remote DSH version; omit to follow the local DSH version
     remotePnpmVersion: 11.21.0
     remoteStart: systemd
     provisionTimeoutMs: 600000

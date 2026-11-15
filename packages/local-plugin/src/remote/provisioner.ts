@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { provisionRemoteAgent } from '@dsh-remote/installer'
 import { isAgentLive } from '@dsh-remote/protocol'
-import { compareVersions } from '../version.ts'
+import { compareVersions, resolveLocalDshVersion } from '../version.ts'
 import type { ResolvedConfig } from '../config.ts'
 import { LocalError } from '../errors.ts'
 import type { HostDetail } from '../messages.ts'
@@ -23,12 +23,37 @@ import type { ParsedSshTarget } from '../ssh/target.ts'
 /** Progress callback shown in the host card. */
 export type ProvisionProgress = (code: HostDetail) => void
 
+/** Last-resort remote DSH version when neither config nor the local runtime supplies one. */
+const FALLBACK_REMOTE_DSH_VERSION = '0.2.2-rc.2'
+
+/**
+ * Resolve the DSH version to install on a remote host.
+ *
+ * A per-run override (manual upgrade) wins, then an explicit config value,
+ * then the DSH version hosting this plugin.
+ */
+export function resolveRemoteDshVersion(
+  configured: string | undefined,
+  localDshVersion: string | undefined,
+  override?: string,
+): string {
+  const explicit = override?.trim()
+  if (explicit !== undefined && explicit !== '') return explicit
+  const pinned = configured?.trim()
+  if (pinned !== undefined && pinned !== '') return pinned
+  const local = localDshVersion?.trim()
+  if (local !== undefined && local !== '') return local
+  return FALLBACK_REMOTE_DSH_VERSION
+}
+
 /** Provisioner bound to one plugin config. */
 export class RemoteProvisioner {
   readonly #config: ResolvedConfig
+  readonly #localDshVersion: string | undefined
 
-  constructor(config: ResolvedConfig) {
+  constructor(config: ResolvedConfig, localDshVersion: string | undefined = resolveLocalDshVersion()) {
     this.#config = config
+    this.#localDshVersion = localDshVersion
   }
 
   /**
@@ -42,7 +67,7 @@ export class RemoteProvisioner {
     options: {
       readonly modelBaseUrl?: string
       readonly modelApiKey?: string
-      /** Install a specific DSH runtime instead of the configured default. */
+      /** Install a specific DSH runtime instead of the configured/local default. */
       readonly dshVersion?: string
       /** Replace an existing DSH installation (manual remote upgrade). */
       readonly upgrade?: boolean
@@ -80,7 +105,7 @@ export class RemoteProvisioner {
         profile: 'web',
         installDir: this.#config.remoteInstallDir,
         dshHome: this.#config.remoteDshHome,
-        dshVersion: options.dshVersion ?? this.#config.remoteDshVersion,
+        dshVersion: resolveRemoteDshVersion(this.#config.remoteDshVersion, this.#localDshVersion, options.dshVersion),
         pnpmVersion: this.#config.remotePnpmVersion,
         nodeVersion: this.#config.remoteNodeVersion,
         autoInstallNode: this.#config.autoInstallNode,

@@ -104,6 +104,11 @@ describe('config', () => {
     assert.equal(config.remoteModelBaseUrl, 'https://api.deepseek.com/anthropic')
     assert.throws(() => resolveConfig({ strictHostKeyChecking: 'bogus' }), /strictHostKeyChecking/)
   })
+
+  it('leaves remoteDshVersion empty for local-runtime provisioning', () => {
+    assert.equal(resolveConfig({}).remoteDshVersion, '')
+    assert.equal(resolveConfig({ remoteDshVersion: ' 0.2.2-rc.2 ' }).remoteDshVersion, '0.2.2-rc.2')
+  })
 })
 
 describe('host store', () => {
