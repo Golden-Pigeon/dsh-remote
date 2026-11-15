@@ -19,7 +19,7 @@ interface ProfileManifest {
 test.describe('plugin install and upgrade', () => {
   test.skip(!appAvailable(), 'requires the official DSH Desktop app and Chrome on macOS')
 
-  test('replaces the registry 0.8.19 bundle with the rc.2 build', async () => {
+  test('replaces the registry 0.8.19 bundle with the current build', async () => {
     const staging = mkdtempSync(join(tmpdir(), 'dsh-remote-dev-'))
     const devTarball = join(staging, `dsh-remote-local-plugin-0.8.19-dev-${Date.now()}.tgz`)
     copyFileSync(PLUGIN_TARBALL, devTarball)

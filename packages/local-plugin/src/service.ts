@@ -117,9 +117,9 @@ export class RemoteHostsService {
     this.ctx = ctx
     this.config = config
     this.#store = new HostStore(`${config.stateDir}/hosts.json`)
-    this.#provisioner = new RemoteProvisioner(config)
-    this.#resolveModelKey = options.resolveModelKey
     this.#localDshVersion = options.localDshVersion ?? resolveLocalDshVersion()
+    this.#provisioner = new RemoteProvisioner(config, this.#localDshVersion)
+    this.#resolveModelKey = options.resolveModelKey
   }
 
   /** Load the registry and auto-connect opted-in hosts. */

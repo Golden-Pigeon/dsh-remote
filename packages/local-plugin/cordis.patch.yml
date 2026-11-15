@@ -29,7 +29,8 @@
         autoProvision: true
         remoteDshHome: ~/.dsh
         remoteInstallDir: ~/.local/share/dsh-remote
-        remoteDshVersion: 0.2.2-rc.2
+        # Empty means use the local DSH runtime version.
+        remoteDshVersion: ''
         remotePnpmVersion: 11.21.0
         remoteStart: systemd
         provisionTimeoutMs: 600000

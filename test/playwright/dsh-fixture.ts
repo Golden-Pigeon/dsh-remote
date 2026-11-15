@@ -9,6 +9,7 @@ const ROOT = resolve(import.meta.dirname, '../..')
 export const APP = '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh'
 export const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 export const FAKE_SSH = join(ROOT, 'test/playwright/fake-ssh.mjs')
+const DSH_VERSION = process.env.DSH_REMOTE_E2E_DSH_VERSION ?? '0.2.2-rc.3'
 const LOCAL_PLUGIN = JSON.parse(readFileSync(join(ROOT, 'packages/local-plugin/package.json'), 'utf8')) as { version: string }
 export const PLUGIN_TARBALL = join(ROOT, `packages/local-plugin/dsh-remote-local-plugin-${LOCAL_PLUGIN.version}.tgz`)
 
@@ -82,13 +83,13 @@ export async function startE2EHost(options: E2EHostOptions = {}): Promise<E2EHos
     startedAt: now,
     updatedAt: now,
     agentVersion: '0.2.12',
-    dshVersion: '0.2.2-rc.2',
+    dshVersion: DSH_VERSION,
     url: `http://127.0.0.1:${started.port}`,
   }))
   chmodSync(FAKE_SSH, 0o755)
   installPlugin('web', options.pluginSpec ?? PLUGIN_TARBALL, home)
-  installPlugin('web', '@deepseek-ai/dsh-workspace@0.2.2-rc.2', home)
-  installPlugin('web', '@deepseek-ai/dsh-api-terminal-controller@0.2.2-rc.2', home)
+  installPlugin('web', `@deepseek-ai/dsh-workspace@${DSH_VERSION}`, home)
+  installPlugin('web', `@deepseek-ai/dsh-api-terminal-controller@${DSH_VERSION}`, home)
   execFileSync('pnpm', ['add', join(ROOT, 'packages/terminal-controller')], {
     cwd: join(home, 'profiles', 'web'),
     env: { ...process.env, DSH_HOME: home },

@@ -27,6 +27,7 @@ export interface Config {
   readonly autoProvision?: boolean
   readonly remoteDshHome?: string
   readonly remoteInstallDir?: string
+  /** DSH version to install remotely; empty uses the local runtime version. */
   readonly remoteDshVersion?: string
   readonly remotePnpmVersion?: string
   /** Node.js version installed into the remote install dir when none is usable. */
@@ -73,7 +74,7 @@ export const Config: z<Config> = z.object({
   autoProvision: z.boolean().default(true),
   remoteDshHome: z.string().default('~/.dsh'),
   remoteInstallDir: z.string().default('~/.local/share/dsh-remote'),
-  remoteDshVersion: z.string().default('0.2.2-rc.2'),
+  remoteDshVersion: z.string().default(''),
   remotePnpmVersion: z.string().default('11.21.0'),
   remoteNodeVersion: z.string().default('22.19.0'),
   remoteInstallProxy: z.string().default(''),
@@ -109,6 +110,7 @@ export interface ResolvedConfig {
   readonly autoProvision: boolean
   readonly remoteDshHome: string
   readonly remoteInstallDir: string
+  /** DSH version to install remotely; empty means the local runtime version. */
   readonly remoteDshVersion: string
   readonly remotePnpmVersion: string
   readonly remoteNodeVersion: string
@@ -178,7 +180,7 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
     autoProvision: config.autoProvision ?? true,
     remoteDshHome,
     remoteInstallDir: config.remoteInstallDir ?? '~/.local/share/dsh-remote',
-    remoteDshVersion: config.remoteDshVersion ?? '0.2.2-rc.2',
+    remoteDshVersion: (config.remoteDshVersion ?? '').trim(),
     remotePnpmVersion: config.remotePnpmVersion ?? '11.21.0',
     remoteNodeVersion: config.remoteNodeVersion ?? '22.19.0',
     remoteInstallProxy: config.remoteInstallProxy ?? '',

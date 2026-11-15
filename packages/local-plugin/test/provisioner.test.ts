@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { agentPackageSpecFor, agentVersionIsOlder, agentVersionMatches, agentVersionTransition } from '../src/remote/provisioner.ts'
+import { agentPackageSpecFor, agentVersionIsOlder, agentVersionMatches, agentVersionTransition, resolveRemoteDshVersion } from '../src/remote/provisioner.ts'
 
 describe('agent install target', () => {
   it('uses npm only for stable releases', () => {
@@ -26,5 +26,24 @@ describe('agent install target', () => {
     assert.equal(agentVersionTransition('0.2.9', 200, '0.2.10', true, undefined), 'mismatch')
     assert.equal(agentVersionTransition('0.2.9', 200, '0.2.10', false, undefined), 'wait')
     assert.equal(agentVersionTransition('0.2.10', 200, '0.2.10', true, 100), 'ready')
+  })
+})
+
+describe('remote DSH version selection', () => {
+  it('follows the local runtime when no version is configured', () => {
+    assert.equal(resolveRemoteDshVersion('', '0.2.2-rc.3'), '0.2.2-rc.3')
+    assert.equal(resolveRemoteDshVersion(undefined, '0.2.2-rc.3'), '0.2.2-rc.3')
+  })
+
+  it('pins an explicitly configured version', () => {
+    assert.equal(resolveRemoteDshVersion('0.2.2-rc.2', '0.2.2-rc.3'), '0.2.2-rc.2')
+  })
+
+  it('lets a manual upgrade override the configured version', () => {
+    assert.equal(resolveRemoteDshVersion('0.2.2-rc.2', '0.2.2-rc.2', '0.2.2-rc.3'), '0.2.2-rc.3')
+  })
+
+  it('falls back when the local runtime version is unknown', () => {
+    assert.equal(resolveRemoteDshVersion('', undefined), '0.2.2-rc.2')
   })
 })
