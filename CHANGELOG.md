@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.21
+
+- Provision new remote hosts with the local DSH runtime version by default.
+  `remoteDshVersion` still supports pinning a specific remote version, and the
+  Settings "Update remote DSH" action still upgrades existing hosts; no remote
+  is upgraded automatically
+  ([#29](https://github.com/Golden-Pigeon/dsh-remote/pull/29)).
+- Test and document DSH 0.2.2-rc.3 for the desktop client and remote runtime,
+  including the Playwright suite.
+
 ## 0.8.20
 
 - Support DSH 0.2.2-rc.2 only: require `>=0.2.2-rc.2 <0.3.0-0` through
