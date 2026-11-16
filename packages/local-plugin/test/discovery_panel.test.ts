@@ -61,8 +61,9 @@ function discovery(overrides: Partial<SshDiscoveryResult> = {}): SshDiscoveryRes
     configFiles: ['/home/u/.ssh/config'],
     hosts: [
       {
-        alias: 'native1',
-        canonical: 'native1',
+        alias: 'container_os4_host1_bob',
+        aliases: ['native1'],
+        canonical: 'container_os4_host1_bob',
         hostname: '192.0.2.16',
         user: 'bob',
         port: 36000,
@@ -72,6 +73,7 @@ function discovery(overrides: Partial<SshDiscoveryResult> = {}): SshDiscoveryRes
       },
       {
         alias: 'cloud32',
+        aliases: [],
         canonical: 'cloud32',
         hostname: '198.51.100.137',
         user: 'alice',
@@ -82,6 +84,7 @@ function discovery(overrides: Partial<SshDiscoveryResult> = {}): SshDiscoveryRes
       },
       {
         alias: 'bastion-route',
+        aliases: [],
         canonical: 'bastion-route',
         hostname: '10.1.1.1',
         user: null,
@@ -145,11 +148,16 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.equal(connect.length, 2, 'only the two unregistered hosts offer connect')
   })
 
-  it('flags a jump-host route and reports skipped wildcards', async () => {
+  it('flags a jump-host route without listing skipped wildcards', async () => {
     const { renderer } = await render({})
     const text = JSON.stringify(renderer.toJSON())
     assert.ok(text.includes('settings.discovered.proxy'), 'a ProxyJump host must be badged')
-    assert.ok(text.includes('*.corp.example.com'), 'skipped patterns are reported by alias')
+    // Wildcard entries are skipped by the scanner but no longer reported: the
+    // list is only meant to show hosts you can actually connect to.
+    assert.equal(text.includes('*.corp.example.com'), false,
+      'skipped wildcards must not be surfaced')
+    assert.equal(text.includes('settings.discovered.skipped'), false,
+      'the skipped-entries hint was removed from the panel')
   })
 
   it('registers the alias, then asks for a fresh scan', async () => {
@@ -174,6 +182,24 @@ describe('SSH config discovery in the Settings panel', () => {
     // alias carries IdentityFile, ProxyJump and the Include that made it work.
     assert.deepEqual(added[0], { sshTarget: 'cloud32', autoConnect: true })
     assert.deepEqual(scans, [false, true], 'the list must be rescanned after registering')
+  })
+
+  it('renders a sibling alias as a tag beside the primary name', async () => {
+    const { renderer } = await render({})
+    const tags = renderer.root
+      .findAllByProps({ className: 'dshr-alias-tag' })
+      .map(node => node.children.map(child => String(child)).join(''))
+    assert.deepEqual(tags, ['native1'], 'only the secondary alias becomes a tag')
+    const text = JSON.stringify(renderer.toJSON())
+    assert.ok(text.includes('container_os4_host1_bob'), 'the primary alias is the visible name')
+  })
+
+  it('shows the endpoint for the primary alias', async () => {
+    const { renderer } = await render({})
+    const endpoints = renderer.root
+      .findAllByProps({ className: 'dshr-discovered-endpoint' })
+      .map(node => node.children.map(child => String(child)).join(''))
+    assert.ok(endpoints.includes('bob@192.0.2.16:36000'))
   })
 
   it('shows the empty state without inventing a host', async () => {

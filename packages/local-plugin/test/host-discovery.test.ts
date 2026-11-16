@@ -114,13 +114,13 @@ describe('SSH config discovery through the service', () => {
     // longer primary alias. Matching only the primary would offer to add it
     // again, and the registry would reject the duplicate.
     const { service } = await fixture({
-      configText: 'Host docker_os4_native1_user00 native1\n  HostName 21.91.16.78\n  User user00\n  Port 36000\n',
+      configText: 'Host container_os4_host1_bob native1\n  HostName 192.0.2.16\n  User bob\n  Port 36000\n',
       records: [record({ sshTarget: 'native1' })],
     })
     try {
       const result = await service.discover(true)
       assert.equal(result.hosts.length, 1)
-      assert.equal(result.hosts[0]?.alias, 'docker_os4_native1_user00')
+      assert.equal(result.hosts[0]?.alias, 'container_os4_host1_bob')
       assert.deepEqual(result.hosts[0]?.aliases, ['native1'])
       assert.equal(result.hosts[0]?.registeredHostId, 'native1-51c053f7',
         'a sibling alias in the registry must mark the whole group as added')

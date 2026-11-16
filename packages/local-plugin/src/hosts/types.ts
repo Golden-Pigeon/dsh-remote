@@ -152,7 +152,7 @@ export interface DiscoveredSshHost {
    * Primary `Host` alias, which is what `host/add` registers.
    *
    * One `Host` line can declare several aliases for the same machine
-   * (`Host devcloud_64g_weyoungli cloud64`). They are merged into one entry so
+   * (`Host build_x86_alice cloud64`). They are merged into one entry so
    * the list does not repeat a machine; the longest alias is the primary one
    * because it is the descriptive one.
    */

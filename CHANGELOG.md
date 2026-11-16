@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Rebuild the Settings panel as a host list instead of nested cards. Each
+  machine is one summary row with its details behind it, the rare and
+  destructive actions move into an overflow menu, and every colour now comes
+  from the Harness design tokens so the panel follows the active theme.
+- Merge the aliases of one `Host` line into a single entry. A config such as
+  `Host devcloud_64g_weyoungli cloud64` used to appear twice, because grouping
+  compared alias text; it now groups on the resolved target, shows the longest
+  alias as the name, and tags the rest. A machine already registered under a
+  sibling alias is no longer offered again.
 - Choose the model-key source per host in Settings: `proxy` keeps the local
   `DEEPSEEK_API_KEY` on this machine and routes model requests back over the
   tunnel, `direct` lets the remote call the provider with its own key. The

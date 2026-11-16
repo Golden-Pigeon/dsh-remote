@@ -64,9 +64,18 @@ async function harness() {
   const click = async (label: string) => {
     await act(async () => { renderer.root.findAllByType('button').find(button => button.children.includes(label))!.props.onClick() })
   }
+  /** Open or close the host summary row; its detail region holds the actions. */
+  const toggleRow = async () => {
+    // Re-query each time: the row's handler closes over the current expansion
+    // state, so a stale node would keep toggling the same way.
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { row?.props.onClick({ preventDefault() {} }) })
+  }
   return {
     calls: () => calls,
     click,
+    toggleRow,
     async addWorkspace() {
       await act(async () => { renderer.root.findAllByType('input').find(input => input.props.placeholder === 'settings.workspacePathPlaceholder')!.props.onChange({ target: { value: '/srv/another-project' } }) })
       await click('settings.addWorkspace')
@@ -84,7 +93,7 @@ describe('workspace loading in the real React panel', () => {
   it('keeps one request in flight across effect rerenders and host polling', async () => {
     const test = await harness()
     try {
-      await test.click('settings.expandWorkspaces')
+      await test.toggleRow()
       assert.equal(test.calls(), 1)
       await test.poll()
       assert.equal(test.calls(), 1)
@@ -97,7 +106,7 @@ describe('workspace loading in the real React panel', () => {
   it('refreshes after adding a workspace even when an older listing is still pending', async () => {
     const test = await harness()
     try {
-      await test.click('settings.expandWorkspaces')
+      await test.toggleRow()
       await test.addWorkspace()
       assert.equal(test.calls(), 1)
       await test.succeed()
@@ -109,16 +118,16 @@ describe('workspace loading in the real React panel', () => {
   it('allows a new request after completion or failure when reopening a host', async () => {
     const test = await harness()
     try {
-      await test.click('settings.expandWorkspaces')
+      await test.toggleRow()
       await test.fail()
       await test.poll()
       assert.equal(test.calls(), 1)
-      await test.click('settings.collapseWorkspaces')
-      await test.click('settings.expandWorkspaces')
+      await test.toggleRow()
+      await test.toggleRow()
       assert.equal(test.calls(), 2)
       await test.succeed()
-      await test.click('settings.collapseWorkspaces')
-      await test.click('settings.expandWorkspaces')
+      await test.toggleRow()
+      await test.toggleRow()
       assert.equal(test.calls(), 3)
       await test.succeed()
     } finally { await test.dispose() }

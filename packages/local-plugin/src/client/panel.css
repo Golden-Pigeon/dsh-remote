@@ -1,15 +1,32 @@
+/*
+ * Semantic layer over the Harness design tokens.
+ *
+ * Every value resolves through `--dsw-*`, so the panel follows the active theme
+ * and any skin that overrides that layer. Nothing here picks a literal colour;
+ * the names below exist only so the rules read in panel terms.
+ */
 .dshr-root {
-  --dshr-accent: #4f7cff;
-  --dshr-danger: #d24b4b;
-  --dshr-success: #2f9e63;
-  --dshr-warning: #c98417;
-  --dshr-border: color-mix(in srgb, currentColor 14%, transparent);
-  --dshr-soft: color-mix(in srgb, currentColor 4%, transparent);
-  --dshr-softer: color-mix(in srgb, currentColor 2.5%, transparent);
+  --dshr-accent: var(--dsw-alias-link, #4f7cff);
+  --dshr-danger: var(--dsw-alias-state-error-primary, #d24b4b);
+  --dshr-success: var(--dsw-alias-state-success-primary, #2f9e63);
+  --dshr-warning: var(--dsw-alias-state-warning-primary, #c98417);
+  --dshr-border: var(--dsw-alias-border-l2, color-mix(in srgb, currentColor 14%, transparent));
+  --dshr-border-strong: var(--dsw-alias-border-l4, color-mix(in srgb, currentColor 22%, transparent));
+  --dshr-soft: var(--dsw-alias-interactive-bg-hover, color-mix(in srgb, currentColor 4%, transparent));
+  --dshr-softer: var(--dsw-alias-bg-layer-2, color-mix(in srgb, currentColor 2.5%, transparent));
+  --dshr-surface: var(--dsw-alias-bg-layer-3, transparent);
+  --dshr-label: var(--dsw-alias-label-primary, currentColor);
+  --dshr-label-secondary: var(--dsw-alias-label-secondary, currentColor);
+  --dshr-label-muted: var(--dsw-alias-label-tertiary, currentColor);
+  --dshr-label-faint: var(--dsw-alias-label-caption, currentColor);
+  --dshr-radius: var(--dsw-radius-sm, 8px);
+  --dshr-radius-lg: var(--dsw-radius-md, 12px);
+  --dshr-font: var(--dsw-font-family, inherit);
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 4px 2px 32px;
+  font-family: var(--dshr-font);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -113,6 +130,17 @@
   opacity: 0.8;
 }
 
+/* A secondary Host alias for the same machine, rendered beside the primary. */
+.dshr-alias-tag {
+  padding: 0 6px;
+  border: 1px solid var(--dshr-border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
 .dshr-button {
   padding: 6px 12px;
   border: 1px solid var(--dshr-border);
@@ -193,13 +221,6 @@
   background: var(--dshr-soft);
 }
 
-.dshr-host-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .dshr-host-title {
   display: flex;
   align-items: baseline;
@@ -212,86 +233,11 @@
   font-size: 14px;
 }
 
-.dshr-phase {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid currentColor;
-  opacity: 0.9;
-}
-
-.dshr-phase-connected {
-  color: var(--dshr-success);
-}
-
-.dshr-phase-discovering,
-.dshr-phase-connecting {
-  color: var(--dshr-warning);
-}
-
-.dshr-phase-error {
-  color: var(--dshr-danger);
-}
-
-.dshr-phase-idle,
-.dshr-phase-disconnected {
-  opacity: 0.62;
-}
-
-.dshr-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 20px;
-  margin: 0;
-  font-size: 12px;
-}
-
-.dshr-meta > div {
-  display: flex;
-  gap: 5px;
-}
-
-.dshr-meta dt {
-  opacity: 0.58;
-}
-
-.dshr-meta dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 .dshr-host-error {
   margin: 0;
   color: var(--dshr-danger);
   font-size: 12px;
   overflow-wrap: anywhere;
-}
-
-.dshr-update {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--dshr-warning) 45%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--dshr-warning) 9%, transparent);
-  font-size: 12px;
-}
-
-.dshr-update p {
-  margin: 0;
-}
-
-.dshr-update code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.92em;
-}
-
-.dshr-update .dshr-button {
-  flex: none;
 }
 
 .dshr-actions {
@@ -493,13 +439,6 @@
   word-break: break-word;
 }
 
-.dshr-model-source {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 0 2px;
-}
-
 .dshr-segmented {
   display: inline-flex;
   gap: 0;
@@ -535,4 +474,207 @@
 .dshr-seg:disabled {
   cursor: default;
   opacity: 0.55;
+}
+
+/* ── Redesigned host list ────────────────────────────────────────────
+   One container replaces the nested card-in-card box, and each machine is a
+   single summary row whose detail opens underneath. */
+
+.dshr-hosts {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--dshr-border);
+  border-radius: var(--dshr-radius-lg);
+  overflow: hidden;
+  background: var(--dshr-softer);
+}
+
+.dshr-host {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--dshr-border);
+}
+
+.dshr-hosts > .dshr-host:first-child { border-top: 0; }
+
+.dshr-host-open { background: var(--dshr-surface); }
+
+.dshr-host-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.dshr-host-row:hover { background: var(--dshr-soft); }
+.dshr-host-row:focus-visible {
+  outline: 2px solid var(--dshr-accent);
+  outline-offset: -2px;
+}
+
+.dshr-host-main { min-width: 0; }
+
+.dshr-host-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dshr-host-title strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dshr-label);
+}
+
+.dshr-endpoint {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--dshr-label-faint);
+}
+
+.dshr-host-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--dshr-label-faint);
+}
+
+.dshr-host-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Status dot: shape carries the state, so colour is not the only signal. */
+.dshr-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dshr-label-faint);
+  justify-self: center;
+}
+
+.dshr-dot-connected { background: var(--dshr-success); }
+.dshr-dot-connecting,
+.dshr-dot-installing,
+.dshr-dot-discovering { background: var(--dshr-warning); }
+.dshr-dot-error { background: var(--dshr-danger); }
+
+.dshr-host-detail {
+  padding: 0 14px 14px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.dshr-field {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--dshr-border);
+  font-size: 12px;
+}
+
+.dshr-field-label {
+  flex: none;
+  width: 92px;
+  color: var(--dshr-label-muted);
+}
+
+.dshr-field-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dshr-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--dshr-border-strong);
+  border-radius: 50%;
+  color: var(--dshr-label-faint);
+  font-size: 10px;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+}
+
+.dshr-warn { color: var(--dshr-warning); }
+
+/* ── Overflow menu ─────────────────────────────────────────────────── */
+
+.dshr-menu-trigger {
+  min-width: 30px;
+  justify-content: center;
+  letter-spacing: 1px;
+}
+
+.dshr-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--dshr-border-strong);
+  border-radius: var(--dshr-radius);
+  background: var(--dsw-alias-bg-layer-2, canvas);
+  box-shadow: 0 10px 30px var(--dsw-alias-bg-mask-3, rgba(0, 0, 0, 0.18));
+}
+
+.dshr-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-xs, 4px);
+  background: transparent;
+  color: var(--dshr-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dshr-menu-item:hover:not(:disabled) {
+  background: var(--dshr-soft);
+  color: var(--dshr-label);
+}
+
+.dshr-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.dshr-menu-item-danger { color: var(--dshr-danger); }
+.dshr-menu-item-separated {
+  margin-top: 5px;
+  padding-top: 9px;
+  border-top: 1px solid var(--dshr-border);
+  border-radius: 0 0 var(--dsw-radius-xs, 4px) var(--dsw-radius-xs, 4px);
+}
+
+/* ── Inline destructive confirmation ──────────────────────────────── */
+
+.dshr-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+  padding: 9px 11px;
+  border: 1px solid var(--dshr-danger);
+  border-left-width: 3px;
+  border-radius: var(--dshr-radius);
+  background: color-mix(in srgb, var(--dshr-danger) 7%, transparent);
+  font-size: 12px;
 }
