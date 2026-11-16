@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Deliver a prompt whose model selection the remote host cannot serve, instead
+  of failing silently. The remote agent now reports the rejection as
+  `session/model-unavailable` rather than a generic `internal` error, and the
+  local plugin resends the prompt once without the unusable selection and
+  remembers it so later messages skip the failing round trip.
+- Add `session/model-unavailable` to the protocol error taxonomy (HTTP 400,
+  not retryable).
+
 ## 0.8.21
 
 - Provision new remote hosts with the local DSH runtime version by default.

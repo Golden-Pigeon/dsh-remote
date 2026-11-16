@@ -5,10 +5,27 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-
 import type { ResolvedConfig } from '../src/config.ts'
+import { LocalError } from '../src/errors.ts'
 import { RemoteMirrorService } from '../src/mirror/service.ts'
 import type { RemoteHostsService } from '../src/service.ts'
+
+/**
+ * Build the failure the mirror actually observes for an unusable selection.
+ *
+ * `RemoteHostsService.promptSession` normalizes remote failures into a
+ * `LocalError` carrying `details.remoteCode`, so the fixture reproduces that
+ * final shape rather than the raw protocol error.
+ */
+function selectionRejection(selection: { provider: string; model: string }, legacy = false): LocalError {
+  const code = legacy ? 'internal' : 'session/model-unavailable'
+  return new LocalError('agent/error', legacy
+    ? 'remote agent: remote agent request failed'
+    : `remote agent: model ${selection.provider}/${selection.model} is not available on this remote host`, {
+    details: { remoteCode: code },
+    retryable: legacy,
+  })
+}
 
 interface FixtureSelection { provider: string; model: string; reasoningEffort?: string }
 interface FixtureAgent {
@@ -85,6 +102,11 @@ export function harness() {
   const selections: unknown[] = []
   const remoteCreates: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
   const prompts: Array<{ sessionId: string; text: string; selection?: { provider: string; model: string } }> = []
+  /** Prompts the fixture refused because the selection was "unavailable". */
+  const rejectedPrompts: Array<{ sessionId: string; text: string }> = []
+  let rejectSelection: { provider: string; model: string } | undefined
+  /** Whether the fixture reports the rejection the way a pre-fix agent did. */
+  let legacyRejection = false
   let blankRemoteSeq = 0
   let failPrompt = false
   let failEnter = false
@@ -182,6 +204,11 @@ export function harness() {
     async archiveSession(_host: string, sessionId: string) { remoteArchived.push(sessionId) },
     async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
       if (failPrompt) throw new Error('remote prompt failed')
+      if (selection !== undefined && rejectSelection !== undefined
+        && selection.provider === rejectSelection.provider && selection.model === rejectSelection.model) {
+        rejectedPrompts.push({ sessionId, text })
+        throw selectionRejection(selection, legacyRejection)
+      }
       prompts.push({ sessionId, text, ...selection === undefined ? {} : { selection } })
       return { accepted: true }
     },
@@ -213,6 +240,9 @@ export function harness() {
     warnings,
     setRemote(next: Summary[]) { remote = next },
     setFailPrompt(value: boolean) { failPrompt = value },
+    setRejectSelection(value: { provider: string; model: string } | undefined) { rejectSelection = value },
+    setLegacyRejection(value: boolean) { legacyRejection = value },
+    rejectedPrompts,
     setFailEnter(value: boolean) { failEnter = value },
     setHostPhase(value: 'connected' | 'disconnected') { host.phase = value },
     setCreatedPreset(value: string | undefined) { createdPreset = value },

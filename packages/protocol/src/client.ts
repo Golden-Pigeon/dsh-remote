@@ -584,7 +584,7 @@ function isDetails(value: unknown): value is Record<string, unknown> {
 const KNOWN_CODES = new Set([
   'protocol/version-mismatch', 'auth/missing', 'auth/invalid', 'auth/forbidden',
   'request/invalid', 'request/too-large', 'route/not-found', 'workspace/not-found',
-  'session/not-found', 'session/not-live', 'agent/not-ready',
+  'session/not-found', 'session/not-live', 'session/model-unavailable', 'agent/not-ready',
   'workspace-file/not-found', 'workspace-file/not-regular-file', 'workspace-file/not-text',
   'directory/unreadable', 'terminal/unavailable', 'terminal/error', 'internal',
 ])

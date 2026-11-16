@@ -293,13 +293,32 @@ export class RemoteAgentService {
 
   /** Select and install the model/reasoning effort for one remote session. */
   async selectModel(sessionId: string, request: SelectModelRequest): Promise<AcceptedResult> {
-    await this.ctx.sessionController.selectModel({
-      sessionId: sessionId as SessionId,
-      provider: request.provider,
-      model: request.model,
-      ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort as never },
-    })
+    await this.#selectModelOrTranslate(sessionId, request)
     return { accepted: true }
+  }
+
+  /**
+   * Install a model selection, translating DSH's model-availability failure
+   * into a protocol error the client can act on.
+   *
+   * `sessionController.selectModel` throws a raw `session/model-unavailable`
+   * error when the selected provider/model is absent from this host's catalog.
+   * Without this translation the HTTP layer collapses it into a generic
+   * `internal` failure, and the local client cannot tell "your model is not
+   * available here" (recoverable by retrying without the selection) apart from
+   * a genuine transport fault.
+   */
+  async #selectModelOrTranslate(sessionId: string, request: SelectModelRequest): Promise<void> {
+    try {
+      await this.ctx.sessionController.selectModel({
+        sessionId: sessionId as SessionId,
+        provider: request.provider,
+        model: request.model,
+        ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort as never },
+      })
+    } catch (error) {
+      throw translateModelSelectionError(error, request)
+    }
   }
 
   /** Set the file-effect sandbox mode for one remote session. */
@@ -331,13 +350,13 @@ export class RemoteAgentService {
       throw new RemoteProtocolError({ code: 'request/invalid', message: 'prompt content must not be empty' })
     }
     if (request.provider !== undefined && request.model !== undefined) {
-      await this.ctx.sessionController.selectModel({
-        sessionId: sessionId as SessionId,
+      // A selection this host cannot serve must surface as a distinct,
+      // actionable failure rather than a generic `internal` error, so the
+      // caller can resend the prompt without the unusable selection.
+      await this.#selectModelOrTranslate(sessionId, {
         provider: request.provider,
         model: request.model,
-        ...request.reasoningEffort === undefined
-          ? {}
-          : { reasoningEffort: request.reasoningEffort as never },
+        ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort },
       })
     }
     await this.ctx.sessionController.prompt({
@@ -649,6 +668,43 @@ export class RemoteAgentService {
       return new Map()
     }
   }
+}
+
+/**
+ * Recognize DSH's model-availability rejection.
+ *
+ * `sessionController.selectModel` throws a `RemoteError` carrying
+ * `code: 'session/model-unavailable'` and `{ provider, model }` details when the
+ * requested provider/model is absent from this host's catalog. The class is not
+ * exported, so the stable `code` field is the contract we match on.
+ */
+function isModelUnavailableError(error: unknown): error is { code: 'session/model-unavailable'; message?: unknown; details?: unknown } {
+  return typeof error === 'object'
+    && error !== null
+    && (error as { code?: unknown }).code === 'session/model-unavailable'
+}
+
+/**
+ * Translate a model-availability rejection into a protocol error.
+ *
+ * Any other error is returned untouched so genuine faults keep their own
+ * reporting path instead of being mislabelled as a model problem.
+ */
+function translateModelSelectionError(error: unknown, request: SelectModelRequest): unknown {
+  if (!isModelUnavailableError(error)) return error
+  const details = typeof error.details === 'object' && error.details !== null
+    ? error.details as { provider?: unknown; model?: unknown }
+    : {}
+  return new RemoteProtocolError({
+    code: 'session/model-unavailable',
+    message: `model ${request.provider}/${request.model} is not available on this remote host`,
+    // Not retryable: resending the same selection cannot succeed.
+    retryable: false,
+    details: {
+      provider: typeof details.provider === 'string' ? details.provider : request.provider,
+      model: typeof details.model === 'string' ? details.model : request.model,
+    },
+  })
 }
 
 function toWorkspaceLike(workspace: Workspace): WorkspaceLike {

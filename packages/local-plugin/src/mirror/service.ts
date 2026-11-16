@@ -117,6 +117,12 @@ interface MirrorRuntime {
   lastError: string | null
   pendingUsers: PendingUser[]
   waiters: Array<() => void>
+  /**
+   * Selections this mirror already learned the remote cannot serve, keyed by
+   * `provider/model`. Remembering them keeps later prompts from repeating the
+   * rejected round trip on every message.
+   */
+  rejectedSelections: Set<string>
 }
 
 type ReasoningEffort = NonNullable<ModelSelection['reasoningEffort']>
@@ -921,18 +927,51 @@ export class RemoteMirrorService {
       this.#schedule(runtime)
     }
     const selection = this.selectionFor(runtime)
-    if (selection !== undefined) Object.assign(runtime.agent.options, selection)
+    if (selection !== undefined && !selectionRejected(runtime, selection)) {
+      Object.assign(runtime.agent.options, selection)
+    }
     try {
       const { text, content } = await this.#promptContent(message)
       if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
-      await this.#hosts.promptSession(
-        runtime.record.hostId,
-        runtime.record.remoteSessionId,
-        text,
-        mode,
-        selection,
-        content,
-      )
+      const forwarded = selection !== undefined && !selectionRejected(runtime, selection)
+        ? selection
+        : undefined
+      try {
+        await this.#hosts.promptSession(
+          runtime.record.hostId,
+          runtime.record.remoteSessionId,
+          text,
+          mode,
+          forwarded,
+          content,
+        )
+      } catch (error) {
+        if (forwarded === undefined || !isSelectionRejection(error)) throw error
+        // The remote cannot serve this selection, so remember it and resend the
+        // same prompt without one. The remote then keeps whatever model it was
+        // already using, which is the only model it can actually run.
+        rejectSelection(runtime, forwarded)
+        this.#ctx.logger.warn(
+          'dsh-remote-local: remote %s does not offer %s/%s; resending without a model selection',
+          runtime.record.remoteSessionId,
+          forwarded.provider,
+          forwarded.model,
+        )
+        // Drop the unusable selection from the agent options too, so a later
+        // prompt cannot rediscover it through the options fallback.
+        const options = runtime.agent.options as { provider?: string; model?: string; reasoningEffort?: string }
+        delete options.provider
+        delete options.model
+        delete options.reasoningEffort
+        await this.#hosts.promptSession(
+          runtime.record.hostId,
+          runtime.record.remoteSessionId,
+          text,
+          mode,
+          undefined,
+          content,
+        )
+      }
       if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
       if (!runtime.pendingUsers.includes(pending)) throw new Error('prompt was cancelled')
       const before = (runtime.session as unknown as { seq: number }).seq
@@ -1342,10 +1381,19 @@ export class RemoteMirrorService {
         ...typeof record.reasoningEffort === 'string' ? { reasoningEffort: record.reasoningEffort } : {},
       }
     }
-    return read(state?.pending)
+    const resolve = (): { provider: string; model: string; reasoningEffort?: string } | undefined =>
+      read(state?.pending)
       ?? read(state?.lastUsed)
       ?? latestSelection(runtime.session)
       ?? (fallbackToOptions ? read(runtime.agent.options) : undefined)
+    const selection = resolve()
+    // A selection the remote already refused is a local preference it cannot
+    // serve; treat it as no selection so prompts fall back to the model the
+    // remote actually runs instead of repeating the rejected request.
+    if (selection !== undefined && selectionRejected(runtime, selection)) {
+      return undefined
+    }
+    return selection
   }
 
   async #syncHost(host: HostView): Promise<void> {
@@ -1907,6 +1955,7 @@ export class RemoteMirrorService {
       lastError: null,
       pendingUsers: [],
       waiters: [],
+      rejectedSelections: new Set(),
     } satisfies MirrorRuntime
     const options = this.#defaultSelection() ?? modelOptions(snapshot.events)
     const agent = new RemoteMirrorAgent(this, runtime, this.#ctx, options)
@@ -2616,6 +2665,37 @@ function contentText(message: unknown): string {
     }
   }
   return texts.join('\n').trim()
+}
+
+/** Whether this mirror already recorded that the remote rejects the selection. */
+function selectionRejected(runtime: MirrorRuntime, selection: MirrorModelSelection): boolean {
+  return runtime.rejectedSelections.has(selectionKey(selection))
+}
+
+/** Record a rejected selection so later prompts skip the failing round trip. */
+function rejectSelection(runtime: MirrorRuntime, selection: MirrorModelSelection): void {
+  runtime.rejectedSelections.add(selectionKey(selection))
+}
+
+function selectionKey(selection: MirrorModelSelection): string {
+  return `${selection.provider}/${selection.model}`
+}
+
+/**
+ * Recognize the remote's "this host cannot serve that model" rejection.
+ *
+ * `RemoteHostsService.promptSession` normalizes every remote failure into a
+ * `LocalError` whose `details.remoteCode` carries the protocol code, so that is
+ * the authoritative signal. The remote agent reports an unusable model as
+ * `session/model-unavailable`; older agents collapsed it into `internal`, so
+ * both are accepted. Matching on the code keeps genuine transport failures out
+ * of the fallback path, which would otherwise resend the prompt and risk
+ * delivering it twice.
+ */
+function isSelectionRejection(error: unknown): boolean {
+  const candidate = error as { details?: { remoteCode?: unknown } } | null | undefined
+  const code = candidate?.details?.remoteCode
+  return code === 'session/model-unavailable' || code === 'internal'
 }
 
 function canonicalPath(path: string): string {
