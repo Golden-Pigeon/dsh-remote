@@ -296,6 +296,39 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.equal(text.includes('\u23F5'), false, 'the play glyph must be gone')
   })
 
+  it('does not restate the connection state that the dot already shows', async () => {
+    const hostFor = (phase: string) => ({
+      id: `host-${phase}`, label: `Hosted ${phase}`, sshTarget: `hosted-${phase}`,
+      sshPort: null, remoteAgentPort: null, autoConnect: true,
+      createdAt: 'now', updatedAt: 'now', hasToken: true,
+      phase, localPort: null, localUrl: null,
+      hostInfo: null, workspaceCount: null, error: null, errorCode: null,
+      connectedAt: null, detail: null, errorUi: null, agentOutdated: false,
+      modelProxy: false, modelDirect: false, modelSource: 'direct' as const,
+      dshUpdate: null, retry: null,
+    })
+
+    // Idle: nothing worth saying, so no sub-line at all.
+    const idle = await render({
+      state: async () => ({
+        hosts: [hostFor('idle')], mirroredWorkspaceIds: [], mirroredWorkspaces: [],
+      }),
+    })
+    await settle(idle.renderer, text => text.includes('dshr-host-row'))
+    assert.equal(JSON.stringify(idle.renderer.toJSON()).includes('dshr-host-sub'), false,
+      'an idle host has no facts, so it must not print "未连接"')
+
+    // Installing: the phase explains why the row looks stuck, so keep it.
+    const installing = await render({
+      state: async () => ({
+        hosts: [hostFor('installing')], mirroredWorkspaceIds: [], mirroredWorkspaces: [],
+      }),
+    })
+    await settle(installing.renderer, text => text.includes('dshr-host-row'))
+    assert.ok(JSON.stringify(installing.renderer.toJSON()).includes('phase.installing'),
+      'a transitional phase must still be spelled out')
+  })
+
   it('offers no separate expand button on the row', async () => {
     const { renderer } = await render({
       state: async () => ({

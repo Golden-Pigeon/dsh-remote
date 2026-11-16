@@ -457,20 +457,37 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                         <code className="dshr-endpoint">{host.sshTarget}</code>
                       )}
                     </div>
-                    <div className="dshr-host-sub">
-                      <span>{phaseLabel(t, host.phase)}</span>
-                      {host.workspaceCount != null && (
-                        <span>{host.workspaceCount} {t('settings.workspaces')}</span>
-                      )}
-                      {host.hostInfo?.agentVersion != null && (
-                        <span>Agent {host.hostInfo.agentVersion}</span>
-                      )}
-                      <span>
-                        {host.modelProxy
-                          ? t('settings.localProxy')
-                          : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}
-                      </span>
-                    </div>
+                    {(() => {
+                      // The dot already says connected or not, so repeating it
+                      // in words is noise. A transitional phase is worth
+                      // spelling out: the dot cannot show what is happening,
+                      // and "installing" explains why the row looks stuck.
+                      const transitional = !connected
+                        && host.phase !== 'idle'
+                        && host.phase !== 'disconnected'
+                      const facts = [
+                        transitional ? phaseLabel(t, host.phase) : null,
+                        host.workspaceCount != null
+                          ? `${host.workspaceCount} ${t('settings.workspaces')}`
+                          : null,
+                        host.hostInfo?.agentVersion != null
+                          ? `Agent ${host.hostInfo.agentVersion}`
+                          : null,
+                        // Only meaningful once the host is connected: an idle
+                        // host has no resolved credential path yet.
+                        connected || host.modelProxy || host.modelDirect
+                          ? host.modelProxy
+                            ? t('settings.localProxy')
+                            : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')
+                          : null,
+                      ].filter((item): item is string => item !== null)
+                      if (facts.length === 0) return null
+                      return (
+                        <div className="dshr-host-sub">
+                          {facts.map(fact => <span key={fact}>{fact}</span>)}
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div className="dshr-host-tail">
                     {/* The two actions you reach for most sit on the row itself,
