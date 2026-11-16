@@ -396,8 +396,19 @@ export class RemoteAgentService {
   }
 
   #bindApprovals(): void {
+    // `approval/request` is a waterfall: the first listener that settles the
+    // decision vetoes every later one. `dsh-api-remotes` also listens (it
+    // forwards the request to a remote browser carrier), so this bridge must
+    // run *before* it — otherwise that carrier claims the decision and this
+    // host's own agent never sees the question. Prepending keeps the bridge
+    // outermost without disabling `api-remotes`, which the remote Web UI needs
+    // for its client plugin tree.
     this.ctx.effect(
-      () => this.ctx.on('approval/request', async (request: ApprovalRequestEvent) => this.#askApproval(request)),
+      () => this.ctx.on(
+        'approval/request',
+        async (request: ApprovalRequestEvent) => this.#askApproval(request),
+        { prepend: true },
+      ),
       'dsh-remote-agent: approval bridge',
     )
   }

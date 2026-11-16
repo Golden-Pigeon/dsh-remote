@@ -1,8 +1,16 @@
-# The remote host is driven by the local native UI; the remote browser
-# Remote-Event carrier would otherwise claim approval waterfalls before the
-# approval bridge. Keep the host services, disable that client carrier.
-- id: api-remotes
-  disabled: true
+# `dsh-api-remotes` must stay enabled here.
+#
+# It owns the `remote.*` client services (`remote.session`, `remote.llm`,
+# `remote.settings`, `remote.credentials`, `remote.workspaceFiles`, ...) that
+# most browser-side packages inject. Disabling the row leaves them unprovided,
+# so the client plugin tree never activates and the Web UI fails to boot with
+# "5 required entries did not activate".
+#
+# The reason this row used to be disabled was the `approval/request` waterfall:
+# `dsh-api-remotes` registers a listener that can claim the decision before the
+# agent's approval bridge sees it. That ordering problem is fixed at its source
+# — the bridge now registers with `{ prepend: true }` (see `src/service.ts`),
+# so it always runs first and `api-remotes` still serves the browser surface.
 
 # dsh-remote-agent is a host-only bundle. The row is inserted above the
 # dsh-base layer and is addressable by id from a later profile patch layer.
