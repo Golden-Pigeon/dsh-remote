@@ -8,7 +8,7 @@
  * @module dsh-remote-local/host-api/contract
  */
 
-import type { HostView } from '../hosts/types.ts'
+import type { HostView, ModelSource, SshDiscoveryResult } from '../hosts/types.ts'
 import type { UiText } from '../messages.ts'
 import type {
   AcceptedResult,
@@ -28,6 +28,7 @@ export const HOST_API_PATH = '/api/dsh-remote'
 export type HostApiEndpoint =
   | 'state'
   | 'target/validate'
+  | 'host/discover'
   | 'host/add'
   | 'host/remove'
   | 'host/connect'
@@ -50,6 +51,9 @@ export type HostApiEndpoint =
   | 'host/session/cancel'
   | 'host/web-url'
   | 'host/model-catalog'
+  | 'host/session/mirror'
+  | 'host/session/model'
+  | 'host/model-source'
   | 'host/files/list'
   | 'host/files/read'
   | 'host/files/stat'
@@ -133,6 +137,7 @@ export type HostApiResult<T> =
 export interface HostApiPayloads {
   state: undefined
   'target/validate': { sshTarget: string }
+  'host/discover': { refresh?: boolean } | undefined
   'host/add': {
     sshTarget: string
     label?: string
@@ -169,6 +174,14 @@ export interface HostApiPayloads {
   'host/session/cancel': { hostId: string; sessionId: string }
   'host/web-url': { hostId: string }
   'host/model-catalog': { hostId: string }
+  'host/session/mirror': { localSessionId: string }
+  'host/session/model': {
+    localSessionId: string
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }
+  'host/model-source': { hostId: string; source: ModelSource }
   'host/files/list': { sessionId: string; path: string }
   'host/files/read': { sessionId: string; path: string; offset?: number; limit?: number }
   'host/files/stat': { sessionId: string; path: string }
@@ -179,6 +192,7 @@ export interface HostApiPayloads {
 export interface HostApiValues {
   state: RemoteHostsState
   'target/validate': ValidatedTarget
+  'host/discover': SshDiscoveryResult
   'host/add': HostView
   'host/remove': { removed: true }
   'host/connect': HostView
@@ -201,6 +215,9 @@ export interface HostApiValues {
   'host/session/cancel': AcceptedResult
   'host/web-url': WebUrlResult
   'host/model-catalog': ModelCatalogResult
+  'host/session/mirror': MirrorTarget
+  'host/session/model': AcceptedResult
+  'host/model-source': HostView
   'host/files/list': MirrorFileResult
   'host/files/read': MirrorFileResult
   'host/files/stat': MirrorFileResult
@@ -211,3 +228,4 @@ export interface HostApiValues {
 export interface HostSummary extends Pick<HostView, 'id' | 'label' | 'sshTarget' | 'phase'> {
   readonly hostInfo: HostInfo | null
 }
+

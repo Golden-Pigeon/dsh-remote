@@ -42,12 +42,16 @@ import {
   idleRuntime,
   toHostView,
   type AddHostInput,
+  type DiscoveredSshHost,
   type HostRecord,
   type HostRuntime,
   type HostView,
+  type ModelSource,
+  type SshDiscoveryResult,
 } from './hosts/types.ts'
 import { RemoteProvisioner, agentVersionIsOlder, bundledAgentVersion } from './remote/provisioner.ts'
 import { uiForErrorCode } from './messages.ts'
+import { scanSshConfig } from './ssh/config.ts'
 import { discoverAgent } from './ssh/probe.ts'
 import { restartRemoteAgent } from './remote/restart.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
@@ -66,6 +70,15 @@ function fingerprintKey(value: string): string {
  * keeps polling cheap without hiding a genuine remote change for long.
  */
 const MODEL_CATALOG_TTL_MS = 60_000
+
+/**
+ * How long a local SSH-config scan stays cached.
+ *
+ * The scan spawns one `ssh -G` per alias, and the Settings page re-renders on
+ * every poll, so the inventory is cached briefly. Editing `~/.ssh/config` is a
+ * deliberate act, and the panel offers an explicit rescan.
+ */
+const SSH_SCAN_TTL_MS = 30_000
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -111,6 +124,8 @@ export class RemoteHostsService {
   #directModelAttempted = false
   readonly #modelReconciled = new Set<string>()
   readonly #catalogs = new Map<string, { readonly at: number; readonly value: ModelCatalogResult }>()
+  #discovery: { readonly at: number; readonly value: SshDiscoveryResult } | undefined
+  #discoveryInFlight: Promise<SshDiscoveryResult> | undefined
   readonly #records = new Map<string, HostRecord>()
   readonly #runtime = new Map<string, HostRuntime>()
   readonly #tunnels = new Map<string, Tunnel>()
@@ -166,7 +181,17 @@ export class RemoteHostsService {
   /** One host view. */
   view(id: string): HostView {
     const record = this.#requireRecord(id)
-    return toHostView(record, this.#runtime.get(id) ?? idleRuntime())
+    return toHostView(record, this.#runtime.get(id) ?? idleRuntime(), this.#defaultModelSource())
+  }
+
+  /** Profile-wide default used by records that never chose explicitly. */
+  #defaultModelSource(): ModelSource {
+    return this.config.credentialProxy ? 'proxy' : 'direct'
+  }
+
+  /** Effective credential source for one host. */
+  #modelSourceFor(record: HostRecord): ModelSource {
+    return record.modelSource ?? this.#defaultModelSource()
   }
 
   /** Parse a destination without touching SSH. */
@@ -210,6 +235,9 @@ export class RemoteHostsService {
     this.#records.set(record.id, record)
     this.#runtime.set(record.id, idleRuntime())
     this.#manualDisconnect.delete(record.id)
+    // The scan marks registered destinations; a stale list would invite the
+    // user to connect a host that is already registered.
+    this.forgetDiscovery()
 
     if (record.autoConnect) {
       this.#setRuntime(record.id, { phase: 'discovering' })
@@ -232,6 +260,7 @@ export class RemoteHostsService {
     this.#runtime.delete(id)
     this.#attempts.delete(id)
     this.#manualDisconnect.delete(id)
+    this.forgetDiscovery()
   }
 
   /** Connect one host, waiting for discovery, tunnel, and health. */
@@ -299,9 +328,7 @@ export class RemoteHostsService {
     this.#manualDisconnect.delete(id)
     this.#clearReconnect(id)
     await this.#stopTransport(id)
-    const proxy = await this.#ensureModelProxy()
-    const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
-    const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+    const { proxy, proxyToken, direct } = await this.#modelPathFor(record)
     this.#setRuntime(id, {
       ...idleRuntime(),
       phase: 'installing',
@@ -349,14 +376,40 @@ export class RemoteHostsService {
     return this.view(id)
   }
 
-  async #runUpgrade(id: string, localVersion: string): Promise<void> {
-    try {
+  /**
+   * Choose where this host gets model credentials, then realign the remote.
+   *
+   * The choice only takes effect once the remote process is restarted with the
+   * new environment, so this reuses the provisioning path instead of pretending
+   * a live host can switch in place.
+   * @param id - host whose source changes.
+   * @param source - `proxy` keeps the key local, `direct` lets the remote use its own.
+   * @returns the host view after the realignment finished.
+   */
+  async setModelSource(id: string, source: ModelSource): Promise<HostView> {
+    this.#assertAlive()
+    const record = this.#requireRecord(id)
+    if (source === 'proxy') {
+      // Fail before persisting: otherwise a host would be left pointing at a
+      // proxy that cannot start, and every later connect would fail too.
+      const key = await this.#resolveModelKey?.().catch(() => undefined)
+      if (key === undefined || key.trim() === '') {
+        throw new LocalError('agent/unavailable', '本地模型代理需要本机配置 DEEPSEEK_API_KEY', {
+          ui: { key: 'error.modelKeyMissing' },
+        })
+      }
+    }
+    if (record.modelSource !== source) await this.#saveRecord(id, { modelSource: source })
+    // Reuse provisioning: it stops the tunnel, rewrites the remote environment,
+    // and reconnects, which is exactly what a source change needs.
+    return this.provision(id)
+  }
+
+  async #runUpgrade(id: string, localVersion: string): Promise<void> {    try {
       const record = this.#requireRecord(id)
       const target = parseSshTarget(record.sshTarget)
       await this.#stopTransport(id)
-      const proxy = await this.#ensureModelProxy()
-      const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
-      const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+      const { proxy, proxyToken, direct } = await this.#modelPathFor(record)
       this.#setRuntime(id, {
         ...this.#runtimeFor(id),
         modelProxy: proxy !== undefined,
@@ -692,6 +745,63 @@ export class RemoteHostsService {
     return value
   }
 
+  /**
+   * List the hosts this machine's SSH client configuration already knows.
+   *
+   * Read-only by construction: it reads the config files and asks `ssh -G` what
+   * each alias resolves to. It must never connect, open a tunnel, or provision
+   * a remote runtime; offering a host is the Settings page's whole job here.
+   */
+  async discover(refresh = false): Promise<SshDiscoveryResult> {
+    this.#assertAlive()
+    const cached = this.#discovery
+    if (!refresh && cached !== undefined && Date.now() - cached.at < SSH_SCAN_TTL_MS) return cached.value
+    const pending = this.#discoveryInFlight
+    if (pending !== undefined) return pending
+
+    const task = (async (): Promise<SshDiscoveryResult> => {
+      const scan = await scanSshConfig({
+        configPath: this.config.sshConfigPath,
+        sshBinary: this.config.sshBinary,
+        timeoutMs: this.config.probeTimeoutMs,
+      })
+      const registered = new Map<string, string>()
+      for (const record of this.#records.values()) registered.set(record.sshTarget, record.id)
+      const hosts: DiscoveredSshHost[] = scan.hosts.map(host => ({
+        alias: host.alias,
+        canonical: host.canonical,
+        // A config that never states HostName leaves the alias itself as the
+        // address, which is exactly what ssh does with a bare name.
+        hostname: host.hostname ?? host.alias,
+        user: host.user,
+        port: host.port,
+        source: host.source,
+        proxyJump: host.proxyJump,
+        registeredHostId: registered.get(host.canonical) ?? null,
+      }))
+      const value: SshDiscoveryResult = {
+        scannedAt: scan.scannedAt,
+        configFiles: scan.configFiles,
+        hosts,
+        skipped: scan.skipped,
+        error: scan.error,
+      }
+      this.#discovery = { at: Date.now(), value }
+      return value
+    })()
+    this.#discoveryInFlight = task
+    try {
+      return await task
+    } finally {
+      this.#discoveryInFlight = undefined
+    }
+  }
+
+  /** Drop the cached scan so the next read reflects an edited ssh config. */
+  forgetDiscovery(): void {
+    this.#discovery = undefined
+  }
+
   /** Stop every tunnel and timer. */
   async dispose(): Promise<void> {
     if (this.#disposed) return
@@ -723,9 +833,7 @@ export class RemoteHostsService {
     })
 
     const target = parseSshTarget(record.sshTarget)
-    const proxy = await this.#ensureModelProxy()
-    const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
-    const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+    const { proxy, proxyToken, direct } = await this.#modelPathFor(record)
     this.#setRuntime(id, {
       ...this.#runtimeFor(id),
       modelProxy: proxy !== undefined,
@@ -897,8 +1005,36 @@ export class RemoteHostsService {
     return true
   }
 
+  /**
+   * Resolve the credential path for one host.
+   *
+   * The proxy is a single loopback server that validates a per-host token, so
+   * several hosts can share it while each one chooses its own source. `direct`
+   * is only produced when the host asks for it, which is what keeps a `proxy`
+   * host from ever receiving the local key.
+   */
+  async #modelPathFor(
+    record: HostRecord,
+  ): Promise<{
+    proxy: CredentialProxyAddress | undefined
+    proxyToken: string | undefined
+    direct: { readonly baseUrl: string; readonly apiKey: string } | undefined
+  }> {
+    const source = this.#modelSourceFor(record)
+    if (source === 'proxy') {
+      const proxy = await this.#ensureModelProxy()
+      if (proxy === undefined) {
+        throw new LocalError('agent/unavailable', '本地模型代理不可用：请先在本机配置 DEEPSEEK_API_KEY', {
+          ui: { key: 'error.modelKeyMissing' },
+        })
+      }
+      return { proxy, proxyToken: await this.#ensureProxyToken(record.id), direct: undefined }
+    }
+    return { proxy: undefined, proxyToken: undefined, direct: await this.#ensureDirectModel() }
+  }
+
   async #ensureDirectModel(): Promise<{ readonly baseUrl: string; readonly apiKey: string } | undefined> {
-    if (this.config.credentialProxy || !this.config.copyModelKey) return undefined
+    if (!this.config.copyModelKey) return undefined
     if (this.#directModelAttempted) return this.#directModel
     this.#directModelAttempted = true
     let key: string | undefined
@@ -951,8 +1087,14 @@ export class RemoteHostsService {
     return false
   }
 
+  /**
+   * Start the shared loopback credential proxy on first use.
+   *
+   * It is not gated on the profile default any more: any host whose own source
+   * is `proxy` needs it, so it starts lazily for whichever host asks first and
+   * then serves every host through their per-host tokens.
+   */
   async #ensureModelProxy(): Promise<CredentialProxyAddress | undefined> {
-    if (!this.config.credentialProxy) return undefined
     if (this.#proxyAddress !== undefined) return this.#proxyAddress
     let key: string | undefined
     try {

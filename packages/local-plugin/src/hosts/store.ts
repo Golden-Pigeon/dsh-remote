@@ -43,6 +43,10 @@ export function isHostRecord(value: unknown): value is HostRecord {
     && (record.token === null || (typeof record.token === 'string' && record.token.length >= 16))
     && (record.proxyToken === undefined || record.proxyToken === null
       || (typeof record.proxyToken === 'string' && record.proxyToken.length >= 16))
+    // Absent means "follow the profile default"; anything else must be a known
+    // source, so a hand-edited registry cannot introduce a third state.
+    && (record.modelSource === undefined || record.modelSource === null
+      || record.modelSource === 'proxy' || record.modelSource === 'direct')
     && typeof record.autoConnect === 'boolean'
     && typeof record.createdAt === 'string'
     && typeof record.updatedAt === 'string'

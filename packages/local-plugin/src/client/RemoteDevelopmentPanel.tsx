@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ModelCatalogResult, RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
-import type { HostView } from '../hosts/types.ts'
+import type { DiscoveredSshHost, HostView, SshDiscoveryResult } from '../hosts/types.ts'
 import type { HostDetail } from '../messages.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
 import type { HostsApi } from './api.ts'
@@ -50,10 +50,9 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
   const [catalogs, setCatalogs] = useState<Record<string, ModelCatalogResult | undefined>>({})
   const [workspaceDraft, setWorkspaceDraft] = useState('')
-  const [form, setForm] = useState({
-    sshTarget: '',
-    label: '',
-  })
+  const [discovery, setDiscovery] = useState<SshDiscoveryResult | null>(null)
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null)
+  const scanning = useRef(false)
 
   useInjectedStyle(panelCss)
 
@@ -96,6 +95,10 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       void loadWorkspaces(host.id, false)
     }
   }, [hosts, expandedHost, workspaces])
+
+  useEffect(() => {
+    void scan(false)
+  }, [api])
 
   async function refresh(): Promise<void> {
     setState(await api.state())
@@ -146,27 +149,50 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     }
   }
 
-  async function onAdd(): Promise<void> {
-    const sshTarget = form.sshTarget.trim()
-    if (sshTarget === '') {
-      setError(t('settings.sshRequired'))
-      return
+  /**
+   * Load the hosts this machine's SSH config already knows.
+   *
+   * `refresh` bypasses the host-side cache, which is what the rescan action
+   * needs after the user edited `~/.ssh/config`.
+   */
+  async function scan(refresh: boolean): Promise<void> {
+    if (scanning.current) return
+    scanning.current = true
+    if (refresh) setBusy('discover')
+    setDiscoveryError(null)
+    try {
+      setDiscovery(await api.discover(refresh))
+    } catch (failure) {
+      setDiscoveryError(localizedError(t, failure, t('settings.discovered.failed')))
+    } finally {
+      scanning.current = false
+      if (refresh) setBusy(null)
     }
-    await run('add', async () => {
-      await api.validateTarget(sshTarget)
-      const host = await api.addHost({
-        sshTarget,
-        ...form.label.trim() === '' ? {} : { label: form.label.trim() },
-        autoConnect: true,
-      })
-      setForm({ sshTarget: '', label: '' })
+  }
+
+  /** Register one discovered alias and let the ordinary connect path take over. */
+  async function connectDiscovered(entry: DiscoveredSshHost): Promise<void> {
+    await run(`discover:${entry.alias}`, async () => {
+      const host = await api.addHost({ sshTarget: entry.alias, autoConnect: true })
       setExpandedHost(host.id)
       setNotice(t('settings.hostSaved'))
+      await scan(true)
     })
   }
 
-  async function toggleHost(host: HostView): Promise<void> {
-    if (expandedHost === host.id) {
+  /**
+   * Switch this host between the local credential proxy and a remote-direct key.
+   *
+   * The remote restarts with a new environment, so this is a long operation and
+   * the busy label explains why the card looks stuck.
+   */
+  async function switchModelSource(host: HostView, source: 'proxy' | 'direct'): Promise<void> {
+    await run(`source:${host.id}`, async () => {
+      await api.setModelSource(host.id, source)
+    })
+  }
+
+  async function toggleHost(host: HostView): Promise<void> {    if (expandedHost === host.id) {
       setExpandedHost(null)
       return
     }
@@ -321,39 +347,72 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       {notice !== null && <p className="dshr-banner dshr-banner-info" role="status">{notice}</p>}
 
       <section className="dshr-card">
-        <h3>{t('settings.addHost')}</h3>
-        <form
-          className="dshr-form"
-          onSubmit={event => {
-            event.preventDefault()
-            void onAdd()
-          }}
-        >
-          <label className="dshr-field dshr-field-wide">
-            <span>{t('settings.sshTarget')}</span>
-            <input
-              value={form.sshTarget}
-              onChange={event => setForm(current => ({ ...current, sshTarget: event.target.value }))}
-              placeholder={t('settings.sshPlaceholder')}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-          <label className="dshr-field">
-            <span>{t('settings.label')}</span>
-            <input
-              value={form.label}
-              onChange={event => setForm(current => ({ ...current, label: event.target.value }))}
-              placeholder={t('settings.labelPlaceholder')}
-            />
-          </label>
-          <div className="dshr-form-actions">
-            <button type="submit" className="dshr-button dshr-button-primary" disabled={busy !== null}>
-              {busy === 'add' ? t('settings.adding') : t('settings.saveConnect')}
-            </button>
-            <span className="dshr-hint">{t('settings.sshHint')}</span>
-          </div>
-        </form>
+        <div className="dshr-section-title">
+          <h3>{t('settings.discovered.title')}</h3>
+          <button
+            type="button"
+            className="dshr-button dshr-button-small"
+            disabled={busy !== null}
+            onClick={() => { void scan(true) }}
+          >
+            {busy === 'discover' ? t('settings.discovered.scanning') : t('settings.discovered.rescan')}
+          </button>
+        </div>
+        <p className="dshr-hint">{t('settings.discovered.hint')}</p>
+        {discoveryError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{discoveryError}</p>}
+        {discovery?.error != null && <p className="dshr-banner dshr-banner-error" role="alert">{discovery.error}</p>}
+        {discovery === null
+          ? <p className="dshr-empty">{t('settings.discovered.scanning')}</p>
+          : discovery.hosts.length === 0
+            ? <p className="dshr-empty">{t('settings.discovered.empty')}</p>
+            : (
+              <ul className="dshr-discovered">
+                {discovery.hosts.map(entry => (
+                  <li key={entry.canonical} className="dshr-discovered-row">
+                    <div className="dshr-discovered-main">
+                      <strong>{entry.alias}</strong>
+                      <code className="dshr-discovered-endpoint">
+                        {entry.user === null ? '' : `${entry.user}@`}
+                        {entry.hostname}
+                        {entry.port === null ? '' : `:${entry.port}`}
+                      </code>
+                      {entry.proxyJump && <span className="dshr-badge">{t('settings.discovered.proxy')}</span>}
+                    </div>
+                    {entry.registeredHostId !== null
+                      ? <span className="dshr-hint">{t('settings.discovered.added')}</span>
+                      : (
+                        <button
+                          type="button"
+                          className="dshr-button dshr-button-small dshr-button-primary"
+                          disabled={busy !== null}
+                          onClick={() => { void connectDiscovered(entry) }}
+                        >
+                          {busy === `discover:${entry.alias}`
+                            ? t('settings.discovered.connecting')
+                            : t('settings.discovered.connect')}
+                        </button>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            )}
+        {discovery !== null && discovery.hosts.length === 0 && discovery.error === null && (
+          <p className="dshr-hint">{t('settings.discovered.emptyHint')}</p>
+        )}
+        {(discovery?.skipped.length ?? 0) > 0 && (
+          <p className="dshr-hint">
+            {t('settings.discovered.skipped')}
+            {' '}
+            <code>{discovery!.skipped.map(entry => entry.alias).join(', ')}</code>
+          </p>
+        )}
+        {discovery !== null && (
+          <p className="dshr-hint">
+            {t('settings.discovered.lastScanned')}
+            {' '}
+            {new Date(discovery.scannedAt).toLocaleTimeString()}
+          </p>
+        )}
       </section>
 
       <section className="dshr-card">
@@ -382,6 +441,33 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                 <div><dt>{t('settings.token')}</dt><dd>{host.hasToken ? t('settings.saved') : t('settings.unsaved')}</dd></div>
                 <div><dt>{t('settings.modelProxy')}</dt><dd>{host.modelProxy ? t('settings.localProxy') : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}</dd></div>
               </dl>
+
+              <div className="dshr-model-source">
+                <p className="dshr-hint">{t('settings.modelSourceHelp')}</p>
+                <div className="dshr-segmented" role="group" aria-label={t('settings.modelSource')}>
+                  <button
+                    type="button"
+                    className={host.modelSource === 'proxy' ? 'dshr-seg dshr-seg-active' : 'dshr-seg'}
+                    aria-pressed={host.modelSource === 'proxy'}
+                    disabled={busy !== null || host.phase === 'installing' || host.phase === 'discovering'}
+                    onClick={() => { void switchModelSource(host, 'proxy') }}
+                  >
+                    {t('settings.modelSourceProxy')}
+                  </button>
+                  <button
+                    type="button"
+                    className={host.modelSource === 'direct' ? 'dshr-seg dshr-seg-active' : 'dshr-seg'}
+                    aria-pressed={host.modelSource === 'direct'}
+                    disabled={busy !== null || host.phase === 'installing' || host.phase === 'discovering'}
+                    onClick={() => { void switchModelSource(host, 'direct') }}
+                  >
+                    {t('settings.modelSourceDirect')}
+                  </button>
+                </div>
+                {busy === `source:${host.id}` && (
+                  <p className="dshr-detail" role="status">{t('settings.modelSourceBusy')}</p>
+                )}
+              </div>
 
               {host.dshUpdate !== null && (
                 <div className="dshr-update" role="status">

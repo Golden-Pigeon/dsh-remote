@@ -11,6 +11,15 @@
 import type { HostInfo } from '@dsh-remote/protocol'
 import type { HostDetail, UiText } from '../messages.ts'
 
+/**
+ * Where this host's model requests get their credentials.
+ *
+ * `proxy` routes them back to this machine over the SSH tunnel so the local key
+ * never lands on the remote; `direct` lets the remote call the provider with its
+ * own key.
+ */
+export type ModelSource = 'proxy' | 'direct'
+
 /** Lifecycle phase shown by the Settings page. */
 export type HostPhase =
   | 'idle'
@@ -35,6 +44,13 @@ export interface HostRecord {
   readonly token: string | null
   /** Per-host placeholder accepted by the local credential proxy. Secret. */
   readonly proxyToken?: string | null
+  /**
+   * Explicit model-credential source for this host.
+   *
+   * Absent means "follow the profile default", which keeps records written by
+   * older builds behaving exactly as they did.
+   */
+  readonly modelSource?: ModelSource | null
   readonly autoConnect: boolean
   readonly createdAt: string
   readonly updatedAt: string
@@ -108,6 +124,13 @@ export interface HostView {
   readonly modelProxy: boolean
   /** Whether the resolved local model key was copied into the remote environment. */
   readonly modelDirect: boolean
+  /**
+   * Effective credential source for this host.
+   *
+   * Resolves the host's explicit choice against the profile default, so the
+   * Settings page renders one value without knowing the fallback rules.
+   */
+  readonly modelSource: ModelSource
   /** Set when the remote DSH runtime is older than the local one. */
   readonly dshUpdate: DshUpdate | null
   /** Set while an automatic reconnect is scheduled. */
@@ -121,6 +144,41 @@ export interface AddHostInput {
   readonly token?: string
   readonly remoteAgentPort?: number
   readonly autoConnect?: boolean
+}
+
+/** One host found in the local SSH client configuration. */
+export interface DiscoveredSshHost {
+  /** The `Host` alias, which is what `host/add` registers. */
+  readonly alias: string
+  readonly canonical: string
+  /** Effective host name or address, resolved through `ssh -G`. */
+  readonly hostname: string
+  readonly user: string | null
+  /** Effective port; null means the SSH default. */
+  readonly port: number | null
+  /** Config file that declared the alias. */
+  readonly source: string
+  /** Whether reaching it requires a jump host or proxy command. */
+  readonly proxyJump: boolean
+  /** Registry entry for the same destination, or null when unregistered. */
+  readonly registeredHostId: string | null
+}
+
+/** `Host` patterns that cannot become hosts, with the reason. */
+export interface SkippedSshHost {
+  readonly alias: string
+  readonly reason: 'wildcard' | 'unsupported'
+}
+
+/** Result of scanning the local SSH configuration. */
+export interface SshDiscoveryResult {
+  readonly scannedAt: string
+  /** Every config file that contributed an alias. */
+  readonly configFiles: readonly string[]
+  readonly hosts: readonly DiscoveredSshHost[]
+  readonly skipped: readonly SkippedSshHost[]
+  /** Root-config read failure; an absent config file is not an error. */
+  readonly error: string | null
 }
 
 /** Create an idle runtime state. */
@@ -145,7 +203,7 @@ export function idleRuntime(): HostRuntime {
 }
 
 /** Project one record + runtime into the browser-safe view. */
-export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
+export function toHostView(record: HostRecord, runtime: HostRuntime, defaultSource: ModelSource): HostView {
   return {
     id: record.id,
     label: record.label,
@@ -156,6 +214,7 @@ export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     hasToken: record.token !== null,
+    modelSource: record.modelSource ?? defaultSource,
     phase: runtime.phase,
     localPort: runtime.localPort,
     localUrl: runtime.localUrl,

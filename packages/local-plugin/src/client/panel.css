@@ -64,58 +64,53 @@
   gap: 12px;
 }
 
-.dshr-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.dshr-field {
+.dshr-discovered {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-width: 0;
+  gap: 4px;
 }
 
-.dshr-field-wide {
-  grid-column: 1 / -1;
-}
-
-.dshr-field > span {
-  font-size: 12px;
-  opacity: 0.72;
-}
-
-.dshr-field input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 9px;
+.dshr-discovered-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
   border: 1px solid var(--dshr-border);
   border-radius: 8px;
   background: var(--dshr-soft);
-  color: inherit;
-  font: inherit;
-  outline: none;
 }
 
-.dshr-field input:focus {
-  border-color: var(--dshr-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dshr-accent) 22%, transparent);
-}
-
-.dshr-check {
+.dshr-discovered-main {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-}
-
-.dshr-form-actions {
-  display: flex;
-  grid-column: 1 / -1;
-  align-items: center;
-  gap: 12px;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
   flex-wrap: wrap;
+}
+
+.dshr-discovered-main strong {
+  font-weight: 600;
+}
+
+.dshr-discovered-endpoint {
+  font-size: 12px;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dshr-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--dshr-border);
+  border-radius: 999px;
+  background: var(--dshr-softer);
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .dshr-button {
@@ -496,4 +491,48 @@
   font-size: 11px;
   opacity: 0.85;
   word-break: break-word;
+}
+
+.dshr-model-source {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+
+.dshr-segmented {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--dshr-border);
+  border-radius: 8px;
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.dshr-seg {
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dshr-seg + .dshr-seg {
+  border-left: 1px solid var(--dshr-border);
+}
+
+.dshr-seg:hover:not(:disabled):not(.dshr-seg-active) {
+  background: var(--dshr-soft);
+}
+
+.dshr-seg-active {
+  background: var(--dshr-accent);
+  color: #fff;
+}
+
+.dshr-seg:disabled {
+  cursor: default;
+  opacity: 0.55;
 }

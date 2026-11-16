@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Choose the model-key source per host in Settings: `proxy` keeps the local
+  `DEEPSEEK_API_KEY` on this machine and routes model requests back over the
+  tunnel, `direct` lets the remote call the provider with its own key. The
+  profile-wide `credentialProxy` setting now only seeds hosts that never chose,
+  so existing hosts keep their behaviour.
+
+- Offer the remote host's models inside the composer model menu for mirrored
+  Sessions. The native rows are untouched; a host group is appended so a model
+  the remote alone serves (`deepseek-v4-pro`, for example) can be selected
+  directly instead of falling back to the remote default.
+
 - Add an "Open remote Web UI" action to each connected host in Settings, so the
   remote DSH Web UI (for installing remote plugins and similar) opens in a
   browser tab already signed in through the SSH tunnel.

@@ -103,6 +103,10 @@ async function dispatch(
     }
     case 'target/validate':
       return service.validateTarget(requireStringField(payload, 'sshTarget'))
+    case 'host/discover': {
+      const refresh = payload === undefined ? undefined : optionalBooleanField(payload, 'refresh')
+      return service.discover(refresh ?? false)
+    }
     case 'host/add': {
       const body = requireRecord(payload)
       return service.add({
@@ -258,6 +262,41 @@ async function dispatch(
       return service.webUrl(requireStringField(payload, 'hostId'))
     case 'host/model-catalog':
       return service.modelCatalog(requireStringField(payload, 'hostId'))
+    case 'host/model-source': {
+      const body = requireRecord(payload)
+      const source = requireStringField(body, 'source')
+      if (source !== 'proxy' && source !== 'direct') {
+        throw new LocalError('request/invalid', 'source must be "proxy" or "direct"')
+      }
+      return service.setModelSource(requireStringField(body, 'hostId'), source)
+    }
+    case 'host/session/mirror': {
+      const localSessionId = requireStringField(payload, 'localSessionId')
+      const target = mirrors?.mirrorFor(localSessionId)
+      if (target === undefined) return null
+      // The label is what the menu shows the user; fall back to the raw id so a
+      // stale host record never renders an empty group title.
+      const host = service.state().hosts.find(item => item.id === target.hostId)
+      return {
+        hostId: target.hostId,
+        hostLabel: host?.label ?? target.hostId,
+        remoteSessionId: target.remoteSessionId,
+      }
+    }
+    case 'host/session/model': {
+      const body = requireRecord(payload)
+      const localSessionId = requireStringField(body, 'localSessionId')
+      const provider = requireStringField(body, 'provider')
+      const model = requireStringField(body, 'model')
+      const reasoningEffort = optionalStringField(body, 'reasoningEffort')
+      if (mirrors === undefined) throw new LocalError('internal', 'remote mirror service is unavailable')
+      mirrors.setSelection(localSessionId, {
+        provider,
+        model,
+        ...reasoningEffort === undefined ? {} : { reasoningEffort },
+      })
+      return { accepted: true as const }
+    }
     case 'host/files/list':
     case 'host/files/read':
     case 'host/files/stat':

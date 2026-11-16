@@ -12,6 +12,19 @@ if (!stateFile) {
   process.exit(2)
 }
 if (args.includes('-O')) process.exit(0)
+// Configuration resolution: the local plugin scans the SSH config and asks
+// `ssh -G` what each alias means. Answer without connecting.
+if (args.includes('-G')) {
+  const alias = args[args.length - 1]
+  process.stdout.write(
+    `host ${alias}\n` +
+    'user playwright\n' +
+    `hostname ${alias}.invalid\n` +
+    'port 2222\n' +
+    'proxyjump none\n',
+  )
+  process.exit(0)
+}
 const redirect = args.indexOf('-L')
 if (redirect < 0) {
   const state = readFileSync(stateFile, 'utf8'); log(`state ${state.slice(0, 80)}`); process.stdout.write(state)

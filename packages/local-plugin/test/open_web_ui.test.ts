@@ -20,7 +20,12 @@ async function panel(surfaces: Record<string, unknown>) {
     inject: (_keys: string[], callback: (ctx: unknown) => void) => callback(ctx),
     slots: {
       inject: (_key: string, callback: () => unknown) => callback(),
-      register: (_options: unknown, entry: typeof component) => { component = entry; return () => {} },
+      // The plugin contributes more than one slot; this fixture wants the
+      // Settings panel component alone.
+      register: (options: { name?: string }, entry: typeof component) => {
+        if (options.name === 'settings.section') component = entry
+        return () => {}
+      },
     },
   }
   ;(exports.apply as (ctx: unknown) => void)(ctx)

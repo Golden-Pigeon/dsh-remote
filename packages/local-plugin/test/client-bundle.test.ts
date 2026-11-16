@@ -4,8 +4,17 @@ import * as React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
 import { loadClientBundle } from './client_bundle_fixture.ts'
 
+interface Registration {
+  name: string
+  id?: string
+  label?: () => string
+  order?: number
+  locale?: string
+  inject: () => unknown
+}
+
 describe('client bundle artifact', () => {
-  it('registers the package and a Settings section', async () => {
+  it('registers the package, a Settings section, and the model-menu group', async () => {
     const loaded = await loadClientBundle()
     assert.equal(loaded.id, 'dsh-remote-local-plugin')
     const exports = loaded.factory((specifier) => {
@@ -16,8 +25,8 @@ describe('client bundle artifact', () => {
     assert.deepEqual(Array.from(exports.inject as string[]), ['slots', 'uiWorkspace', 'uiSession', 'locale'])
     assert.equal(typeof exports.apply, 'function')
 
-    let registration: { name: string; id: string; label: () => string; order: number; locale: string; inject: () => { api: unknown } } | undefined
-    let component: unknown
+    const registrations: Registration[] = []
+    const components = new Map<string, unknown>()
     const ctx = {
       effect: (callback: () => unknown) => callback(),
       on: () => () => undefined,
@@ -31,23 +40,30 @@ describe('client bundle artifact', () => {
       inject: (_keys: string[], callback: (ctx: unknown) => void) => callback(ctx),
       slots: {
         inject: (_key: string, callback: () => () => void) => callback(),
-        register: (options: typeof registration, entry: unknown) => {
-          registration = options
-          component = entry
+        register: (options: Registration, entry: unknown) => {
+          registrations.push(options)
+          components.set(options.name, entry)
           return () => undefined
         },
       },
     }
     ;(exports.apply as (context: unknown) => void)(ctx)
-    assert.ok(registration)
-    assert.equal(registration.name, 'settings.section')
-    assert.equal(registration.id, 'remote-development')
-    assert.equal(registration.label(), 'settings.title')
-    assert.equal(registration.locale, 'dshRemote')
-    assert.equal(registration.order, 76)
-    assert.equal(typeof component, 'function')
 
-    const injected = registration.inject() as { api: { state: () => Promise<unknown> } }
+    const section = registrations.find(entry => entry.name === 'settings.section')
+    assert.ok(section, 'the Settings section must be registered')
+    assert.equal(section.id, 'remote-development')
+    assert.equal(section.label?.(), 'settings.title')
+    assert.equal(section.locale, 'dshRemote')
+    assert.equal(section.order, 76)
+    assert.equal(typeof components.get('settings.section'), 'function')
+
+    const injected = section.inject() as { api: { state: () => Promise<unknown> } }
     assert.equal(typeof injected.api.state, 'function')
+
+    // The composer model menu gets a second contribution for remote models.
+    const models = registrations.find(entry => entry.name === 'conversation.input.model.options')
+    assert.ok(models, 'the remote model group must be registered')
+    assert.equal(models.id, 'dsh-remote')
+    assert.equal(typeof components.get('conversation.input.model.options'), 'function')
   })
 })

@@ -13,7 +13,7 @@ import type {
   RemoteWorkspace,
   SessionSnapshot,
 } from '@dsh-remote/protocol'
-import type { HostCreateSessionResult, MirrorFileResult } from '../host-api/contract.ts'
+import type { HostCreateSessionResult, MirrorFileResult, MirrorTarget } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -24,7 +24,7 @@ import {
   type WebUrlResult,
   type WorkspacesResult,
 } from '../host-api/contract.ts'
-import type { HostView } from '../hosts/types.ts'
+import type { HostView, SshDiscoveryResult } from '../hosts/types.ts'
 import type { UiText } from '../messages.ts'
 
 /** Error surfaced by one host call. */
@@ -46,6 +46,7 @@ export class RemoteUiError extends Error {
 export interface HostsApi {
   readonly state: () => Promise<RemoteHostsState>
   readonly validateTarget: (sshTarget: string) => Promise<ValidatedTarget>
+  readonly discover: (refresh?: boolean) => Promise<SshDiscoveryResult>
   readonly addHost: (input: HostApiPayloads['host/add']) => Promise<HostView>
   readonly removeHost: (hostId: string) => Promise<void>
   readonly connect: (hostId: string) => Promise<HostView>
@@ -62,6 +63,14 @@ export interface HostsApi {
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
   readonly modelCatalog: (hostId: string) => Promise<ModelCatalogResult>
+  readonly sessionMirror: (localSessionId: string) => Promise<MirrorTarget>
+  readonly setModelSource: (hostId: string, source: 'proxy' | 'direct') => Promise<HostView>
+  readonly setSessionModel: (input: {
+    localSessionId: string
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }) => Promise<AcceptedResult>
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly startBlankSession: (hostId: string, input: { localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }) => Promise<{ localSessionId: string }>
@@ -80,6 +89,7 @@ export function createHostsApi(ctx: Context): HostsApi {
   return {
     state: () => call('state', undefined),
     validateTarget: sshTarget => call('target/validate', { sshTarget }),
+    discover: refresh => call('host/discover', refresh === undefined ? undefined : { refresh }),
     addHost: input => call('host/add', input),
     removeHost: async hostId => { await call('host/remove', { hostId }) },
     connect: hostId => call('host/connect', { hostId }),
@@ -99,6 +109,9 @@ export function createHostsApi(ctx: Context): HostsApi {
     }),
     webUrl: hostId => call('host/web-url', { hostId }),
     modelCatalog: hostId => call('host/model-catalog', { hostId }),
+    sessionMirror: localSessionId => call('host/session/mirror', { localSessionId }),
+    setModelSource: (hostId, source) => call('host/model-source', { hostId, source }),
+    setSessionModel: input => call('host/session/model', input),
     snapshot: (hostId, sessionId, limit) => call('host/session', {
       hostId,
       sessionId,

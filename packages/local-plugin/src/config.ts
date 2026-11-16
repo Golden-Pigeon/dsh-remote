@@ -14,6 +14,8 @@ export interface Config {
   readonly stateDir?: string
   /** SSH executable. */
   readonly sshBinary?: string
+  /** SSH client config to scan; empty means `~/.ssh/config`. */
+  readonly sshConfigPath?: string
   /** Remote discovery document path; empty derives from `remoteDshHome`. */
   readonly remoteStateFile?: string
   readonly probeTimeoutMs?: number
@@ -64,6 +66,7 @@ export interface Config {
 export const Config: z<Config> = z.object({
   stateDir: z.string().default(''),
   sshBinary: z.string().default('ssh'),
+  sshConfigPath: z.string().default(''),
   remoteStateFile: z.string().default(''),
   probeTimeoutMs: z.number().min(1_000).max(120_000).default(10_000),
   connectTimeoutMs: z.number().min(1_000).max(120_000).default(15_000),
@@ -100,6 +103,8 @@ export type RemoteStartMode = 'systemd' | 'nohup' | 'none'
 export interface ResolvedConfig {
   readonly stateDir: string
   readonly sshBinary: string
+  /** Absolute SSH client config to scan, or null for `~/.ssh/config`. */
+  readonly sshConfigPath: string | null
   readonly remoteStateFile: string
   readonly probeTimeoutMs: number
   readonly connectTimeoutMs: number
@@ -146,6 +151,18 @@ export function resolveLocalPath(path: string, home = resolveDshHome()): string 
   return isAbsolute(trimmed) ? trimmed : resolve(home, trimmed)
 }
 
+/** Expand `~` and resolve a path against the user's home directory. */
+export function resolveHomePath(path: string, env: NodeJS.ProcessEnv = process.env): string {
+  const trimmed = path.trim()
+  const home = homedir()
+  if (trimmed === '~') return home
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) return join(home, trimmed.slice(2))
+  if (isAbsolute(trimmed)) return trimmed
+  // A relative config path is meaningless without a working directory, so pin
+  // it to the DSH home instead of the process cwd.
+  return resolve(resolveDshHome(env), trimmed)
+}
+
 /** Join a remote path expression without resolving it locally. */
 export function joinRemotePath(base: string, suffix: string): string {
   const trimmed = base.trim()
@@ -165,9 +182,11 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
   }
   const remoteDshHome = config.remoteDshHome ?? '~/.dsh'
   const configuredStateFile = (config.remoteStateFile ?? '').trim()
+  const configuredSshConfig = (config.sshConfigPath ?? '').trim()
   return {
     stateDir: resolveLocalPath(config.stateDir ?? '', resolveDshHome(env)),
     sshBinary: (config.sshBinary ?? 'ssh').trim() || 'ssh',
+    sshConfigPath: configuredSshConfig === '' ? null : resolveHomePath(configuredSshConfig, env),
     remoteStateFile: configuredStateFile === ''
       ? joinRemotePath(remoteDshHome, 'remote-agent/agent.json')
       : configuredStateFile,

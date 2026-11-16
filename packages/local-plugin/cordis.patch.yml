@@ -16,6 +16,8 @@
         # Empty means $DSH_HOME/remote.
         stateDir: ''
         sshBinary: ssh
+        # Empty means ~/.ssh/config. Settings offers the aliases found here.
+        sshConfigPath: ''
         # Empty means <remoteDshHome>/remote-agent/agent.json.
         remoteStateFile: ''
         probeTimeoutMs: 10000
