@@ -63,8 +63,8 @@ function discovery(overrides: Partial<SshDiscoveryResult> = {}): SshDiscoveryRes
       {
         alias: 'native1',
         canonical: 'native1',
-        hostname: '21.91.16.78',
-        user: 'user00',
+        hostname: '192.0.2.16',
+        user: 'bob',
         port: 36000,
         source: '/home/u/.ssh/config',
         proxyJump: false,
@@ -73,8 +73,8 @@ function discovery(overrides: Partial<SshDiscoveryResult> = {}): SshDiscoveryRes
       {
         alias: 'cloud32',
         canonical: 'cloud32',
-        hostname: '9.135.225.137',
-        user: 'weyoungli',
+        hostname: '198.51.100.137',
+        user: 'alice',
         port: 36000,
         source: '/home/u/.ssh/config',
         proxyJump: false,
@@ -91,7 +91,7 @@ function discovery(overrides: Partial<SshDiscoveryResult> = {}): SshDiscoveryRes
         registeredHostId: null,
       },
     ],
-    skipped: [{ alias: '*.devcloud.woa.com', reason: 'wildcard' }],
+    skipped: [{ alias: '*.corp.example.com', reason: 'wildcard' }],
     error: null,
     ...overrides,
   }
@@ -133,7 +133,7 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.ok(text.includes('native1'))
     assert.ok(text.includes('cloud32'))
     // The resolved endpoint is what tells the user which machine an alias means.
-    assert.ok(text.includes('weyoungli@9.135.225.137:36000'), `endpoint missing: ${text.slice(0, 600)}`)
+    assert.ok(text.includes('alice@198.51.100.137:36000'), `endpoint missing: ${text.slice(0, 600)}`)
   })
 
   it('marks registered hosts and offers connect only for the rest', async () => {
@@ -149,7 +149,7 @@ describe('SSH config discovery in the Settings panel', () => {
     const { renderer } = await render({})
     const text = JSON.stringify(renderer.toJSON())
     assert.ok(text.includes('settings.discovered.proxy'), 'a ProxyJump host must be badged')
-    assert.ok(text.includes('*.devcloud.woa.com'), 'skipped patterns are reported by alias')
+    assert.ok(text.includes('*.corp.example.com'), 'skipped patterns are reported by alias')
   })
 
   it('registers the alias, then asks for a fresh scan', async () => {

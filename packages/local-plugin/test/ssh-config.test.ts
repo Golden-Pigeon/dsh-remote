@@ -41,25 +41,25 @@ describe('SSH config vocabulary', () => {
 
   it('recognises wildcard patterns but not literal aliases', () => {
     assert.equal(isWildcardPattern('*'), true)
-    assert.equal(isWildcardPattern('*.devcloud.woa.com'), true)
+    assert.equal(isWildcardPattern('*.corp.example.com'), true)
     assert.equal(isWildcardPattern('!bad'), true)
     assert.equal(isWildcardPattern('host?'), true)
     assert.equal(isWildcardPattern('native1'), false)
-    assert.equal(isWildcardPattern('devcloud_64g_user00'), false)
+    assert.equal(isWildcardPattern('build_x86_bob'), false)
   })
 })
 
 describe('SSH config parsing', () => {
   it('splits a multi-alias Host line and keeps declared values', async () => {
     const parsed = await parseSshConfig([
-      'Host docker_os4_native1_user00 native1',
-      '  HostName 21.91.16.78',
-      '  User user00',
+      'Host container_os4_host1_bob native1',
+      '  HostName 192.0.2.16',
+      '  User bob',
       '  Port 36000',
     ].join('\n'), '/home/u/.ssh/config', noIncludes)
-    assert.deepEqual(parsed.hosts.map(host => host.alias), ['docker_os4_native1_user00', 'native1'])
-    assert.equal(parsed.hosts[0]?.hostname, '21.91.16.78')
-    assert.equal(parsed.hosts[0]?.user, 'user00')
+    assert.deepEqual(parsed.hosts.map(host => host.alias), ['container_os4_host1_bob', 'native1'])
+    assert.equal(parsed.hosts[0]?.hostname, '192.0.2.16')
+    assert.equal(parsed.hosts[0]?.user, 'bob')
     assert.equal(parsed.hosts[0]?.port, 36000)
     // Registration stores the alias, so the canonical form is the alias itself.
     assert.equal(parsed.hosts[1]?.canonical, 'native1')
@@ -68,7 +68,7 @@ describe('SSH config parsing', () => {
 
   it('skips wildcard defaults and negations instead of offering them', async () => {
     const parsed = await parseSshConfig([
-      'Host *.devcloud.woa.com',
+      'Host *.corp.example.com',
       '  User root',
       'Host *',
       '  ServerAliveInterval 15',
@@ -76,7 +76,7 @@ describe('SSH config parsing', () => {
       '  User bob',
     ].join('\n'), '/home/u/.ssh/config', noIncludes)
     assert.deepEqual(parsed.hosts.map(host => host.alias), ['other'])
-    assert.deepEqual(parsed.skipped.map(entry => entry.alias).sort(), ['!blocked', '*.devcloud.woa.com', '*'].sort())
+    assert.deepEqual(parsed.skipped.map(entry => entry.alias).sort(), ['!blocked', '*.corp.example.com', '*'].sort())
     assert.ok(parsed.skipped.every(entry => entry.reason === 'wildcard'))
   })
 
@@ -108,15 +108,15 @@ describe('SSH config parsing', () => {
 
   it('includes other files and attributes their aliases to the included path', async () => {
     const parsed = await parseSshConfig([
-      'Host *.any.woa.com',
-      'Host *.devcloud.woa.com',
-      'Include ~/.ssh/devcloud_config',
+      'Host *.legacy.example.com',
+      'Host *.corp.example.com',
+      'Include ~/.ssh/corp_config',
     ].join('\n'), '/home/u/.ssh/config', table({
-      '~/.ssh/devcloud_config': 'Host included-host\n  HostName weyoungli-any198.devcloud.woa.com\n',
+      '~/.ssh/corp_config': 'Host included-host\n  HostName build-agent-07.corp.example.com\n',
     }))
     assert.deepEqual(parsed.hosts.map(host => host.alias), ['included-host'])
-    assert.equal(parsed.hosts[0]?.source, '~/.ssh/devcloud_config')
-    assert.equal(parsed.hosts[0]?.hostname, 'weyoungli-any198.devcloud.woa.com')
+    assert.equal(parsed.hosts[0]?.source, '~/.ssh/corp_config')
+    assert.equal(parsed.hosts[0]?.hostname, 'build-agent-07.corp.example.com')
   })
 
   it('survives an include cycle and a missing include', async () => {
@@ -143,13 +143,13 @@ describe('SSH config parsing', () => {
   it('accepts every literal alias shape this machine actually uses', async () => {
     const aliases = [
       'native1', 'native2', 'native3', 'cloud32', 'cloud64',
-      'devcloud_64g_user00', 'devcloud_64g_weyoungli', 'devcloud_32g_user00',
-      'devcloud_32g_weyoungli', 'docker_os4_native1_user00', 'docker_os4_native3_user00',
-      'devcloud_okar_weyoungli', 'docker_okar_okarinhuang', 'docker_git_svn_pack_user00',
-      'docker_os4_native2_user00',
+      'build_x86_bob', 'build_x86_alice', 'build_arm_bob',
+      'build_arm_alice', 'container_os4_host1_bob', 'container_os4_host3_bob',
+      'build_gpu_alice', 'container_gpu_carol', 'container_vcs_bob',
+      'container_os4_host2_bob',
     ]
     const parsed = await parseSshConfig(
-      aliases.map(alias => `Host ${alias}\n  User user00`).join('\n'),
+      aliases.map(alias => `Host ${alias}\n  User bob`).join('\n'),
       '/home/u/.ssh/config',
       noIncludes,
     )
@@ -170,14 +170,14 @@ describe('ssh -G resolution', () => {
   it('takes the first value of each key and detects a jump host', () => {
     const resolved = parseResolvedHost([
       'host native1',
-      'user user00',
-      'hostname 21.91.16.78',
+      'user bob',
+      'hostname 192.0.2.16',
       'port 36000',
       'proxyjump none',
       'user ignored',
       'hostname ignored',
     ].join('\n'))
-    assert.deepEqual(resolved, { hostname: '21.91.16.78', user: 'user00', port: 36000, proxyJump: false })
+    assert.deepEqual(resolved, { hostname: '192.0.2.16', user: 'bob', port: 36000, proxyJump: false })
   })
 
   it('flags a real ProxyJump or ProxyCommand', () => {

@@ -13,7 +13,7 @@ import type {
   RemoteWorkspace,
   SessionSnapshot,
 } from '@dsh-remote/protocol'
-import type { HostCreateSessionResult, MirrorFileResult, MirrorTarget } from '../host-api/contract.ts'
+import type { HostCreateSessionResult, MirrorFileResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,

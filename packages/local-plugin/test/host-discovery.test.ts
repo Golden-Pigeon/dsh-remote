@@ -69,19 +69,19 @@ describe('SSH config discovery through the service', () => {
   it('lists the aliases from the config without starting any connection', async () => {
     const { service } = await fixture({
       configText: [
-        'Host *.devcloud.woa.com',
+        'Host *.corp.example.com',
         '  User root',
-        'Host docker_os4_native1_user00 native1',
-        '  HostName 21.91.16.78',
-        '  User user00',
+        'Host container_os4_host1_bob native1',
+        '  HostName 192.0.2.16',
+        '  User bob',
         '  Port 36000',
         'Host plain',
       ].join('\n'),
     })
     try {
       const result = await service.discover()
-      assert.deepEqual(result.hosts.map(host => host.alias), ['docker_os4_native1_user00', 'native1', 'plain'])
-      assert.deepEqual(result.skipped.map(entry => entry.alias), ['*.devcloud.woa.com'])
+      assert.deepEqual(result.hosts.map(host => host.alias), ['container_os4_host1_bob', 'native1', 'plain'])
+      assert.deepEqual(result.skipped.map(entry => entry.alias), ['*.corp.example.com'])
       // Discovery is a read: every host stays idle and no tunnel exists.
       assert.ok(service.list().every(host => host.phase === 'idle'))
       assert.equal(service.list().length, 0, 'discovery must not register anything')
@@ -92,7 +92,7 @@ describe('SSH config discovery through the service', () => {
 
   it('marks an already-registered destination and leaves the rest unregistered', async () => {
     const { service } = await fixture({
-      configText: 'Host native1\n  User user00\nHost native2\n  User user00\n',
+      configText: 'Host native1\n  User bob\nHost native2\n  User bob\n',
       records: [record()],
     })
     try {
@@ -106,7 +106,7 @@ describe('SSH config discovery through the service', () => {
   })
 
   it('falls back to the alias when the config declares no HostName', async () => {
-    const { service } = await fixture({ configText: 'Host bare-host\n  User user00\n' })
+    const { service } = await fixture({ configText: 'Host bare-host\n  User bob\n' })
     try {
       const result = await service.discover()
       assert.equal(result.hosts[0]?.hostname, 'bare-host')
@@ -128,7 +128,7 @@ describe('SSH config discovery through the service', () => {
   })
 
   it('invalidates the cached scan when a host is registered', async () => {
-    const { service } = await fixture({ configText: 'Host alpha\n  User user00\n' })
+    const { service } = await fixture({ configText: 'Host alpha\n  User bob\n' })
     try {
       const before = await service.discover()
       assert.equal(before.hosts[0]?.registeredHostId, null)
@@ -143,7 +143,7 @@ describe('SSH config discovery through the service', () => {
   })
 
   it('reuses the cached scan unless a refresh is requested', async () => {
-    const { service, sshConfig } = await fixture({ configText: 'Host cached-host\n  User user00\n' })
+    const { service, sshConfig } = await fixture({ configText: 'Host cached-host\n  User bob\n' })
     try {
       const first = await service.discover()
       assert.equal(first.hosts.length, 1)
