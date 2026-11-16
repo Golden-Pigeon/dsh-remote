@@ -78,16 +78,12 @@ function browserWindow(open: (url: string) => unknown) {
 async function clickWebUi(component: React.ComponentType<{ api: object; t(key: string): string }>, api: object) {
   let renderer!: ReactTestRenderer
   await act(async () => { renderer = create(React.createElement(component, { api, t: (key: string) => key })) })
-  // The card shows a summary row first; its actions live in the detail region,
-  // so the row has to be opened before any of them exist.
-  const row = renderer.root.findAll(node =>
-    node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
-  assert.ok(row, 'each host must render a summary row')
-  await act(async () => { row!.props.onClick({ preventDefault() {} }) })
+  // The Web UI action is an icon on the summary row, so it is reachable without
+  // expanding the host. Find it by its accessible label.
   const button = renderer.root.findAllByType('button')
-    .find(entry => String(entry.children[0]) === 'settings.openWebUi')
-  assert.ok(button, 'the host card must offer the Web UI action')
-  await act(async () => { await button!.props.onClick() })
+    .find(entry => entry.props['aria-label'] === 'settings.openWebUi')
+  assert.ok(button, 'the host row must offer the Web UI action')
+  await act(async () => { await button!.props.onClick({ stopPropagation() {} }) })
   return renderer
 }
 

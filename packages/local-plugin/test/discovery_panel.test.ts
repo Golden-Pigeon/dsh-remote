@@ -202,6 +202,45 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.ok(endpoints.includes('bob@192.0.2.16:36000'))
   })
 
+  it('puts the row actions on the summary row and nowhere else', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-row', label: 'Native', sshTarget: 'native',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 1, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: true, modelDirect: false, modelSource: 'proxy',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    // Each of these is reachable exactly once, from the row itself.
+    for (const label of ['settings.disconnect', 'settings.openWebUi']) {
+      const matches = renderer.root.findAllByType('button')
+        .filter(entry => entry.props['aria-label'] === label)
+      assert.equal(matches.length, 1, `${label} must appear exactly once, got ${matches.length}`)
+    }
+    // The menu trigger carries a per-host label, so match on the popup role.
+    const menus = renderer.root.findAllByType('button')
+      .filter(entry => entry.props['aria-haspopup'] === 'menu')
+    assert.equal(menus.length, 1, 'exactly one overflow menu per host')
+
+    // The old inline block is gone: no button text duplicates the row actions.
+    const texts = renderer.root.findAllByType('button')
+      .map(entry => entry.children.map(child => typeof child === 'string' ? child : '').join(''))
+    assert.equal(texts.includes('settings.workspaces'), false,
+      'the redundant "workspaces" button was removed')
+    assert.equal(texts.includes('settings.rediscover'), false,
+      'rediscover moved into the menu')
+  })
+
   it('offers no global refresh button and shows no scan time', async () => {
     const { renderer } = await render({})
     const text = JSON.stringify(renderer.toJSON())

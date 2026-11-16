@@ -339,25 +339,28 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   /**
    * The overflow actions for one host.
    *
-   * The four frequent operations stay as buttons in the detail region; these
-   * are the destructive and rare ones, kept behind the menu so they are not
-   * one stray click away.
+   * Connecting, opening the Web UI and expanding are one click away on the row
+   * itself, so they are not repeated here. What remains is either rarely used
+   * or worth a deliberate step.
    */
-  function hostActions(host: HostView, expanded: boolean): readonly MenuAction[] {
+  function hostActions(host: HostView): readonly MenuAction[] {
     const busyNow = busy !== null
     const actions: MenuAction[] = [
       {
-        id: 'expand',
-        label: expanded ? t('settings.collapseWorkspaces') : t('settings.expandWorkspaces'),
-        run: () => { setExpandedHost(expanded ? null : host.id) },
+        // Recovery, not routine: only useful when the remote agent moved or its
+        // token went stale.
+        id: 'refresh',
+        label: t('settings.rediscover'),
+        disabled: busyNow,
+        run: () => { void run(`refresh:${host.id}`, async () => { await api.refresh(host.id) }) },
       },
     ]
-    if (host.phase === 'connected') {
+    if (host.dshUpdate !== null) {
       actions.push({
-        id: 'web',
-        label: t('settings.openWebUi'),
-        disabled: busyNow,
-        run: () => { void openWebUi(host) },
+        id: 'upgrade',
+        label: t('settings.dshUpdateAction'),
+        disabled: busyNow || host.phase === 'installing',
+        run: () => { void run(`upgrade:${host.id}`, async () => { await api.upgrade(host.id) }) },
       })
     }
     actions.push(
@@ -470,6 +473,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         <div className="dshr-hosts">
           {hosts.map(host => {
             const expanded = expandedHost === host.id
+            const connected = host.phase === 'connected'
             return (
               <article key={host.id} className={expanded ? 'dshr-host dshr-host-open' : 'dshr-host'}>
                 {/* One summary row per machine: status, name, endpoint, menu.
@@ -512,11 +516,59 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                     </div>
                   </div>
                   <div className="dshr-host-tail">
-                    <span className="dshr-caret" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                    {/* The two actions you reach for most sit on the row itself,
+                        so connecting or opening the Web UI never needs the row
+                        expanded first. */}
+                    <button
+                      type="button"
+                      className="dshr-icon-btn"
+                      aria-label={connected ? t('settings.disconnect') : t('settings.connect')}
+                      title={connected ? t('settings.disconnect') : t('settings.connect')}
+                      disabled={busy !== null || host.phase === 'installing' || host.phase === 'discovering'}
+                      onClick={event => {
+                        event.stopPropagation()
+                        void run(
+                          `${connected ? 'disconnect' : 'connect'}:${host.id}`,
+                          async () => {
+                            await (connected ? api.disconnect(host.id) : api.connect(host.id))
+                          },
+                        )
+                      }}
+                    >
+                      {busy === `disconnect:${host.id}` || busy === `connect:${host.id}`
+                        ? '⋯'
+                        : connected ? '⏻' : '⏵'}
+                    </button>
+                    <button
+                      type="button"
+                      className="dshr-icon-btn"
+                      aria-label={t('settings.openWebUi')}
+                      title={t('settings.openWebUi')}
+                      disabled={busy !== null || !connected}
+                      onClick={event => {
+                        event.stopPropagation()
+                        void openWebUi(host)
+                      }}
+                    >
+                      {busy === `web:${host.id}` ? '⋯' : '🌐'}
+                    </button>
                     <HostActionMenu
                       label={`${t('settings.hostActions')}: ${host.label}`}
-                      actions={hostActions(host, expanded)}
+                      actions={hostActions(host)}
                     />
+                    <button
+                      type="button"
+                      className="dshr-icon-btn dshr-caret-btn"
+                      aria-label={expanded ? t('settings.collapseWorkspaces') : t('settings.expandWorkspaces')}
+                      title={expanded ? t('settings.collapseWorkspaces') : t('settings.expandWorkspaces')}
+                      aria-expanded={expanded}
+                      onClick={event => {
+                        event.stopPropagation()
+                        void toggleHost(host)
+                      }}
+                    >
+                      <span className="dshr-caret" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                    </button>
                   </div>
                 </div>
 
@@ -632,69 +684,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                         ))}
                       </div>
                     )}
-
-                    {/* Four frequent actions stay inline; the rest live in the
-                        menu so the card never becomes a wall of buttons. */}
-                    <div className="dshr-actions">
-                      {host.phase === 'connected'
-                        ? (
-                          <>
-                            <button
-                              type="button"
-                              className="dshr-button"
-                              disabled={busy !== null}
-                              onClick={() => { void toggleHost(host) }}
-                            >
-                              {t('settings.workspaces')}
-                            </button>
-                            <button
-                              type="button"
-                              className="dshr-button"
-                              disabled={busy !== null}
-                              onClick={() => { void run(`refresh:${host.id}`, async () => { await api.refresh(host.id) }) }}
-                            >
-                              {t('settings.rediscover')}
-                            </button>
-                            <button
-                              type="button"
-                              className="dshr-button"
-                              disabled={busy !== null}
-                              onClick={() => { void openWebUi(host) }}
-                            >
-                              {busy === `web:${host.id}` ? t('settings.openWebUiPending') : t('settings.openWebUi')}
-                            </button>
-                            <button
-                              type="button"
-                              className="dshr-button"
-                              disabled={busy !== null}
-                              onClick={() => { void run(`disconnect:${host.id}`, async () => { await api.disconnect(host.id) }) }}
-                            >
-                              {t('settings.disconnect')}
-                            </button>
-                          </>
-                        )
-                        : (
-                          <>
-                            <button
-                              type="button"
-                              className="dshr-button dshr-button-primary"
-                              disabled={busy !== null || host.phase === 'installing' || host.phase === 'discovering' || host.phase === 'connecting'}
-                              onClick={() => { void run(`connect:${host.id}`, async () => { await api.connect(host.id) }) }}
-                            >
-                              {host.phase === 'installing' ? t('settings.installing') : host.phase === 'connecting' ? t('settings.connecting') : t('settings.connect')}
-                            </button>
-                            <button
-                              type="button"
-                              className="dshr-button"
-                              disabled={busy !== null}
-                              onClick={() => { void run(`refresh:${host.id}`, async () => { await api.refresh(host.id) }) }}
-                            >
-                              {t('settings.rediscover')}
-                            </button>
-                          </>
-                        )}
-                    </div>
-
                     {pendingRemove === host.id && (
                       <div className="dshr-confirm" role="alertdialog" aria-label={t('settings.remove')}>
                         <span>

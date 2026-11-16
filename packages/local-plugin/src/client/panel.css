@@ -213,11 +213,41 @@
   overflow-wrap: anywhere;
 }
 
-.dshr-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* Square icon button used by the host row's action cluster. */
+.dshr-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--dshr-radius);
+  background: transparent;
+  color: var(--dshr-label-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
 }
+
+.dshr-icon-btn:hover:not(:disabled) {
+  background: var(--dshr-soft);
+  color: var(--dshr-label);
+}
+
+.dshr-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.dshr-icon-btn:focus-visible {
+  outline: 2px solid var(--dshr-accent);
+  outline-offset: -2px;
+}
+
+.dshr-caret-btn { font-size: 10px; }
 
 .dshr-workspaces {
   display: flex;
@@ -512,7 +542,7 @@
 .dshr-host-tail {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
 }
 
 /* Status dot: shape carries the state, so colour is not the only signal. */
