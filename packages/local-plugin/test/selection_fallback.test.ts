@@ -73,6 +73,24 @@ describe('remote model-selection fallback', () => {
     } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
   })
 
+  it('honours an explicit re-selection of a previously rejected model', async () => {
+    const test = await mounted()
+    const unavailable = { provider: 'local-only', model: 'not-on-remote' }
+    test.setRejectSelection(unavailable)
+    try {
+      test.agent.model.select(unavailable)
+      test.agent.send(userMessage('first'))
+      await new Promise(resolve => setTimeout(resolve, 50))
+      assert.equal(test.rejectedPrompts.length, 1)
+      assert.equal(test.agent.model.current(), undefined)
+
+      // The user picks the same model again (say, after installing it on the
+      // host). That intent must win over the recorded rejection.
+      test.agent.model.select(unavailable)
+      assert.deepEqual(test.agent.model.current(), unavailable)
+    } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
+  })
+
   it('does not resend when the remote fails for a reason other than the selection', async () => {
     const test = await mounted()
     try {

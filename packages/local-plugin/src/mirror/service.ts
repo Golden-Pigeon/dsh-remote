@@ -287,6 +287,10 @@ class RemoteMirrorAgent implements MirrorAgent {
   readonly model = {
     current: (): MirrorModelSelection | undefined => this.#mirror.selectionFor(this.#runtime),
     select: (selection: MirrorModelSelection): void => {
+      // An explicit choice supersedes an earlier rejection: the user may have
+      // just installed that model on the remote, so retry the selection once
+      // instead of silently ignoring their intent forever.
+      this.#mirror.forgetRejectedSelection(this.#runtime, selection)
       const previous = this.#mirror.selectionFor(this.#runtime, false)
       if (previous?.provider === selection.provider && previous.model === selection.model
         && previous.reasoningEffort === selection.reasoningEffort) return
@@ -1363,8 +1367,19 @@ export class RemoteMirrorService {
     return read(state?.pending) ?? read(state?.lastUsed) ?? latestSelection(session) ?? this.#defaultSelection()
   }
 
-  /** Read the recorded mirror choice, optionally falling back to its initial options. */
-  selectionFor(runtime: MirrorRuntime, fallbackToOptions = true): { provider: string; model: string; reasoningEffort?: string } | undefined {
+  /**
+   * Drop a rejection record so an explicit selection can be tried again.
+   *
+   * A rejection only reflects the remote catalog at the time it happened. When
+   * the user picks the model again they are asserting it should work now (for
+   * example after installing it on the host), so the next prompt must forward
+   * the selection rather than keep falling back silently.
+   */
+  forgetRejectedSelection(runtime: MirrorRuntime, selection: MirrorModelSelection): void {
+    runtime.rejectedSelections.delete(selectionKey(selection))
+  }
+
+  /** Read the recorded mirror choice, optionally falling back to its initial options. */  selectionFor(runtime: MirrorRuntime, fallbackToOptions = true): { provider: string; model: string; reasoningEffort?: string } | undefined {
     const projections = this.#ctx.get('sessionProjections') as unknown as {
       stateOf?: (session: Session, key: string) => unknown
     } | undefined
