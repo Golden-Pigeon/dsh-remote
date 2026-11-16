@@ -102,7 +102,6 @@ export function RemoteModelRows(
         // otherwise indistinguishable from a host with no models configured.
         setTarget(null)
         const detail = error instanceof Error ? error.message : String(error)
-        console.warn('[dshr-models] lookup failed:', detail)
         if (!reported.current) {
           reported.current = true
           reportFailure(`${t('model.loadFailed')}: ${detail}`)

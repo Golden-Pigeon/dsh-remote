@@ -83,7 +83,6 @@ async function render(props: {
     sessionMirror: async () => props.mirror,
     modelCatalog: async () => props.catalog ?? catalog,
     setSessionModel: async () => ({ accepted: true }),
-    reportModelSlot: async () => ({ recorded: true }),
     state: async () => ({ hosts: [], mirroredWorkspaceIds: [], mirroredWorkspaces: [] }),
   }
   let renderer!: ReactTestRenderer
