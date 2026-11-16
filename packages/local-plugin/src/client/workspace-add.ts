@@ -114,73 +114,66 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   closeButton.textContent = '×'
   header.append(title, closeButton)
 
+  // Label + control pairs share one grid so every row lines up.
+  const form = document.createElement('div')
+  form.className = `${DIALOG_CLASS}-form`
+
+  const nameId = `${DIALOG_CLASS}-name`
   const nameLabel = document.createElement('label')
-  nameLabel.className = `${DIALOG_CLASS}-field`
-  const nameText = document.createElement('span')
-  nameText.textContent = flow.t('dialog.name')
-  const nameRow = document.createElement('div')
-  nameRow.className = `${DIALOG_CLASS}-input-row`
-  const nameIcon = document.createElement('span')
-  nameIcon.className = `${DIALOG_CLASS}-input-icon`
-  setFolderIcon(nameIcon)
+  nameLabel.className = `${DIALOG_CLASS}-label`
+  nameLabel.htmlFor = nameId
+  nameLabel.textContent = flow.t('dialog.name')
   const nameInput = document.createElement('input')
-  nameInput.className = `${DIALOG_CLASS}-input`
+  nameInput.id = nameId
+  nameInput.className = `${DIALOG_CLASS}-control`
   nameInput.placeholder = flow.t('dialog.namePlaceholder')
   nameInput.autocomplete = 'off'
-  nameRow.append(nameIcon, nameInput)
-  nameLabel.append(nameText, nameRow)
 
-  const sourceTitle = document.createElement('h3')
-  sourceTitle.className = `${DIALOG_CLASS}-section-title`
-  sourceTitle.textContent = flow.t('dialog.source')
-  const sourceHeader = document.createElement('div')
-  sourceHeader.className = `${DIALOG_CLASS}-source-header`
-  const hostIndicator = document.createElement('span')
-  hostIndicator.className = `${DIALOG_CLASS}-host-indicator`
-  const hostIcon = document.createElement('span')
-  hostIcon.className = `${DIALOG_CLASS}-host-icon`
-  setComputerIcon(hostIcon)
-  const hostLabelText = document.createElement('span')
-  hostIndicator.append(hostIcon, hostLabelText)
-  sourceHeader.append(sourceTitle, hostIndicator)
-  const sourceBox = document.createElement('div')
-  sourceBox.className = `${DIALOG_CLASS}-source-box`
-  const sourceCenter = document.createElement('div')
-  sourceCenter.className = `${DIALOG_CLASS}-source-center`
-  const sourceTrigger = document.createElement('button')
-  sourceTrigger.type = 'button'
-  sourceTrigger.className = `${DIALOG_CLASS}-source-trigger`
-  const sourceTriggerText = document.createElement('span')
-  const sourceChevron = document.createElement('span')
-  sourceChevron.className = `${DIALOG_CLASS}-chevron`
-  sourceChevron.textContent = '⌄'
-  sourceTrigger.append(sourceTriggerText, sourceChevron)
-  const addFolder = document.createElement('button')
-  addFolder.type = 'button'
-  addFolder.className = `${DIALOG_CLASS}-add-folder`
-  const addFolderIcon = document.createElement('span')
-  addFolderIcon.className = `${DIALOG_CLASS}-add-folder-icon`
-  const addFolderText = document.createElement('span')
-  addFolderText.textContent = flow.t('dialog.add')
-  addFolder.append(addFolderIcon, addFolderText)
-  sourceCenter.append(sourceTrigger, addFolder)
-  const selectedFolder = document.createElement('div')
-  selectedFolder.className = `${DIALOG_CLASS}-selected-folder`
-  const selectedIcon = document.createElement('span')
-  selectedIcon.textContent = '📁'
-  const selectedName = document.createElement('span')
-  selectedName.className = `${DIALOG_CLASS}-selected-name`
-  const removeFolder = document.createElement('button')
-  removeFolder.type = 'button'
-  removeFolder.className = `${DIALOG_CLASS}-remove-folder`
-  removeFolder.setAttribute('aria-label', flow.t('dialog.removeFolder'))
-  removeFolder.textContent = '×'
-  selectedFolder.append(selectedIcon, selectedName, removeFolder)
-  sourceBox.append(sourceCenter, selectedFolder)
+  const locationId = `${DIALOG_CLASS}-location`
+  const locationLabel = document.createElement('label')
+  locationLabel.className = `${DIALOG_CLASS}-label`
+  locationLabel.htmlFor = locationId
+  locationLabel.textContent = flow.t('dialog.location')
+  // A button styled as a control, opening an anchored list of destinations.
+  const locationButton = document.createElement('button')
+  locationButton.type = 'button'
+  locationButton.id = locationId
+  locationButton.className = `${DIALOG_CLASS}-control ${DIALOG_CLASS}-select`
+  locationButton.setAttribute('aria-haspopup', 'listbox')
+  const locationIcon = document.createElement('span')
+  locationIcon.className = `${DIALOG_CLASS}-control-icon`
+  setComputerIcon(locationIcon)
+  const locationText = document.createElement('span')
+  locationText.className = `${DIALOG_CLASS}-control-text`
+  const locationChevron = document.createElement('span')
+  locationChevron.className = `${DIALOG_CLASS}-chevron`
+  locationChevron.textContent = '⌄'
+  locationButton.append(locationIcon, locationText, locationChevron)
+
+  const pathId = `${DIALOG_CLASS}-path`
+  const pathLabel = document.createElement('label')
+  pathLabel.className = `${DIALOG_CLASS}-label`
+  pathLabel.htmlFor = pathId
+  pathLabel.textContent = flow.t('dialog.folderTitle')
+  const pathRow = document.createElement('div')
+  pathRow.className = `${DIALOG_CLASS}-control-row`
+  const pathInput = document.createElement('input')
+  pathInput.id = pathId
+  pathInput.className = `${DIALOG_CLASS}-control`
+  pathInput.placeholder = flow.t('dialog.pathPlaceholder')
+  pathInput.autocomplete = 'off'
+  pathInput.spellcheck = false
+  const browse = document.createElement('button')
+  browse.type = 'button'
+  browse.className = `${DIALOG_CLASS}-browse`
+  browse.textContent = flow.t('dialog.browse')
+  pathRow.append(pathInput, browse)
 
   const error = document.createElement('p')
   error.className = `${DIALOG_CLASS}-error`
   error.setAttribute('role', 'alert')
+
+  form.append(nameLabel, nameInput, locationLabel, locationButton, pathLabel, pathRow, error)
 
   const actions = document.createElement('div')
   actions.className = `${DIALOG_CLASS}-actions`
@@ -194,25 +187,17 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   create.textContent = flow.t('dialog.create')
   actions.append(cancel, create)
 
-  dialog.append(header, nameLabel, sourceHeader, sourceBox, error, actions)
+  dialog.append(header, form, actions)
   overlay.append(dialog)
   document.body.append(overlay)
 
   let hosts: HostView[] = []
   let destination: Destination = { kind: 'local' }
-  let selectedPath = ''
   const update = (): void => {
     const label = destination.kind === 'local' ? flow.t('dialog.local') : destination.host.label
-    sourceTriggerText.textContent = `${flow.t('dialog.addToPrefix')}${label}${flow.t('dialog.addToSuffix')}`
-    hostLabelText.textContent = label
-    addFolderIcon.textContent = '+ '
-    const hasFolder = selectedPath !== ''
-    sourceCenter.style.display = hasFolder ? 'none' : 'flex'
-    selectedFolder.style.display = hasFolder ? 'flex' : 'none'
-    sourceBox.classList.toggle(`${DIALOG_CLASS}-source-box-selected`, hasFolder)
-    selectedName.textContent = hasFolder ? folderName(selectedPath) : ''
-    selectedFolder.title = hasFolder ? selectedPath : ''
-    create.disabled = !hasFolder
+    locationText.textContent = label
+    // The path field is the single source of truth; browsing only fills it in.
+    create.disabled = pathInput.value.trim() === ''
   }
   const close = (): void => {
     closeBrowser?.()
@@ -234,38 +219,39 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   cancel.addEventListener('click', close)
   closeButton.addEventListener('click', close)
 
-  sourceTrigger.addEventListener('click', () => {
-    openDestinationMenu(sourceTrigger, hosts, destination, flow.t, next => {
+  locationButton.addEventListener('click', () => {
+    openDestinationMenu(locationButton, hosts, destination, flow.t, next => {
       destination = next
-      selectedPath = ''
+      // A path from one host means nothing on another.
+      pathInput.value = ''
       update()
     })
   })
-  addFolder.addEventListener('click', () => {
+  pathInput.addEventListener('input', update)
+  pathInput.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    if (!create.disabled) create.click()
+  })
+  browse.addEventListener('click', () => {
     if (destination.kind === 'local') {
-      addFolder.disabled = true
+      browse.disabled = true
       void pickLocalDirectory(flow.ctx)
         .then(path => {
           if (path !== null) {
-            selectedPath = path
+            pathInput.value = path
             update()
           }
         })
         .catch(failure => { error.textContent = localizedError(flow.t, failure, flow.t('dialog.nativePickerFailed')) })
-        .finally(() => { addFolder.disabled = false })
+        .finally(() => { browse.disabled = false })
       return
     }
-    const initial = '~'
-    openDirectoryBrowser(flow, destination, initial, path => {
-      selectedPath = path
+    openDirectoryBrowser(flow, destination, pathInput.value.trim() || '~', path => {
+      pathInput.value = path
       update()
     })
   })
-  removeFolder.addEventListener('click', () => {
-    selectedPath = ''
-    update()
-  })
-  nameInput.addEventListener('input', update)
 
   try {
     const state = await flow.api.state()
@@ -275,6 +261,7 @@ async function openCreateDialog(flow: WorkspaceFlowContext, anchor: HTMLButtonEl
   }
   update()
   create.addEventListener('click', () => {
+    const selectedPath = pathInput.value.trim()
     if (selectedPath === '') return
     const title = nameInput.value.trim() || folderName(selectedPath)
     create.disabled = true
@@ -395,10 +382,10 @@ async function openDirectoryBrowser(
   dialog.setAttribute('aria-label', flow.t('dialog.folderTitle'))
 
   const title = document.createElement('h2')
-  title.className = `${DIALOG_CLASS}-browser-title`
+  title.className = `${DIALOG_CLASS}-title`
   title.textContent = flow.t('dialog.folderTitle')
   const browserHeader = document.createElement('div')
-  browserHeader.className = `${DIALOG_CLASS}-browser-header`
+  browserHeader.className = `${DIALOG_CLASS}-header`
   const browserClose = document.createElement('button')
   browserClose.type = 'button'
   browserClose.className = `${DIALOG_CLASS}-close`
@@ -580,10 +567,6 @@ function closeTransient(): void {
 }
 
 
-function setFolderIcon(icon: HTMLElement): void {
-  icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" stroke="currentColor" stroke-width="1.5"/></svg>'
-}
-
 function folderName(path: string): string {
   const clean = path.replace(/[\\/]+$/u, '')
   const parts = clean.split(/[\\/]+/u)
@@ -594,6 +577,14 @@ function setComputerIcon(icon: HTMLElement): void {
   icon.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="1.7" stroke="currentColor" stroke-width="1.5"/><path d="M8 20h8M12 17v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'
 }
 
+/**
+ * Dialog styling.
+ *
+ * Every value comes from the Harness design tokens (`--dsw-*`), never a literal
+ * colour: the alias layer is what a theme or skin plugin overrides, so the
+ * dialog follows whatever theme the user runs. Metrics mirror DSH's own
+ * workspace browser (12–14px type, 28–36px controls, 4–8px rhythm).
+ */
 function ensureStyles(): void {
   const existing = document.getElementById('dshr-workspace-add-style')
   const style = existing instanceof HTMLStyleElement ? existing : document.createElement('style')
@@ -601,71 +592,125 @@ function ensureStyles(): void {
   style.textContent = `
     .${DIALOG_CLASS}-overlay {
       position: fixed; inset: 0; z-index: 100001; display: grid; place-items: center;
-      padding: 24px; background: rgba(0,0,0,.55);
+      padding: 24px; background: var(--dsw-alias-bg-mask-3);
     }
     .${DIALOG_CLASS} {
-      width: min(632px, calc(100vw - 48px));
-      box-sizing: border-box; padding: 26px; display: flex; flex-direction: column;
-      border-radius: 14px; border: 1px solid rgba(255,255,255,.1);
-      background: #242424; color: #f2f2f2; box-shadow: 0 28px 80px rgba(0,0,0,.65);
-      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      width: min(520px, calc(100vw - 48px));
+      box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 16px;
+      border-radius: var(--dsw-radius-md); border: 1px solid var(--dsw-alias-border-l4);
+      background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary);
+      box-shadow: 0 24px 64px var(--dsw-alias-bg-mask-3);
+      font: 13px/20px var(--dsw-font-family, inherit);
     }
-    .${DIALOG_CLASS}-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
-    .${DIALOG_CLASS}-title { margin: 0; font-size: 28px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; }
-    .${DIALOG_CLASS}-close { border: 0; background: transparent; color: rgba(255,255,255,.75); font-size: 30px; line-height: 1; cursor: pointer; padding: 0 2px; }
-    .${DIALOG_CLASS}-close:hover { color: #fff; }
-    .${DIALOG_CLASS}-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
-    .${DIALOG_CLASS}-field > span { font-size: 13px; color: rgba(255,255,255,.72); }
-    .${DIALOG_CLASS}-input-row { display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,.24); border-radius: 9px; padding: 0 12px; background: transparent; }
-    .${DIALOG_CLASS}-input-icon { display: inline-flex; color: rgba(255,255,255,.7); }
-    .${DIALOG_CLASS}-input { width: 100%; border: 0; outline: none; background: transparent; color: inherit; font: inherit; font-size: 14px; padding: 13px 0; }
-    .${DIALOG_CLASS}-source-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 10px; }
-    .${DIALOG_CLASS}-section-title { margin: 0; font-size: 17px; font-weight: 600; color: rgba(255,255,255,.92); }
-    .${DIALOG_CLASS}-host-indicator { display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,.62); font-size: 15px; }
-    .${DIALOG_CLASS}-host-icon { display: inline-flex; }
-    .${DIALOG_CLASS}-source-box { position: relative; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; padding: 24px 16px; min-height: 150px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .${DIALOG_CLASS}-source-center { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-    .${DIALOG_CLASS}-source-trigger { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: rgba(255,255,255,.75); font: inherit; font-size: 15px; cursor: pointer; }
-    .${DIALOG_CLASS}-source-trigger span:first-child { color: #fff; font-weight: 600; }
-    .${DIALOG_CLASS}-chevron { font-size: 18px; line-height: 1; }
-    .${DIALOG_CLASS}-add-folder { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; padding: 8px 14px; background: rgba(255,255,255,.12); color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
-    .${DIALOG_CLASS}-add-folder:hover { background: rgba(255,255,255,.18); }
-    .${DIALOG_CLASS}-add-folder-icon { font-size: 18px; line-height: 1; }
-    .${DIALOG_CLASS}-source-box-selected { padding: 0; min-height: 0; flex: none; justify-content: flex-start; }
-    .${DIALOG_CLASS}-selected-folder { display: none; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 12px 14px; color: rgba(255,255,255,.92); font-size: 16px; }
-    .${DIALOG_CLASS}-selected-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .${DIALOG_CLASS}-remove-folder { flex: none; border: 0; background: transparent; color: rgba(255,255,255,.6); font-size: 24px; line-height: 1; cursor: pointer; padding: 0 2px; }
-    .${DIALOG_CLASS}-remove-folder:hover { color: #fff; }
-    .${DIALOG_CLASS}-error { margin: 6px 0 0; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
+    .${DIALOG_CLASS}-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .${DIALOG_CLASS}-title { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
+    .${DIALOG_CLASS}-close {
+      flex: none; display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--dsw-radius-xs);
+      background: transparent; color: var(--dsw-alias-label-tertiary);
+      font-size: 18px; line-height: 1; cursor: pointer;
+    }
+    .${DIALOG_CLASS}-close:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+    .${DIALOG_CLASS}-form { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px 12px; }
+    .${DIALOG_CLASS}-label { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+    .${DIALOG_CLASS}-control {
+      width: 100%; box-sizing: border-box; height: 30px; padding: 0 8px;
+      border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm);
+      background: transparent; color: var(--dsw-alias-label-primary);
+      font: inherit; font-size: 13px; outline: none;
+    }
+    .${DIALOG_CLASS}-control::placeholder { color: var(--dsw-alias-label-dimmed); }
+    .${DIALOG_CLASS}-control:focus { border-color: var(--dsw-alias-link); box-shadow: 0 0 0 2px var(--dsw-alias-interactive-bg-hover-accent); }
+    .${DIALOG_CLASS}-select {
+      display: flex; align-items: center; gap: 8px;
+      text-align: left; cursor: pointer;
+    }
+    .${DIALOG_CLASS}-select:hover { background: var(--dsw-alias-interactive-bg-hover); }
+    .${DIALOG_CLASS}-control-icon { flex: none; display: inline-flex; color: var(--dsw-alias-label-tertiary); }
+    .${DIALOG_CLASS}-control-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .${DIALOG_CLASS}-chevron { flex: none; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 1; }
+    .${DIALOG_CLASS}-control-row { display: flex; gap: 8px; min-width: 0; }
+    .${DIALOG_CLASS}-browse {
+      flex: none; height: 30px; padding: 0 12px;
+      border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm);
+      background: transparent; color: var(--dsw-alias-label-secondary);
+      font: inherit; font-size: 12px; cursor: pointer;
+    }
+    .${DIALOG_CLASS}-browse:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+    .${DIALOG_CLASS}-browse:disabled { opacity: .5; cursor: default; }
+    .${DIALOG_CLASS}-error {
+      grid-column: 1 / -1; margin: 0; color: var(--dsw-alias-state-error-primary);
+      font-size: 12px; line-height: 18px; white-space: pre-wrap;
+    }
     .${DIALOG_CLASS}-error:empty { display: none; }
-    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-    .${DIALOG_CLASS}-button { padding: 11px 18px; border-radius: 8px; border: 1px solid rgba(255,255,255,.18); background: transparent; color: #eee; cursor: pointer; font: inherit; font-size: 15px; }
-    .${DIALOG_CLASS}-button:disabled { opacity: .45; cursor: default; }
-    .${DIALOG_CLASS}-primary { border-color: #bdbdbd; background: #bdbdbd; color: #1a1a1a; font-weight: 600; }
-    .${DIALOG_CLASS}-primary:hover:not(:disabled) { background: #d0d0d0; }
-    .${DIALOG_CLASS}-destination-menu {
-      position: fixed; z-index: 100010; min-width: 250px; padding: 6px;
-      border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: #2a2a2a; color: #eee;
-      box-shadow: 0 18px 48px rgba(0,0,0,.55); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    .${DIALOG_CLASS}-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .${DIALOG_CLASS}-button {
+      height: 30px; padding: 0 14px;
+      border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm);
+      background: transparent; color: var(--dsw-alias-label-primary);
+      font: inherit; font-size: 13px; cursor: pointer;
     }
-    .${DIALOG_CLASS}-destination-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; }
-    .${DIALOG_CLASS}-destination-item:hover { background: rgba(255,255,255,.09); }
-    .${DIALOG_CLASS}-destination-section { padding: 14px 12px 6px; color: rgba(255,255,255,.5); font-size: 13px; }
-    .${DIALOG_CLASS}-destination-check { color: #bdbdbd; }
-    .${DIALOG_CLASS}-destination-add { color: rgba(255,255,255,.75); }
-    .${DIALOG_CLASS}-browser-overlay { position: fixed; inset: 0; z-index: 100002; display: grid; place-items: center; background: rgba(0,0,0,.6); padding: 24px; }
-    .${DIALOG_CLASS}-browser { width: 640px; max-height: 86vh; display: flex; flex-direction: column; padding: 26px; }
-    .${DIALOG_CLASS}-browser-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-    .${DIALOG_CLASS}-browser-title { margin: 0; font-size: 30px; line-height: 1.15; font-weight: 700; }
-    .${DIALOG_CLASS}-browser-path-row { display: flex; align-items: center; gap: 8px; }
-    .${DIALOG_CLASS}-up { flex: none; width: 34px; height: 34px; border: 0; background: transparent; color: rgba(255,255,255,.65); font-size: 22px; cursor: pointer; }
-    .${DIALOG_CLASS}-browser-path { flex: 1; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: transparent; color: #fff; font: inherit; font-size: 16px; padding: 12px 14px; outline: none; }
-    .${DIALOG_CLASS}-browser-path:focus { border-color: #4f8cff; }
-    .${DIALOG_CLASS}-browser-status { margin: 14px 0 8px; color: rgba(255,255,255,.55); font-size: 13px; }
-    .${DIALOG_CLASS}-browser-list { flex: 1; min-height: 220px; max-height: 420px; overflow: auto; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 6px; }
-    .${DIALOG_CLASS}-browser-entry { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 11px 12px; border: 0; border-radius: 8px; background: transparent; color: #fff; font: inherit; font-size: 16px; text-align: left; cursor: pointer; }
-    .${DIALOG_CLASS}-browser-entry:hover { background: rgba(255,255,255,.08); }
-    .${DIALOG_CLASS}-browser-empty { margin: 16px 12px; color: rgba(255,255,255,.5); font-size: 13px; }
+    .${DIALOG_CLASS}-button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+    .${DIALOG_CLASS}-button:disabled { opacity: .45; cursor: default; }
+    .${DIALOG_CLASS}-primary {
+      border-color: var(--dsw-alias-button-primary-fill);
+      background: var(--dsw-alias-button-primary-fill);
+      color: var(--dsw-alias-label-primary-inverted);
+      font-weight: 500;
+    }
+    .${DIALOG_CLASS}-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
+    .${DIALOG_CLASS}-destination-menu {
+      position: fixed; z-index: 100010; min-width: 220px; max-width: 320px; padding: 4px;
+      border-radius: var(--dsw-radius-md); border: 1px solid var(--dsw-alias-border-l4);
+      background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary);
+      box-shadow: 0 16px 40px var(--dsw-alias-bg-mask-3);
+      font: 13px/20px var(--dsw-font-family, inherit);
+    }
+    .${DIALOG_CLASS}-destination-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      width: 100%; padding: 6px 8px; border: 0; border-radius: var(--dsw-radius-xs);
+      background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left;
+    }
+    .${DIALOG_CLASS}-destination-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
+    .${DIALOG_CLASS}-destination-section {
+      padding: 8px 8px 4px; color: var(--dsw-alias-label-caption);
+      font-size: 11px; line-height: 16px;
+    }
+    .${DIALOG_CLASS}-destination-check { color: var(--dsw-alias-label-secondary); }
+    .${DIALOG_CLASS}-destination-add { color: var(--dsw-alias-label-tertiary); }
+    .${DIALOG_CLASS}-browser-overlay {
+      position: fixed; inset: 0; z-index: 100002; display: grid; place-items: center;
+      padding: 24px; background: var(--dsw-alias-bg-mask-3);
+    }
+    .${DIALOG_CLASS}-browser { width: min(560px, calc(100vw - 48px)); max-height: 80vh; }
+    .${DIALOG_CLASS}-browser-path-row { display: flex; gap: 8px; align-items: center; }
+    .${DIALOG_CLASS}-up {
+      flex: none; width: 30px; height: 30px; padding: 0;
+      border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm);
+      background: transparent; color: var(--dsw-alias-label-secondary); font-size: 14px; cursor: pointer;
+    }
+    .${DIALOG_CLASS}-up:hover { background: var(--dsw-alias-interactive-bg-hover); }
+    .${DIALOG_CLASS}-browser-path {
+      flex: 1; min-width: 0; height: 30px; padding: 0 8px; box-sizing: border-box;
+      border: 1px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm);
+      background: transparent; color: var(--dsw-alias-label-primary);
+      font: inherit; font-size: 13px; outline: none;
+    }
+    .${DIALOG_CLASS}-browser-path:focus { border-color: var(--dsw-alias-link); }
+    .${DIALOG_CLASS}-browser-status { margin: 0; color: var(--dsw-alias-label-caption); font-size: 12px; line-height: 18px; }
+    .${DIALOG_CLASS}-browser-list {
+      flex: 1; min-height: 200px; max-height: 380px; overflow: auto; padding: 4px;
+      border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm);
+    }
+    .${DIALOG_CLASS}-browser-entry {
+      display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box;
+      padding: 6px 8px; border: 0; border-radius: var(--dsw-radius-xs);
+      background: transparent; color: var(--dsw-alias-label-primary);
+      font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+    }
+    .${DIALOG_CLASS}-browser-entry:hover { background: var(--dsw-alias-interactive-bg-hover); }
+    .${DIALOG_CLASS}-browser-empty { margin: 12px 8px; color: var(--dsw-alias-label-caption); font-size: 12px; }
+    .${DIALOG_CLASS}-error-text { color: var(--dsw-alias-state-error-primary); }
   `
   if (existing === null) document.head.append(style)
 }
