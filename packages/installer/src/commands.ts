@@ -17,6 +17,7 @@ import {
   type AgentDiscoveryState,
 } from '@dsh-remote/protocol'
 import { fromOptions, nodePathPrelude, shellPath } from './bootstrap.ts'
+import { npmInvocation } from './npm.ts'
 import type { InstallerOptions } from './options.ts'
 import {
   parseTarget,
@@ -73,11 +74,16 @@ function sshOptions(options: InstallerOptions): SshOptions {
 /** Pack dsh-remote-agent into a temporary directory. */
 export async function packAgent(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-remote-agent-pack-'))
-  const { stdout } = await execFileAsync('npm', ['pack', '--json', '--pack-destination', dir], {
-    cwd: agentPackageDir(),
-    timeout: 120_000,
-    maxBuffer: 1024 * 1024,
-  })
+  const npm = npmInvocation()
+  const { stdout } = await execFileAsync(
+    npm.command,
+    [...npm.prefixArgs, 'pack', '--json', '--pack-destination', dir],
+    {
+      cwd: agentPackageDir(),
+      timeout: 120_000,
+      maxBuffer: 1024 * 1024,
+    },
+  )
   const parsed = JSON.parse(stdout) as Array<{ filename?: unknown }>
   const filename = parsed[0]?.filename
   if (typeof filename !== 'string' || filename === '') {
