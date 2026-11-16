@@ -1291,11 +1291,9 @@ export class RemoteHostsService {
       retry: null,
       agentOutdated: !health.capabilities.includes('file.watch')
         || agentVersionIsOlder(health.agentVersion, bundledVersion),
-      detail: this.#runtimeFor(id).modelProxy
-        ? 'connectedProxy'
-        : this.#runtimeFor(id).modelDirect
-          ? 'connectedDirect'
-          : 'connectedRemote',
+      // Cleared on success. A connected host needs no progress sentence: the
+      // phase shows in the list and the model-key source has its own line.
+      detail: null,
     })
   }
 

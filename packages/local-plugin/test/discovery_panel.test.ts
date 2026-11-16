@@ -471,6 +471,52 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.equal(created[0]?.title, 'trunk', 'the folder name becomes the title')
   })
 
+  it('shows no status sentence once a host is connected', async () => {
+    const base = {
+      sshPort: null, remoteAgentPort: 1, autoConnect: true,
+      createdAt: 'now', updatedAt: 'now', hasToken: true,
+      localPort: 2, localUrl: 'http://127.0.0.1:2',
+      hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+      connectedAt: 'now', errorUi: null, agentOutdated: false,
+      dshUpdate: null, retry: null,
+    }
+
+    // Connected: the dot, the summary row and the model-source line already say
+    // everything, so a "已连接；..." sentence is redundant.
+    const connected = await render({
+      state: async () => ({
+        hosts: [
+          { ...base, id: 'h-proxy', label: 'P', sshTarget: 'p', phase: 'connected', modelProxy: true, modelDirect: false, modelSource: 'proxy', detail: 'connectedProxy' },
+          { ...base, id: 'h-direct', label: 'D', sshTarget: 'd', phase: 'connected', modelProxy: false, modelDirect: true, modelSource: 'direct', detail: 'connectedDirect' },
+          { ...base, id: 'h-remote', label: 'R', sshTarget: 'r', phase: 'connected', modelProxy: false, modelDirect: false, modelSource: 'direct', detail: null },
+        ],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(connected.renderer, text => text.includes('dshr-host-row'))
+    const connectedText = JSON.stringify(connected.renderer.toJSON())
+    for (const key of ['detail.connectedProxy', 'detail.connectedDirect', 'detail.connectedRemote']) {
+      assert.equal(connectedText.includes(key), false, `${key} must not be rendered`)
+    }
+
+    // A transitional phase still explains itself, since the dot cannot.
+    const working = await render({
+      state: async () => ({
+        hosts: [{ ...base, id: 'h-inst', label: 'I', sshTarget: 'i', phase: 'installing', modelProxy: false, modelDirect: false, modelSource: 'direct', detail: 'installing' }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(working.renderer, text => text.includes('dshr-host-row'))
+    const row = working.renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+    await settle(working.renderer, text => text.includes('dshr-host-detail'))
+    assert.ok(JSON.stringify(working.renderer.toJSON()).includes('detail.installing'),
+      'a progress sentence still shows while the host is working')
+  })
+
   it('offers no separate expand button on the row', async () => {
     const { renderer } = await render({
       state: async () => ({

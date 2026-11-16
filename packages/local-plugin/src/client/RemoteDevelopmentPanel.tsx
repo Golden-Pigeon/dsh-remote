@@ -653,7 +653,10 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                           {Math.max(0, Math.ceil((host.retry.at - now) / 1000))}{t('settings.retrySuffix')}
                         </p>
                       )
-                      : host.detail !== null && (
+                      // Progress text is worth showing while something is
+                      // happening. Once connected it only restated the dot and
+                      // the model-key source already in the summary row.
+                      : !connected && host.detail !== null && (
                         <p className="dshr-detail">{detailLabel(t, host.detail)}</p>
                       )}
                     {host.agentOutdated && <p className="dshr-detail dshr-agent-outdated">{t('settings.agentOutdated')}</p>}
