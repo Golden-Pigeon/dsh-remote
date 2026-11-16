@@ -26,6 +26,7 @@ import {
   type HostInfo,
   type ListSessionsResult,
   type ListWorkspacesResult,
+  type ModelCatalogResult,
   type PromptDeliveryMode,
   type RemoteWorkspace,
   type SessionSnapshot,
@@ -56,6 +57,15 @@ import { dshUpdateFor, resolveLocalDshVersion } from './version.ts'
 function fingerprintKey(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }
+
+/**
+ * How long a remote model catalog stays cached.
+ *
+ * The Settings page polls host state every few seconds, and the catalog only
+ * changes when a provider or credential changes on the remote, so a modest TTL
+ * keeps polling cheap without hiding a genuine remote change for long.
+ */
+const MODEL_CATALOG_TTL_MS = 60_000
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -100,6 +110,7 @@ export class RemoteHostsService {
   #directModel: { readonly baseUrl: string; readonly apiKey: string } | undefined
   #directModelAttempted = false
   readonly #modelReconciled = new Set<string>()
+  readonly #catalogs = new Map<string, { readonly at: number; readonly value: ModelCatalogResult }>()
   readonly #records = new Map<string, HostRecord>()
   readonly #runtime = new Map<string, HostRuntime>()
   readonly #tunnels = new Map<string, Tunnel>()
@@ -652,6 +663,33 @@ export class RemoteHostsService {
       throw this.#remoteFailure(id, error)
     }
     return { url: `${connected.tunnel.localUrl}${path.path}` }
+  }
+
+  /**
+   * Read the model catalog the connected remote host can route to.
+   *
+   * Cached briefly so opening the Settings page does not re-query every host on
+   * each poll, while still noticing a remote that gained or lost a provider.
+   */
+  async modelCatalog(id: string): Promise<ModelCatalogResult> {
+    const client = this.#requireClient(id)
+    const cached = this.#catalogs.get(id)
+    if (cached !== undefined && Date.now() - cached.at < MODEL_CATALOG_TTL_MS) return cached.value
+    let value: ModelCatalogResult
+    try {
+      value = await client.modelCatalog()
+    } catch (error) {
+      // An older agent serves no catalog route; report an empty catalog rather
+      // than failing the whole Settings page.
+      const failure = this.#remoteFailure(id, error)
+      if (failure.details.remoteCode === 'route/not-found') {
+        value = { default: { provider: 'deepseek-official', model: 'deepseek-flash' }, routableProviders: [], groups: [], failures: [] }
+      } else {
+        throw failure
+      }
+    }
+    this.#catalogs.set(id, { at: Date.now(), value })
+    return value
   }
 
   /** Stop every tunnel and timer. */

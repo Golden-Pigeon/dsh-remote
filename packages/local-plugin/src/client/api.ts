@@ -6,7 +6,13 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { AcceptedResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
+import type {
+  AcceptedResult,
+  ModelCatalogResult,
+  PromptDeliveryMode,
+  RemoteWorkspace,
+  SessionSnapshot,
+} from '@dsh-remote/protocol'
 import type { HostCreateSessionResult, MirrorFileResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
@@ -55,6 +61,7 @@ export interface HostsApi {
   readonly createWorkspace: (hostId: string, input: { path: string; title?: string }) => Promise<RemoteWorkspace>
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
+  readonly modelCatalog: (hostId: string) => Promise<ModelCatalogResult>
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly startBlankSession: (hostId: string, input: { localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }) => Promise<{ localSessionId: string }>
@@ -91,6 +98,7 @@ export function createHostsApi(ctx: Context): HostsApi {
       ...workspaceId === undefined ? {} : { workspaceId },
     }),
     webUrl: hostId => call('host/web-url', { hostId }),
+    modelCatalog: hostId => call('host/model-catalog', { hostId }),
     snapshot: (hostId, sessionId, limit) => call('host/session', {
       hostId,
       sessionId,

@@ -14,6 +14,7 @@ import type {
   AcceptedResult,
   CreateSessionResult,
   HostInfo,
+  ModelCatalogResult,
   PromptDeliveryMode,
   RemoteSessionSummary,
   RemoteWorkspace,
@@ -48,6 +49,7 @@ export type HostApiEndpoint =
   | 'host/session/prompt'
   | 'host/session/cancel'
   | 'host/web-url'
+  | 'host/model-catalog'
   | 'host/files/list'
   | 'host/files/read'
   | 'host/files/stat'
@@ -166,6 +168,7 @@ export interface HostApiPayloads {
   }
   'host/session/cancel': { hostId: string; sessionId: string }
   'host/web-url': { hostId: string }
+  'host/model-catalog': { hostId: string }
   'host/files/list': { sessionId: string; path: string }
   'host/files/read': { sessionId: string; path: string; offset?: number; limit?: number }
   'host/files/stat': { sessionId: string; path: string }
@@ -197,6 +200,7 @@ export interface HostApiValues {
   'host/session/prompt': AcceptedResult
   'host/session/cancel': AcceptedResult
   'host/web-url': WebUrlResult
+  'host/model-catalog': ModelCatalogResult
   'host/files/list': MirrorFileResult
   'host/files/read': MirrorFileResult
   'host/files/stat': MirrorFileResult

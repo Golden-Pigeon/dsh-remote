@@ -256,6 +256,8 @@ async function dispatch(
     }
     case 'host/web-url':
       return service.webUrl(requireStringField(payload, 'hostId'))
+    case 'host/model-catalog':
+      return service.modelCatalog(requireStringField(payload, 'hostId'))
     case 'host/files/list':
     case 'host/files/read':
     case 'host/files/stat':

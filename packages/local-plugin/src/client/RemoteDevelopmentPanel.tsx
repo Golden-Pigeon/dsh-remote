@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
+import type { ModelCatalogResult, RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostView } from '../hosts/types.ts'
 import type { HostDetail } from '../messages.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
@@ -45,8 +45,10 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const [expandedHost, setExpandedHost] = useState<string | null>(null)
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const loadingWorkspaces = useRef(new Map<string, Promise<void>>())
+  const loadingCatalogs = useRef(new Map<string, Promise<void>>())
   const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
   const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
+  const [catalogs, setCatalogs] = useState<Record<string, ModelCatalogResult | undefined>>({})
   const [workspaceDraft, setWorkspaceDraft] = useState('')
   const [form, setForm] = useState({
     sshTarget: '',
@@ -113,6 +115,33 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     }
   }
 
+  /**
+   * Open the remote DSH Web UI in a browser tab.
+   *
+   * The URL points at the SSH tunnel's local port and already carries the
+   * browser token, so the tab lands signed in on the remote host.
+   */
+  async function openWebUi(host: HostView): Promise<void> {
+    const key = `web:${host.id}`
+    setBusy(key)
+    setError(null)
+    setNotice(null)
+    try {
+      const { url } = await api.webUrl(host.id)
+      // Open synchronously inside the click-derived task so the browser keeps
+      // treating it as a user gesture rather than a blocked popup.
+      const opened = window.open(url, '_blank', 'noopener,noreferrer')
+      if (opened === null) {
+        await navigator.clipboard.writeText(url).catch(() => undefined)
+        setNotice(t('settings.openWebUiBlocked'))
+      }
+    } catch (failure) {
+      setError(localizedError(t, failure, t('settings.openWebUiFailed')))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function onAdd(): Promise<void> {
     const sshTarget = form.sshTarget.trim()
     if (sshTarget === '') {
@@ -138,7 +167,34 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       return
     }
     setExpandedHost(host.id)
-    await loadWorkspaces(host.id)
+    await Promise.all([loadWorkspaces(host.id), loadCatalog(host.id)])
+  }
+
+  /**
+   * Load the model catalog a connected host can route to.
+   *
+   * A mirror Session runs on this machine, so its model selector only lists the
+   * local providers; showing the remote list tells you which selections the
+   * remote will actually accept.
+   */
+  async function loadCatalog(hostId: string): Promise<void> {
+    if (catalogs[hostId] !== undefined) return
+    const gate = loadingCatalogs.current.get(hostId)
+    if (gate !== undefined) return gate
+    const task = (async () => {
+      try {
+        const catalog = await api.modelCatalog(hostId)
+        setCatalogs(previous => ({ ...previous, [hostId]: catalog }))
+      } catch {
+        // A host without the catalog route stays silent rather than showing a
+        // permanent error on the Settings page.
+        setCatalogs(previous => ({ ...previous, [hostId]: undefined }))
+      } finally {
+        loadingCatalogs.current.delete(hostId)
+      }
+    })()
+    loadingCatalogs.current.set(hostId, task)
+    await task
   }
 
   async function loadWorkspaces(hostId: string, refresh = true): Promise<void> {
@@ -350,6 +406,29 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                 : host.detail !== null && (
                   <p className="dshr-detail">{detailLabel(t, host.detail)}</p>
                 )}
+              {catalogs[host.id] !== undefined && (
+                <div className="dshr-models">
+                  <p className="dshr-hint">{t('settings.remoteModelsHint')}</p>
+                  {catalogs[host.id]!.groups.length === 0
+                    ? <p className="dshr-empty">{t('settings.remoteModelsEmpty')}</p>
+                    : (
+                      <ul className="dshr-model-list">
+                        {catalogs[host.id]!.groups.map(group => (
+                          <li key={group.id}>
+                            <strong>{group.name}</strong>
+                            <code>{group.id}</code>
+                            <span>{group.models.map(model => model.id).join(', ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  {catalogs[host.id]!.failures.map(failure => (
+                    <p key={failure.id} className="dshr-detail" role="status">
+                      {failure.name}: {failure.message}
+                    </p>
+                  ))}
+                </div>
+              )}
               {host.agentOutdated && <p className="dshr-detail dshr-agent-outdated">{t('settings.agentOutdated')}</p>}
               {host.error !== null && (
                 <p className="dshr-host-error" role="alert">
@@ -425,6 +504,16 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                 >
                   {t('settings.reprovision')}
                 </button>
+                {host.phase === 'connected' && (
+                  <button
+                    type="button"
+                    className="dshr-button"
+                    disabled={busy !== null}
+                    onClick={() => { void openWebUi(host) }}
+                  >
+                    {busy === `web:${host.id}` ? t('settings.openWebUiPending') : t('settings.openWebUi')}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="dshr-button dshr-button-danger"
