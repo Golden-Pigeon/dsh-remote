@@ -108,8 +108,22 @@ async function render(api: Record<string, unknown>) {
   }
   let renderer!: ReactTestRenderer
   await act(async () => { renderer = create(React.createElement(component, { api: full, t: (key: string) => key })) })
-  await act(async () => {})
+  // The mount effect fires `scan()` without awaiting it, so a single empty act
+  // returns before discovery lands. Drain microtasks until the list is painted.
+  await settle(renderer, text => text.includes('dshr-discovered'))
   return { renderer, api: full }
+}
+
+/** Pump the event loop until the rendered tree satisfies `done`. */
+async function settle(
+  renderer: ReactTestRenderer,
+  done: (text: string) => boolean,
+  attempts = 50,
+): Promise<void> {
+  for (let index = 0; index < attempts; index += 1) {
+    await act(async () => { await new Promise(resolve => setImmediate(resolve)) })
+    if (done(JSON.stringify(renderer.toJSON() ?? ''))) return
+  }
 }
 
 function buttons(renderer: ReactTestRenderer) {
@@ -133,7 +147,12 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.ok(text.includes('native1'))
     assert.ok(text.includes('cloud32'))
     // The resolved endpoint is what tells the user which machine an alias means.
-    assert.ok(text.includes('alice@198.51.100.137:36000'), `endpoint missing: ${text.slice(0, 600)}`)
+    // React splits one endpoint into several text children, so join them before
+    // comparing rather than expecting one contiguous substring in the JSON.
+    const endpoints = renderer.root
+      .findAllByProps({ className: 'dshr-discovered-endpoint' })
+      .map(node => node.children.map(child => String(child)).join(""))
+    assert.ok(endpoints.includes('alice@198.51.100.137:36000'), `endpoint missing: ${endpoints.join(' | ')}`)
   })
 
   it('marks registered hosts and offers connect only for the rest', async () => {
@@ -172,7 +191,13 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.equal(added.length, 1)
     // The registry must receive the alias, never the resolved address: only the
     // alias carries IdentityFile, ProxyJump and the Include that made it work.
-    assert.deepEqual(added[0], { sshTarget: 'cloud32', autoConnect: true })
+    // Compare fields rather than the object identity: the panel builds its
+    // payload inside the loaded client bundle, so its prototype is not this
+    // realm's Object.prototype and deepEqual would reject an equal value.
+    const payload = added[0] as Record<string, unknown>
+    assert.equal(payload.sshTarget, 'cloud32')
+    assert.equal(payload.autoConnect, true)
+    assert.deepEqual(Object.keys(payload).sort(), ['autoConnect', 'sshTarget'])
     assert.deepEqual(scans, [false, true], 'the list must be rescanned after registering')
   })
 

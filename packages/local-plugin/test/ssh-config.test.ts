@@ -160,8 +160,10 @@ describe('SSH config parsing', () => {
 
 describe('SSH config path expansion', () => {
   it('expands tilde and resolves relative includes against the declaring file', () => {
-    assert.equal(expandSshPath('~/.ssh/config', '/base', '/home/u'), '/home/u/.ssh/config')
-    assert.equal(expandSshPath('extra.conf', '/home/u/.ssh', '/home/u'), '/home/u/.ssh/extra.conf')
+    // SSH config paths live on this machine, so expansion follows the host
+    // platform's separator rather than a fixed POSIX spelling.
+    assert.equal(expandSshPath('~/.ssh/config', '/base', '/home/u'), join('/home/u', '.ssh/config'))
+    assert.equal(expandSshPath('extra.conf', '/home/u/.ssh', '/home/u'), join('/home/u/.ssh', 'extra.conf'))
     assert.equal(expandSshPath('/etc/ssh/ssh_config', '/base', '/home/u'), '/etc/ssh/ssh_config')
   })
 })

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, stat, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { after, describe, it } from 'node:test'
 
 import {
@@ -70,9 +70,11 @@ describe('auth', () => {
 
 describe('config', () => {
   it('honors DSH_HOME and expands tilde paths', () => {
-    assert.equal(resolveDshHome({ DSH_HOME: '/srv/dsh' }), '/srv/dsh')
-    assert.equal(resolveUserPath('~/x', '/home/u'), '/home/u/x')
-    assert.equal(resolveUserPath('', '/home/u'), '/home/u/remote-agent/agent.json')
+    // DSH_HOME names a path on the machine running the agent, so its resolved
+    // form follows that platform rather than a fixed POSIX spelling.
+    assert.equal(resolveDshHome({ DSH_HOME: '/srv/dsh' }), resolve('/srv/dsh'))
+    assert.equal(resolveUserPath('~/x', '/home/u'), join('/home/u', 'x'))
+    assert.equal(resolveUserPath('', '/home/u'), join('/home/u', 'remote-agent', 'agent.json'))
     assert.equal(resolveUserPath('/abs/x', '/home/u'), '/abs/x')
   })
 
@@ -91,8 +93,11 @@ describe('state file', () => {
     const bound = withListener(opened.state, { port: 41234, url: 'http://127.0.0.1:41234' })
     await writeState(file, bound)
 
-    const mode = (await stat(file)).mode & 0o777
-    assert.equal(mode, 0o600)
+    // Windows has no POSIX permission bits; chmod is a no-op there, so the
+    // containment assertion only means something on a POSIX host.
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(file)).mode & 0o777, 0o600)
+    }
     const parsed = parseState(await readFile(file, 'utf8'))
     assert.equal(parsed.token, opened.token)
     assert.equal(parsed.port, 41234)

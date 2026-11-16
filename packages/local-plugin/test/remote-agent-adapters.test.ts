@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it } from 'node:test'
 import { installRemoteWorkspaceFiles } from '../src/remote/files.ts'
 import { listRemoteDirectories } from '../src/remote/directory.ts'
+
+/**
+ * A mirrored workspace has two path namespaces: the local anchor (this machine's
+ * syntax) and the remote POSIX root. `scope.workspaceRoot` is the anchor, so the
+ * fixture must build it with the platform's own path rules — a POSIX literal
+ * here would be interpreted as a Windows drive-relative path.
+ */
+const anchor = join(tmpdir(), 'dsh-remote-anchor')
 
 describe('remote workspace files over the agent', () => {
   it('routes read/stat/list/bytes/watch through the agent when capabilities exist', async () => {
@@ -30,11 +40,12 @@ describe('remote workspace files over the agent', () => {
     const mirrors = { remoteFileContext: () => ({ hostId: 'h', remoteRoot: '/remote' }) }
     const ctx = { get: () => service }
     installRemoteWorkspaceFiles(ctx as never, mirrors as never, hosts as never)
-    const scope = { workspaceRoot: '/anchor' }
-    assert.equal((await service.read(scope, 'a.txt', { offset: 1, limit: 2 }, new AbortController().signal)).absolutePath, '/anchor/a.txt')
+    const scope = { workspaceRoot: anchor }
+    assert.equal((await service.read(scope, 'a.txt', { offset: 1, limit: 2 }, new AbortController().signal)).absolutePath, join(anchor, 'a.txt'))
     assert.equal((await service.readBytes(scope, 'a.txt', {}, new AbortController().signal)).data.toString(), 'x')
-    assert.equal((await service.stat(scope, 'a.txt', new AbortController().signal)).absolutePath, '/anchor/a.txt')
+    assert.equal((await service.stat(scope, 'a.txt', new AbortController().signal)).absolutePath, join(anchor, 'a.txt'))
     assert.equal((await service.list(scope, '', new AbortController().signal)).path, '')
+    // The agent always sees the remote POSIX root, never the local anchor.
     assert.deepEqual(calls, ['read:/remote/a.txt', 'bytes:/remote/a.txt', 'stat:/remote/a.txt', 'list:/remote'])
     const controller = new AbortController()
     const frames = []
@@ -47,7 +58,7 @@ describe('remote workspace files over the agent', () => {
     }
     assert.deepEqual(frames, [
       { kind: 'ready' },
-      { kind: 'change', change: { absolutePath: '/anchor/a.txt', version: 'v2' } },
+      { kind: 'change', change: { absolutePath: join(anchor, 'a.txt'), version: 'v2' } },
     ])
   })
 })
