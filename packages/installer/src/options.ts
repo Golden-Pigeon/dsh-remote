@@ -286,6 +286,18 @@ Options:
 The remote host needs Node.js 22.19+ and npm. The installer installs pnpm and
 DSH into --install-dir when they are not already available, adds
 dsh-remote-agent to the chosen profile, and starts \`dsh web\` on 127.0.0.1.
-It never copies model API keys; configure credentials on the remote host (or
-use the future local credential proxy) separately.
+
+Model credentials are configured by the local plugin, not by this CLI. Two
+modes exist:
+
+  direct (default)   The resolved DEEPSEEK_API_KEY is written into the remote
+                     dsh web environment, so the remote host calls the provider
+                     directly. Use it on a remote account you trust.
+  proxy              The key stays local. The remote host gets a placeholder
+                     key and DEEPSEEK_BASE_URL=http://127.0.0.1:47821, and the
+                     local plugin proxies each request through a reverse SSH
+                     tunnel, injecting the real key there.
+
+This CLI never resolves a credential itself; pass no model flags and the remote
+host keeps whatever credentials it already has, or configure them there.
 `

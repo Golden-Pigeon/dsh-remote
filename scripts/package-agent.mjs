@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { pnpmInvocation } from './package-manager.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const agentDir = join(root, 'packages', 'remote-agent')
@@ -26,7 +27,8 @@ if (!readFileSync(join(agentDir, 'lib', 'index.js'), 'utf8').includes(version)) 
 
 rmSync(assetsDir, { recursive: true, force: true })
 mkdirSync(assetsDir, { recursive: true })
-execFileSync('pnpm', ['pack', '--pack-destination', assetsDir], {
+const pnpm = pnpmInvocation()
+execFileSync(pnpm.command, [...pnpm.prefixArgs, 'pack', '--pack-destination', assetsDir], {
   cwd: agentDir,
   stdio: 'inherit',
 })

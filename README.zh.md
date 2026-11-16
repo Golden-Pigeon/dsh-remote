@@ -260,6 +260,7 @@ pnpm verify
 
 - [Wire protocol](docs/protocol.md)
 - [Operations guide](docs/operations.md)
+- [Development](docs/development.md)
 - [ADR-001](docs/decisions/ADR-001-protocol-envelope.md)
 - [Design document copy](docs/remote-development-design.md)
 - [Testing](docs/testing.md)

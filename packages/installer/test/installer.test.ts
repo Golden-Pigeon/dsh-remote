@@ -42,7 +42,12 @@ describe('installer options', () => {
   })
 
   it('documents the security model in help', () => {
-    assert.match(HELP, /never copies model API keys/)
+    // Direct mode does write the key to the remote host, so help must not
+    // claim the key is never copied; it has to name both modes instead.
+    assert.doesNotMatch(HELP, /never copies model API keys/)
+    assert.match(HELP, /direct \(default\)/)
+    assert.match(HELP, /proxy/)
+    assert.match(HELP, /DEEPSEEK_API_KEY/)
     assert.match(HELP, /127\.0\.0\.1/)
   })
 })

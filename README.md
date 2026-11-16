@@ -329,6 +329,7 @@ into the ordinary Conversation UI, a second follow-up, and a remote tool call/re
 
 - [Wire protocol](docs/protocol.md)
 - [Operations guide](docs/operations.md)
+- [Development](docs/development.md)
 - [Testing](docs/testing.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)

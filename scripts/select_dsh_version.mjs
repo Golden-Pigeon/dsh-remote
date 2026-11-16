@@ -1,13 +1,15 @@
 /** Pin every installed DSH dependency and peer to one CI compatibility target. */
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { pnpmInvocation } from './package-manager.mjs'
 
 const version = process.argv[2]
 if (version === undefined || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) {
   throw new Error('Usage: node scripts/select_dsh_version.mjs <exact-dsh-version>')
 }
 const cwd = fileURLToPath(new URL('..', import.meta.url))
-const installed = JSON.parse(execFileSync('pnpm', ['list', '--recursive', '--depth', 'Infinity', '--json'], { cwd, encoding: 'utf8' }))
+const pnpm = pnpmInvocation()
+const installed = JSON.parse(execFileSync(pnpm.command, [...pnpm.prefixArgs, 'list', '--recursive', '--depth', 'Infinity', '--json'], { cwd, encoding: 'utf8' }))
 const names = new Set()
 function visit(value) {
   if (value === null || typeof value !== 'object') return
@@ -21,5 +23,5 @@ if (names.size === 0) throw new Error('Install the frozen workspace before selec
 const overrides = Object.fromEntries([...names].sort().map(name => [name, version]))
 // Cordis must match the DSH family; the supported 0.2.2 line uses 4.1.0.
 overrides['@deepseek-ai/cordis'] = '4.1.0'
-execFileSync('pnpm', ['config', 'set', '--location=project', '--json', 'overrides', JSON.stringify(overrides)], { cwd, stdio: 'inherit' })
+execFileSync(pnpm.command, [...pnpm.prefixArgs, 'config', 'set', '--location=project', '--json', 'overrides', JSON.stringify(overrides)], { cwd, stdio: 'inherit' })
 console.log(`Pinned ${names.size} DSH packages and peers to ${version}`)
