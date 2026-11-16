@@ -14,7 +14,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { createScope, scopeTarget, type Scope } from '@deepseek-ai/dsh-scope'
@@ -34,7 +34,7 @@ import type {
   PromptContentPart,
   PromptDeliveryMode,
 } from '@dsh-remote/protocol'
-import type { ResolvedConfig } from '../config.ts'
+import { resolveDshHome, type ResolvedConfig } from '../config.ts'
 import { singleFlight } from './inflight.ts'
 import { isTestHidden, loadTestVisibility, type TestVisibility } from './test-visibility.ts'
 import { abandonedTurnEnd } from './recovery.ts'
@@ -652,9 +652,99 @@ export class RemoteMirrorService {
           this.#ctx.logger.warn('dsh-remote-local: mirror sync for %s failed: %s', host.id, String(error))
         }
       }
+      await this.#pruneDetachedSessions()
     } finally {
       this.#syncing = false
     }
+  }
+
+  /**
+   * Drop mirror records whose local Session no longer exists.
+   *
+   * A record survives the local Session it points at: the workspace can be
+   * re-registered, or the Session deleted or archived elsewhere, and the comment
+   * on the unarchive path even assumes "the next sync will skip it". Skipping is
+   * not enough — the stale record keeps answering `mirrorFor()` for an id nobody
+   * holds, so the composer model menu resolves a host for a Session that is not
+   * there and every other lookup stays inconsistent with the sidebar.
+   *
+   * Records whose archive is still live are kept: an archived Session is a real
+   * Session, and the registry reports it.
+   */
+  async #pruneDetachedSessions(): Promise<void> {
+    const refs = Object.keys(this.#state.sessions)
+    if (refs.length === 0) return
+    // The registry answers for any Session it still holds, archived included. A
+    // miss means the local Session is gone for good, so the mirror record can
+    // never be opened again and only misleads lookups — `mirrorFor` keeps
+    // answering for an id nobody renders, and the composer model menu resolves a
+    // host for a Session that is not there.
+    //
+    // Guard the lookup itself: an unavailable registry must not be read as "every
+    // Session vanished", which would wipe the mirror history instead of tidying
+    // it. A partial prune (some hit, some missed) is already safe, and an
+    // all-miss pass is decided by the archive on disk rather than by the count.
+    let sessions: Context['sessions']
+    try {
+      sessions = this.#sessions
+    } catch (error) {
+      this.#ctx.logger.warn('dsh-remote-local: skipping mirror-record pruning: %s', String(error))
+      return
+    }
+    const survivors = Object.entries(this.#state.sessions)
+      .filter(([, record]) => sessions.get(record.localSessionId as SessionId) !== undefined)
+    const total = Object.keys(this.#state.sessions).length
+    if (survivors.length === total) return
+    if (survivors.length === 0) {
+      // Everything missed at once. That is normal after the Sessions were deleted
+      // outside DSH, but it is also what a not-yet-hydrated registry looks like,
+      // so only proceed when the persisted archive confirms the ids are really
+      // gone rather than merely absent from memory.
+      const gone = await this.#allSessionsDeletedOnDisk(refs)
+      if (!gone) {
+        this.#ctx.logger.warn(
+          'dsh-remote-local: no mirrored Session resolved in memory; keeping %d record(s) because the archive still has them',
+          total,
+        )
+        return
+      }
+    }
+    const removed = total - survivors.length
+    this.#state.sessions = Object.fromEntries(survivors)
+    this.#ctx.logger.warn(
+      'dsh-remote-local: removed %d mirrored Session record(s) whose local Session is gone',
+      removed,
+    )
+    await this.#save()
+  }
+
+  /**
+   * Whether every one of these Session ids is absent from the persisted archive.
+   *
+   * Used only to justify pruning when memory reports no survivor: the archive is
+   * the durable record of which Sessions ever existed, so a miss there means the
+   * Session was genuinely deleted. A read that cannot be performed reports
+   * `false`, which keeps the records.
+   * @param refs - mirror record keys, whose records carry the local ids.
+   * @returns true only when the archive was read and holds none of the ids.
+   */
+  async #allSessionsDeletedOnDisk(refs: readonly string[]): Promise<boolean> {
+    // DSH keeps one directory per Session, so the archive is a reliable list of
+    // Sessions that ever existed; a miss there means the Session was deleted.
+    const sessionsDir = join(resolveDshHome(), 'sessions')
+    let found: string[]
+    try {
+      const entries = await readdir(sessionsDir, { recursive: true, withFileTypes: true })
+      found = entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
+    } catch {
+      return false
+    }
+    if (found.length === 0) return false
+    const present = new Set(found)
+    return refs.every(ref => {
+      const record = this.#state.sessions[ref]
+      return record === undefined || !present.has(record.localSessionId)
+    })
   }
 
   /** Resolve a local workspace anchor to its remote filesystem context. */
