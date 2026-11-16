@@ -19,8 +19,8 @@ import rowsCss from './RemoteModelRows.css'
 
 /** Props the composer model menu injects into an options contribution. */
 interface OptionsSlotProps {
-  /** The Session whose menu is open. */
-  readonly sessionId: string
+  /** The Session whose menu is open (also forwarded through `inject`). */
+  readonly sessionId?: string
   /** Whether the menu currently refuses selection changes. */
   readonly locked: boolean
   /** Close the menu and return focus to its trigger. */
@@ -33,6 +33,14 @@ interface OptionsSlotProps {
 export interface RemoteModelRowsInjected {
   readonly api: HostsApi
   readonly t: Translate
+  /**
+   * Session id supplied by the slot's `inject`.
+   *
+   * Forwarded here because the menu's own `sessionId` prop is easy to lose; the
+   * group is useless without it, and a silent `return null` made that failure
+   * look like a missing feature.
+   */
+  readonly sessionId?: string
 }
 
 /** One flat row: a model the remote host can run. */
@@ -75,6 +83,11 @@ export function RemoteModelRows(
   useInjectedStyle(rowsCss)
 
   useEffect(() => {
+    // Without a Session id there is no host to ask about. The menu passes it as
+    // a prop, so a forwarding mistake upstream silently disables the group; the
+    // slot's `inject` also supplies it, and this guard makes the dependency
+    // explicit instead of firing a lookup with `undefined`.
+    if (sessionId === undefined) return
     let active = true
     void (async () => {
       try {
@@ -102,13 +115,14 @@ export function RemoteModelRows(
   }, [api, sessionId, reportFailure, t])
 
   const rows = buildRows(catalog)
-  if (target === null || target === undefined || rows.length === 0) return null
+  const targetSession = sessionId
+  if (targetSession === undefined || target === null || target === undefined || rows.length === 0) return null
 
   const choose = (row: Row): void => {
     if (locked || pending !== null) return
     setPending(row.key)
     void api.setSessionModel({
-      localSessionId: sessionId,
+      localSessionId: targetSession,
       provider: row.provider,
       model: row.model,
       ...row.reasoningEffort === undefined ? {} : { reasoningEffort: row.reasoningEffort },

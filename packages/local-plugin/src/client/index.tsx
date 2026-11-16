@@ -81,10 +81,13 @@ export function apply(ctx: Context): void {
   }, RemoteDevelopmentPanel))
   // Append the remote host's catalog to the composer model menu. The native
   // rows stay untouched; this only adds rows a mirror can actually run.
+  // `inject` receives the Session id for `scope: 'session'` slots; the component
+  // reads it from props, so it must be forwarded here to know which Session's
+  // host to ask about.
   ctx.slots.inject('conversation.input.model.options', () => ctx.slots.register({
     name: 'conversation.input.model.options',
     id: 'dsh-remote',
     locale: NS,
-    inject: () => ({ api, t }),
+    inject: (sessionId: string) => ({ api, t, sessionId }),
   }, RemoteModelRows))
 }

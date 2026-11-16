@@ -65,5 +65,12 @@ describe('client bundle artifact', () => {
     assert.ok(models, 'the remote model group must be registered')
     assert.equal(models.id, 'dsh-remote')
     assert.equal(typeof components.get('conversation.input.model.options'), 'function')
+
+    // `scope: 'session'` means the framework passes the Session id to `inject`.
+    // Losing it made the group silently render nothing, because every lookup ran
+    // with `undefined`; assert the contribution forwards what it receives.
+    const modelInjected = models.inject('session-abc') as { sessionId?: string }
+    assert.equal(modelInjected.sessionId, 'session-abc',
+      'the model-menu contribution must forward the Session id')
   })
 })
