@@ -21,6 +21,7 @@ import { RemoteDevelopmentPanel } from './RemoteDevelopmentPanel.tsx'
 import { RemoteModelRows } from './RemoteModelRows.tsx'
 import { installNativeWorkspaceRouting } from './routing.ts'
 import { installRemoteFiles } from './remote-files.ts'
+import { installModelCatalogMerge } from './model-catalog-merge.ts'
 import { NS, en, zh, type LocaleFace, type Translate } from './locale.ts'
 import { installWorkspaceAddMenu } from './workspace-add.ts'
 import { installWorkspaceDeleteCopy } from './workspace-delete-copy.ts'
@@ -28,7 +29,7 @@ import { installWorkspaceDeleteCopy } from './workspace-delete-copy.ts'
 /** The Settings shell's slot registry and the authenticated connection. */
 export const inject = ['slots', 'uiWorkspace', 'uiSession', 'locale']
 
-/** Register the 远程开发 page. */
+/** Register the 杩滅▼寮€鍙?page. */
 export function apply(ctx: Context): void {
   const api = createHostsApi(ctx)
   const locale = (ctx as unknown as { locale: LocaleFace }).locale
@@ -86,6 +87,14 @@ export function apply(ctx: Context): void {
   // Append the remote host's catalog to the composer model menu. The native
   // rows stay untouched; this only adds rows a mirror can actually run.
   installModelMenuGroup(ctx, api, t)
+  // Reach every selector, including a skin that renders its own menu and never
+  // renders the slot above, by merging into the shared per-Session directory.
+  try {
+    installModelCatalogMerge(ctx, api)
+  } catch (error) {
+    // A merge failure must not take the rest of the plugin down with it.
+    console.warn('dsh-remote-local: model catalog merge unavailable:', error)
+  }
 }
 
 /**
@@ -95,7 +104,7 @@ export function apply(ctx: Context): void {
  * from its own `apply`, not by this one, so a registration is only legal once
  * that declaration exists. `slots.inject` is the documented way to wait for it,
  * but it silently does nothing while the key is undeclared and only re-checks on
- * a declaration change — which is easy to miss when the declaring plugin settles
+ * a declaration change 鈥?which is easy to miss when the declaring plugin settles
  * before this one boots. Retry a bounded number of times and record the outcome,
  * so a group that never appears can be diagnosed instead of guessed at.
  *
