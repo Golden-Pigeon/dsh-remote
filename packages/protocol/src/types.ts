@@ -34,6 +34,7 @@ export type AgentCapability =
   | 'file.bytes'
   | 'file.watch'
   | 'directory.list'
+  | 'llm.catalog'
   | 'terminal'
 
 /** Identity and environment of the remote DSH host serving the agent API. */
@@ -200,6 +201,58 @@ export interface ListSessionsResult {
 export interface WebUrlResult {
   readonly path: string
 }
+
+/** One reasoning-effort choice advertised for a remote model. */
+export interface RemoteReasoningEffort {
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+}
+
+/** Reasoning metadata for one remote model. */
+export interface RemoteModelReasoning {
+  readonly efforts: readonly RemoteReasoningEffort[]
+  readonly defaultEffort?: string
+}
+
+/** One model the remote host can actually run. */
+export interface RemoteModel {
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+  readonly reasoning?: RemoteModelReasoning
+  readonly badge?: string
+}
+
+/** One provider group in the remote model catalog. */
+export interface RemoteModelGroup {
+  readonly id: string
+  readonly name: string
+  readonly models: readonly RemoteModel[]
+}
+
+/** A provider whose catalog could not be read on the remote host. */
+export interface RemoteModelFailure {
+  readonly id: string
+  readonly name: string
+  readonly message: string
+}
+
+/**
+ * The remote host's routable model catalog.
+ *
+ * Mirrors what the remote DSH offers its own model selector. A local mirror
+ * Session uses it to avoid forwarding a selection the host cannot serve.
+ */
+export interface RemoteModelCatalog {
+  readonly default: { readonly provider: string; readonly model: string }
+  readonly routableProviders: readonly string[]
+  readonly groups: readonly RemoteModelGroup[]
+  readonly failures: readonly RemoteModelFailure[]
+}
+
+/** Result of `llm.catalog`. */
+export type ModelCatalogResult = RemoteModelCatalog
 
 /** Successful response envelope. */
 export interface ApiSuccess<T> {

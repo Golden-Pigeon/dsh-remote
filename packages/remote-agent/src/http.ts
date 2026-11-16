@@ -239,6 +239,9 @@ export async function handleAgentRequest(
       case 'directory-list':
         sendJson(res, await listDirectories(url.searchParams.get('path') ?? '~'))
         return
+      case 'model-catalog':
+        sendJson(res, await service.modelCatalog())
+        return
       case 'terminals':
         sendJson(res, { terminals: service.terminals.list() })
         return

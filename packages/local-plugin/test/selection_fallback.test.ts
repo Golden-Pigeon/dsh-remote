@@ -3,6 +3,17 @@ import { describe, it } from 'node:test'
 import { apply } from '../src/index.ts'
 import { harness, parent, parentSnapshot } from './mirror_fixture.ts'
 
+/**
+ * Make the fixture report no usable catalog.
+ *
+ * The prompt path pre-checks a selection against the remote catalog; with no
+ * catalog it must fall back to reacting to the rejection instead. These cases
+ * cover hosts that are older, briefly unreachable, or reporting nothing.
+ */
+function withoutCatalog(test: { disableCatalog(): void }): void {
+  test.disableCatalog()
+}
+
 async function mounted() {
   const test = harness()
   test.setRemote([parent])
@@ -23,6 +34,7 @@ describe('remote model-selection fallback', () => {
     const test = await mounted()
     const unavailable = { provider: 'local-only', model: 'not-on-remote' }
     test.setRejectSelection(unavailable)
+    withoutCatalog(test)
     try {
       test.agent.model.select(unavailable)
       test.agent.send(userMessage('first message'))
@@ -42,6 +54,7 @@ describe('remote model-selection fallback', () => {
     const test = await mounted()
     const unavailable = { provider: 'local-only', model: 'not-on-remote' }
     test.setRejectSelection(unavailable)
+    withoutCatalog(test)
     try {
       test.agent.model.select(unavailable)
       assert.deepEqual(test.agent.model.current(), unavailable)
@@ -64,6 +77,7 @@ describe('remote model-selection fallback', () => {
     const unavailable = { provider: 'local-only', model: 'not-on-remote' }
     test.setRejectSelection(unavailable)
     test.setLegacyRejection(true)
+    withoutCatalog(test)
     try {
       test.agent.model.select(unavailable)
       test.agent.send(userMessage('legacy'))
@@ -77,6 +91,7 @@ describe('remote model-selection fallback', () => {
     const test = await mounted()
     const unavailable = { provider: 'local-only', model: 'not-on-remote' }
     test.setRejectSelection(unavailable)
+    withoutCatalog(test)
     try {
       test.agent.model.select(unavailable)
       test.agent.send(userMessage('first'))
@@ -88,6 +103,43 @@ describe('remote model-selection fallback', () => {
       // host). That intent must win over the recorded rejection.
       test.agent.model.select(unavailable)
       assert.deepEqual(test.agent.model.current(), unavailable)
+    } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
+  })
+
+  it('skips a selection the remote catalog does not advertise, without a failed request', async () => {
+    const test = await mounted()
+    test.setCatalog({
+      default: { provider: 'remote-provider', model: 'remote-model' },
+      routableProviders: ['remote-provider'],
+      groups: [{ id: 'remote-provider', name: 'Remote', models: [{ id: 'remote-model', name: 'Remote model' }] }],
+      failures: [],
+    })
+    try {
+      test.agent.model.select({ provider: 'local-only', model: 'not-on-remote' })
+      test.agent.send(userMessage('catalog precheck'))
+      await new Promise(resolve => setTimeout(resolve, 60))
+
+      // The catalog already proves the model is absent, so nothing is refused.
+      assert.equal(test.rejectedPrompts.length, 0, 'no failed round trip when the catalog knows')
+      assert.equal(test.prompts.length, 1)
+      assert.equal(test.prompts[0]!.selection, undefined)
+    } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
+  })
+
+  it('still forwards an advertised selection untouched', async () => {
+    const test = await mounted()
+    test.setCatalog({
+      default: { provider: 'remote-provider', model: 'remote-model' },
+      routableProviders: ['remote-provider'],
+      groups: [{ id: 'remote-provider', name: 'Remote', models: [{ id: 'remote-model', name: 'Remote model' }] }],
+      failures: [],
+    })
+    try {
+      test.agent.model.select({ provider: 'remote-provider', model: 'remote-model' })
+      test.agent.send(userMessage('known good'))
+      await new Promise(resolve => setTimeout(resolve, 60))
+      assert.equal(test.prompts.length, 1)
+      assert.deepEqual(test.prompts[0]!.selection, { provider: 'remote-provider', model: 'remote-model' })
     } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
   })
 

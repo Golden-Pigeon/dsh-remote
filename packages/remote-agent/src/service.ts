@@ -29,7 +29,12 @@ import {
   type CreateWorkspaceRequest,
   type HostInfo,
   type ListSessionsResult,
+  type ModelCatalogResult,
   type PromptSessionRequest,
+  type RemoteModel,
+  type RemoteModelFailure,
+  type RemoteModelGroup,
+  type RemoteModelReasoning,
   type SelectModelRequest,
   type ListWorkspacesResult,
   type RemoteSessionSummary,
@@ -167,6 +172,7 @@ export class RemoteAgentService {
         'file.bytes',
         'file.watch',
         'directory.list',
+        'llm.catalog',
         'terminal',
       ],
       workspaceCount: this.ctx.workspaceRegistry.list().length,
@@ -629,6 +635,110 @@ export class RemoteAgentService {
     } catch {
       return { path: '/' }
     }
+  }
+
+  /**
+   * Describe the model catalog this host can actually route to.
+   *
+   * A local mirror Session runs on the *local* Host, so its model selector only
+   * knows the local provider list. Reading the remote catalog lets the client
+   * avoid forwarding a selection this host cannot serve, instead of learning
+   * about it from a rejected prompt.
+   */
+  async modelCatalog(): Promise<ModelCatalogResult> {
+    const llm = (this.ctx as unknown as { get(name: string): unknown }).get('llm') as {
+      listProviders(): readonly { id: string; name: string }[]
+      listModels(provider: string): Promise<readonly { id: string; name?: string; description?: string; badge?: string }[]>
+      resolveModelInfo?(provider: string, model: string): Promise<{
+        reasoning?: { efforts: readonly { id: string; name: string; description?: string }[]; defaultEffort?: string }
+      }>
+    } | undefined
+    const fallback = (): ModelCatalogResult => ({
+      default: { provider: 'deepseek-official', model: 'deepseek-flash' },
+      routableProviders: [],
+      groups: [],
+      failures: [],
+    })
+    try {
+      if (llm === undefined) {
+        this.ctx.logger.warn('dsh-remote-agent: llm registry unavailable; reporting an empty model catalog')
+        return fallback()
+      }
+      const providers = llm.listProviders()
+      const groups: RemoteModelGroup[] = []
+      const failures: RemoteModelFailure[] = []
+      for (const provider of providers) {
+        try {
+          const models = await llm.listModels(provider.id)
+          const entries: RemoteModel[] = []
+          for (const model of models) {
+            let reasoning: RemoteModelReasoning | undefined
+            try {
+              const resolved = await llm.resolveModelInfo?.(provider.id, model.id)
+              const source = resolved?.reasoning
+              if (source !== undefined) {
+                reasoning = {
+                  efforts: source.efforts.map(effort => ({
+                    id: effort.id,
+                    name: effort.name,
+                    ...effort.description === undefined ? {} : { description: effort.description },
+                  })),
+                  ...source.defaultEffort === undefined ? {} : { defaultEffort: source.defaultEffort },
+                }
+              }
+            } catch {
+              // Reasoning metadata is optional; a failure must not drop the model.
+            }
+            entries.push({
+              id: model.id,
+              name: model.name ?? model.id,
+              ...model.description === undefined ? {} : { description: model.description },
+              ...reasoning === undefined ? {} : { reasoning },
+              ...model.badge === undefined ? {} : { badge: model.badge },
+            })
+          }
+          if (entries.length > 0) groups.push({ id: provider.id, name: provider.name, models: entries })
+        } catch (error) {
+          failures.push({
+            id: provider.id,
+            name: provider.name,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      if (groups.length === 0) return { ...fallback(), failures }
+      const defaultSelection = this.#defaultSelectionForCatalog(groups)
+      return {
+        default: defaultSelection,
+        routableProviders: groups.map(group => group.id),
+        groups,
+        failures,
+      }
+    } catch (error) {
+      this.ctx.logger.warn('dsh-remote-agent: model catalog failed: %s', String(error))
+      return fallback()
+    }
+  }
+
+  /** Deployment default when known, otherwise the first routable model. */
+  #defaultSelectionForCatalog(
+    groups: readonly RemoteModelGroup[],
+  ): { provider: string; model: string } {
+    try {
+      const defaults = this.ctx.get('agentDefaultModel') as
+        | { currentSelection?: () => { provider?: unknown; model?: unknown } }
+        | undefined
+      const current = defaults?.currentSelection?.()
+      if (typeof current?.provider === 'string' && typeof current.model === 'string') {
+        return { provider: current.provider, model: current.model }
+      }
+    } catch {
+      // Fall through to the first routable model.
+    }
+    const first = groups[0]
+    const model = first?.models[0]
+    if (first !== undefined && model !== undefined) return { provider: first.id, model: model.id }
+    return { provider: 'deepseek-official', model: 'deepseek-flash' }
   }
 
   /** Publish the final state and wait for it to reach disk. */

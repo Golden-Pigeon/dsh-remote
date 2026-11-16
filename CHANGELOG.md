@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add an "Open remote Web UI" action to each connected host in Settings, so the
+  remote DSH Web UI (for installing remote plugins and similar) opens in a
+  browser tab already signed in through the SSH tunnel.
+- Serve the remote host's model catalog over `llm.catalog` and show it in
+  Settings. A mirrored Session now checks a model selection against that
+  catalog before sending, so a selection the remote cannot route to no longer
+  costs a rejected round trip.
 - Deliver a prompt whose model selection the remote host cannot serve, instead
   of failing silently. The remote agent now reports the rejection as
   `session/model-unavailable` rather than a generic `internal` error, and the

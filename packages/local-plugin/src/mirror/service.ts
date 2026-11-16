@@ -898,8 +898,33 @@ export class RemoteMirrorService {
     }))?.localSessionId
   }
 
-  #detached(runtime: MirrorRuntime): boolean {
-    return this.#disposed || this.#runtimes.get(runtime.record.localSessionId) !== runtime
+  /**
+   * Whether the remote catalog proves this selection is not routable.
+   *
+   * Returns false when the catalog cannot be read, so an unreachable or older
+   * host keeps the previous behaviour instead of silently dropping every
+   * selection.
+   */
+  async #selectionUnavailable(runtime: MirrorRuntime, selection: MirrorModelSelection): Promise<boolean> {
+    const hosts = this.#hosts as unknown as {
+      modelCatalog?: (hostId: string) => Promise<{
+        groups: readonly { id: string; models: readonly { id: string }[] }[]
+      }>
+    }
+    if (hosts.modelCatalog === undefined) return false
+    try {
+      const catalog = await hosts.modelCatalog(runtime.record.hostId)
+      // An empty catalog means "not reported", not "nothing is routable".
+      if (catalog.groups.length === 0) return false
+      const group = catalog.groups.find(entry => entry.id === selection.provider)
+      if (group === undefined) return true
+      return !group.models.some(model => model.id === selection.model)
+    } catch {
+      return false
+    }
+  }
+
+  #detached(runtime: MirrorRuntime): boolean {    return this.#disposed || this.#runtimes.get(runtime.record.localSessionId) !== runtime
       || this.#anchorRemoved(runtime.record.hostId, runtime.record.anchor)
   }
 
@@ -937,9 +962,23 @@ export class RemoteMirrorService {
     try {
       const { text, content } = await this.#promptContent(message)
       if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
-      const forwarded = selection !== undefined && !selectionRejected(runtime, selection)
+      let candidate = selection !== undefined && !selectionRejected(runtime, selection)
         ? selection
         : undefined
+      // Skip a selection the remote catalog does not offer, so the common case
+      // costs no failed round trip at all. The rejection fallback below stays as
+      // the backstop for a catalog that is stale or unavailable.
+      if (candidate !== undefined && await this.#selectionUnavailable(runtime, candidate)) {
+        rejectSelection(runtime, candidate)
+        this.#ctx.logger.warn(
+          'dsh-remote-local: remote %s does not offer %s/%s; sending with the remote default model',
+          runtime.record.remoteSessionId,
+          candidate.provider,
+          candidate.model,
+        )
+        candidate = undefined
+      }
+      const forwarded = candidate
       try {
         await this.#hosts.promptSession(
           runtime.record.hostId,

@@ -107,6 +107,16 @@ export function harness() {
   let rejectSelection: { provider: string; model: string } | undefined
   /** Whether the fixture reports the rejection the way a pre-fix agent did. */
   let legacyRejection = false
+  /** Catalog the fixture advertises; undefined serves a single-provider default. */
+  let catalog: {
+    default: { provider: string; model: string }
+    routableProviders: readonly string[]
+    groups: readonly { id: string; name: string; models: readonly { id: string; name: string }[] }[]
+    failures: readonly { id: string; name: string; message: string }[]
+  } | undefined
+  let catalogCalls = 0
+  /** When true the fixture reports no routable models, like an unreachable host. */
+  let catalogDisabled = false
   let blankRemoteSeq = 0
   let failPrompt = false
   let failEnter = false
@@ -202,6 +212,24 @@ export function harness() {
       return { sessionId: id, ...preset === undefined ? {} : { agentPreset: preset } }
     },
     async archiveSession(_host: string, sessionId: string) { remoteArchived.push(sessionId) },
+    async modelCatalog(_host: string) {
+      catalogCalls += 1
+      if (catalogDisabled) return { default: { provider: 'remote-provider', model: 'remote-model' }, routableProviders: [], groups: [], failures: [] }
+      if (catalog !== undefined) return catalog
+      // Default catalog: one provider, model-agnostic so tests that select any
+      // model id are still forwarded. Suites that care about rejection set an
+      // explicit catalog or disable it.
+      return {
+        default: { provider: 'deepseek-official', model: 'deepseek-flash' },
+        routableProviders: ['deepseek-official'],
+        groups: [{
+          id: 'deepseek-official',
+          name: 'DeepSeek',
+          models: ['deepseek-flash', 'deepseek-reasoner', 'remote-model'].map(id => ({ id, name: id })),
+        }],
+        failures: [],
+      }
+    },
     async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
       if (failPrompt) throw new Error('remote prompt failed')
       if (selection !== undefined && rejectSelection !== undefined
@@ -242,6 +270,10 @@ export function harness() {
     setFailPrompt(value: boolean) { failPrompt = value },
     setRejectSelection(value: { provider: string; model: string } | undefined) { rejectSelection = value },
     setLegacyRejection(value: boolean) { legacyRejection = value },
+    setCatalog(value: typeof catalog) { catalog = value; catalogCalls = 0 },
+    /** Report an empty catalog so the prompt path cannot pre-check. */
+    disableCatalog() { catalogDisabled = true; catalog = undefined },
+    get catalogCalls() { return catalogCalls },
     rejectedPrompts,
     setFailEnter(value: boolean) { failEnter = value },
     setHostPhase(value: 'connected' | 'disconnected') { host.phase = value },

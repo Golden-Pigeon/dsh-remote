@@ -42,6 +42,7 @@ import type {
   HostInfo,
   ListSessionsResult,
   ListWorkspacesResult,
+  ModelCatalogResult,
   RemoteSessionEvent,
   RemoteSessionSummary,
   PromptSessionRequest,
@@ -79,6 +80,7 @@ import {
   isRemoteWorkspace,
   isSessionSnapshot,
   isSessionStreamFrame,
+  isModelCatalogResult,
   isWebUrlResult,
   isRemoteDirectoryListing,
   isRemoteFileBytes,
@@ -287,6 +289,11 @@ export class RemoteAgentClient {
   /** Fetch a browser-authenticated path for the remote Web UI. */
   webUrl(): Promise<WebUrlResult> {
     return this.#request(AGENT_ROUTES.webUrl, isWebUrlResult)
+  }
+
+  /** Read the model catalog this remote host can actually route to. */
+  modelCatalog(): Promise<ModelCatalogResult> {
+    return this.#request(AGENT_ROUTES.modelCatalog, isModelCatalogResult)
   }
 
   /**

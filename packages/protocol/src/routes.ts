@@ -26,6 +26,7 @@ export const AGENT_ROUTES = {
   fileWatch: `${AGENT_API_PREFIX}/files/watch`,
   directories: `${AGENT_API_PREFIX}/directories`,
   terminals: `${AGENT_API_PREFIX}/terminals`,
+  modelCatalog: `${AGENT_API_PREFIX}/llm/catalog`,
 } as const
 
 /** One decoded agent route. */
@@ -52,6 +53,7 @@ export type AgentRoute =
   | { readonly kind: 'file-bytes' }
   | { readonly kind: 'file-watch' }
   | { readonly kind: 'directory-list' }
+  | { readonly kind: 'model-catalog' }
   | { readonly kind: 'terminals' }
   | { readonly kind: 'terminal-attach'; readonly terminalId: string }
   | { readonly kind: 'terminal-input'; readonly terminalId: string }
@@ -179,6 +181,8 @@ export function matchAgentRoute(pathname: string): AgentRoute | undefined {
       return { kind: 'file-watch' }
     case AGENT_ROUTES.directories:
       return { kind: 'directory-list' }
+    case AGENT_ROUTES.modelCatalog:
+      return { kind: 'model-catalog' }
     case AGENT_ROUTES.terminals:
       return { kind: 'terminals' }
   }

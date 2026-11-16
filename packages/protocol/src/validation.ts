@@ -18,6 +18,7 @@ import type {
   HostInfo,
   ListSessionsResult,
   ListWorkspacesResult,
+  ModelCatalogResult,
   RemoteApprovalFrame,
   RemoteApprovalRequest,
   RemoteFailure,
@@ -201,6 +202,25 @@ export function isAcceptedResult(value: unknown): value is AcceptedResult {
 /** Guard for `web.url`. */
 export function isWebUrlResult(value: unknown): value is WebUrlResult {
   return isRecord(value) && isString(value.path) && value.path.startsWith('/')
+}
+
+/**
+ * Guard for one remote model catalog.
+ *
+ * Only the fields a mirror Session needs are checked: the provider groups it
+ * can pick from and the fallback. A malformed catalog is rejected wholesale so
+ * a version skew cannot silently produce an empty picker.
+ */
+export function isModelCatalogResult(value: unknown): value is ModelCatalogResult {
+  if (!isRecord(value)) return false
+  if (!Array.isArray(value.groups) || !Array.isArray(value.failures)) return false
+  if (!Array.isArray(value.routableProviders)) return false
+  const fallback = value.default
+  if (!isRecord(fallback) || !isString(fallback.provider) || !isString(fallback.model)) return false
+  return value.groups.every((group) => {
+    if (!isRecord(group) || !isString(group.id) || !Array.isArray(group.models)) return false
+    return group.models.every(model => isRecord(model) && isString(model.id))
+  })
 }
 
 /** Guard for one SSE stream frame. */
