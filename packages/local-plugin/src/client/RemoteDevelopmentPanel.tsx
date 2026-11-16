@@ -254,7 +254,13 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       return
     }
     setExpandedHost(host.id)
-    await Promise.all([loadWorkspaces(host.id), loadCatalog(host.id)])
+    // Only a connected host has an agent to ask. Loading here otherwise fails
+    // with "host is not connected" and shows a banner for something the user
+    // just clicked, which reads as an error they caused.
+    if (host.phase !== 'connected') return
+    // Opening a host is an automatic load, not a requested refresh: share any
+    // in-flight request and stay quiet if it fails.
+    await Promise.all([loadWorkspaces(host.id, false), loadCatalog(host.id)])
   }
 
   /**
@@ -297,7 +303,10 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         setWorkspaces(current => ({ ...current, [hostId]: [...result.workspaces] }))
       } catch (failure) {
         setWorkspaces(current => ({ ...current, [hostId]: [] }))
-        setError(localizedError(t, failure, t('settings.readWorkspacesFailed')))
+        // An automatic load failing is not something the user did. Raising a
+        // page-level banner for it reads as an error they caused, and the host
+        // row already shows its own state. Only a requested refresh reports.
+        if (refresh) setError(localizedError(t, failure, t('settings.readWorkspacesFailed')))
       }
     })()
     loadingWorkspaces.current.set(hostId, request)

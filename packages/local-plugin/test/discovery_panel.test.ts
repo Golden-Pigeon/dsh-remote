@@ -329,6 +329,71 @@ describe('SSH config discovery in the Settings panel', () => {
       'a transitional phase must still be spelled out')
   })
 
+  it('expands a disconnected host without asking for its workspaces', async () => {
+    let workspaceCalls = 0
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-idle', label: 'Idle', sshTarget: 'idle',
+          sshPort: null, remoteAgentPort: null, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'idle', localPort: null, localUrl: null,
+          hostInfo: null, workspaceCount: null, error: null, errorCode: null,
+          connectedAt: null, detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: false, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+      workspaces: async () => { workspaceCalls += 1; return { workspaces: [] } },
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    // Opening the row of a host that is not connected must not trigger a
+    // request that can only fail with "host is not connected".
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+
+    assert.equal(workspaceCalls, 0, 'no workspace request for a disconnected host')
+    const json = JSON.stringify(renderer.toJSON())
+    assert.equal(json.includes('dshr-banner-error'), false,
+      'expanding a disconnected host must not raise a page-level error')
+  })
+
+  it('does not raise a banner when an automatic workspace load fails', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-fail', label: 'Failing', sshTarget: 'failing',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+      // The host reports connected but the agent call fails anyway.
+      workspaces: async () => { throw new Error('host is not connected') },
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+    await settle(renderer, () => true, 10)
+
+    // A background load the user did not request stays quiet; the row still
+    // shows its own state.
+    assert.equal(JSON.stringify(renderer.toJSON()).includes('dshr-banner-error'), false,
+      'a failed automatic load must not surface as a page banner')
+  })
+
   it('offers no separate expand button on the row', async () => {
     const { renderer } = await render({
       state: async () => ({
