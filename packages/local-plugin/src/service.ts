@@ -52,6 +52,7 @@ import {
 import { RemoteProvisioner, agentVersionIsOlder, bundledAgentVersion } from './remote/provisioner.ts'
 import { uiForErrorCode } from './messages.ts'
 import { scanSshConfig } from './ssh/config.ts'
+import { mergeAliasGroups } from './ssh/alias-groups.ts'
 import { discoverAgent } from './ssh/probe.ts'
 import { restartRemoteAgent } from './remote/restart.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
@@ -767,18 +768,27 @@ export class RemoteHostsService {
       })
       const registered = new Map<string, string>()
       for (const record of this.#records.values()) registered.set(record.sshTarget, record.id)
-      const hosts: DiscoveredSshHost[] = scan.hosts.map(host => ({
-        alias: host.alias,
-        canonical: host.canonical,
-        // A config that never states HostName leaves the alias itself as the
-        // address, which is exactly what ssh does with a bare name.
-        hostname: host.hostname ?? host.alias,
-        user: host.user,
-        port: host.port,
-        source: host.source,
-        proxyJump: host.proxyJump,
-        registeredHostId: registered.get(host.canonical) ?? null,
-      }))
+      const hosts: DiscoveredSshHost[] = mergeAliasGroups(scan.hosts).map(group => {
+        const host = group.value
+        return {
+          alias: group.alias,
+          aliases: group.aliases,
+          canonical: group.alias,
+          // A config that never states HostName leaves the alias itself as the
+          // address, which is exactly what ssh does with a bare name.
+          hostname: host.hostname ?? group.alias,
+          user: host.user ?? null,
+          port: host.port ?? null,
+          source: host.source,
+          proxyJump: host.proxyJump,
+          // Any alias in the group counts: registering `cloud64` and then
+          // seeing `devcloud_64g_weyoungli` offered again would create a
+          // duplicate the registry rejects.
+          registeredHostId: [group.alias, ...group.aliases]
+            .map(name => registered.get(name))
+            .find(id => id !== undefined) ?? null,
+        }
+      })
       const value: SshDiscoveryResult = {
         scannedAt: scan.scannedAt,
         configFiles: scan.configFiles,

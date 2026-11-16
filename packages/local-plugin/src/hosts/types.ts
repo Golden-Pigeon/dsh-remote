@@ -148,8 +148,18 @@ export interface AddHostInput {
 
 /** One host found in the local SSH client configuration. */
 export interface DiscoveredSshHost {
-  /** The `Host` alias, which is what `host/add` registers. */
+  /**
+   * Primary `Host` alias, which is what `host/add` registers.
+   *
+   * One `Host` line can declare several aliases for the same machine
+   * (`Host devcloud_64g_weyoungli cloud64`). They are merged into one entry so
+   * the list does not repeat a machine; the longest alias is the primary one
+   * because it is the descriptive one.
+   */
   readonly alias: string
+  /** The other aliases declared alongside {@link alias}, shortest first. */
+  readonly aliases: readonly string[]
+  /** Equals {@link alias}; kept so `host/add` keeps receiving a single target. */
   readonly canonical: string
   /** Effective host name or address, resolved through `ssh -G`. */
   readonly hostname: string
@@ -160,7 +170,11 @@ export interface DiscoveredSshHost {
   readonly source: string
   /** Whether reaching it requires a jump host or proxy command. */
   readonly proxyJump: boolean
-  /** Registry entry for the same destination, or null when unregistered. */
+  /**
+   * Registry entry for any alias in this group, or null when none is
+   * registered. Matching only the primary alias would offer to add a machine
+   * the user already added under a sibling alias.
+   */
   readonly registeredHostId: string | null
 }
 

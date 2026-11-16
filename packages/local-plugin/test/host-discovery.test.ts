@@ -80,7 +80,11 @@ describe('SSH config discovery through the service', () => {
     })
     try {
       const result = await service.discover()
-      assert.deepEqual(result.hosts.map(host => host.alias), ['container_os4_host1_bob', 'native1', 'plain'])
+      // `native1` is a second name for the machine on the previous line, so the
+      // two become one entry with a primary alias and a tag — not two rows.
+      assert.deepEqual(result.hosts.map(host => host.alias), ['container_os4_host1_bob', 'plain'])
+      assert.deepEqual(result.hosts[0]?.aliases, ['native1'])
+      assert.deepEqual(result.hosts[1]?.aliases, [], 'a lone alias carries no tags')
       assert.deepEqual(result.skipped.map(entry => entry.alias), ['*.corp.example.com'])
       // Discovery is a read: every host stays idle and no tunnel exists.
       assert.ok(service.list().every(host => host.phase === 'idle'))
@@ -100,6 +104,26 @@ describe('SSH config discovery through the service', () => {
       const byAlias = new Map(result.hosts.map(host => [host.alias, host]))
       assert.equal(byAlias.get('native1')?.registeredHostId, 'native1-51c053f7')
       assert.equal(byAlias.get('native2')?.registeredHostId, null)
+    } finally {
+      await service.dispose()
+    }
+  })
+
+  it('recognises a machine registered under a sibling alias', async () => {
+    // The user added `native1`, but this config declares the same machine with a
+    // longer primary alias. Matching only the primary would offer to add it
+    // again, and the registry would reject the duplicate.
+    const { service } = await fixture({
+      configText: 'Host docker_os4_native1_user00 native1\n  HostName 21.91.16.78\n  User user00\n  Port 36000\n',
+      records: [record({ sshTarget: 'native1' })],
+    })
+    try {
+      const result = await service.discover(true)
+      assert.equal(result.hosts.length, 1)
+      assert.equal(result.hosts[0]?.alias, 'docker_os4_native1_user00')
+      assert.deepEqual(result.hosts[0]?.aliases, ['native1'])
+      assert.equal(result.hosts[0]?.registeredHostId, 'native1-51c053f7',
+        'a sibling alias in the registry must mark the whole group as added')
     } finally {
       await service.dispose()
     }
