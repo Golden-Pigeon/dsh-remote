@@ -113,7 +113,12 @@ export function HostActionMenu({ label, actions }: HostActionMenuProps) {
         aria-expanded={open}
         aria-label={label}
         title={label}
-        onClick={() => { setOpen(current => !current) }}
+        onClick={event => {
+          // The trigger sits inside a row whose click expands the host; without
+          // this the menu would open and the row would toggle at once.
+          event.stopPropagation()
+          setOpen(current => !current)
+        }}
       >
         ⋯
       </button>

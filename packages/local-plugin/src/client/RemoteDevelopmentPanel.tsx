@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ModelCatalogResult, RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
+import type { ModelCatalogResult, RemoteWorkspace } from '@dsh-remote/protocol'
 import type { DiscoveredSshHost, HostView, SshDiscoveryResult } from '../hosts/types.ts'
 import type { HostDetail } from '../messages.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
@@ -49,8 +49,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const loadingWorkspaces = useRef(new Map<string, Promise<void>>())
   const loadingCatalogs = useRef(new Map<string, Promise<void>>())
-  const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
-  const [sessions, setSessions] = useState<Record<string, RemoteSessionSummary[] | undefined>>({})
   const [catalogs, setCatalogs] = useState<Record<string, ModelCatalogResult | undefined>>({})
   const [workspaceDraft, setWorkspaceDraft] = useState('')
   const [discovery, setDiscovery] = useState<SshDiscoveryResult | null>(null)
@@ -255,21 +253,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     }
   }
 
-  async function toggleWorkspace(hostId: string, workspaceId: string): Promise<void> {
-    const key = `${hostId}:${workspaceId}`
-    const next = !(openWorkspace[key] ?? false)
-    setOpenWorkspace(current => ({ ...current, [key]: next }))
-    if (!next || sessions[key] !== undefined) return
-    setSessions(current => ({ ...current, [key]: undefined }))
-    try {
-      const result = await api.sessions(hostId, workspaceId)
-      setSessions(current => ({ ...current, [key]: [...result.sessions] }))
-    } catch (failure) {
-      setSessions(current => ({ ...current, [key]: [] }))
-      setError(localizedError(t, failure, t('settings.readSessionsFailed')))
-    }
-  }
-
   async function addWorkspace(host: HostView): Promise<void> {
     const path = workspaceDraft.trim()
     if (path === '') {
@@ -291,29 +274,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   }
 
 
-
-  async function newSession(host: HostView, workspaceId: string): Promise<void> {
-    setBusy(`create:${host.id}:${workspaceId}`)
-    setError(null)
-    try {
-      const created = await api.startBlankSession(host.id, { workspaceId })
-      const key = `${host.id}:${workspaceId}`
-      setOpenWorkspace(current => ({ ...current, [key]: true }))
-      api.openSession(created.localSessionId)
-      setNotice(t('settings.sessionOpening'))
-      window.setTimeout(() => {
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-      }, 80)
-      const result = await api.sessions(host.id, workspaceId)
-      setSessions(current => ({ ...current, [key]: [...result.sessions] }))
-      const refreshed = await api.workspaces(host.id)
-      setWorkspaces(current => ({ ...current, [host.id]: [...refreshed.workspaces] }))
-    } catch (failure) {
-      setError(localizedError(t, failure, t('settings.createSessionFailed')))
-    } finally {
-      setBusy(null)
-    }
-  }
 
 
 
@@ -653,75 +613,42 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                       <div className="dshr-workspaces">
                         <div className="dshr-workspace-add">
                           <input
-                      value={workspaceDraft}
-                      onChange={event => setWorkspaceDraft(event.target.value)}
-                      placeholder={t('settings.workspacePathPlaceholder')}
-                      spellCheck={false}
-                      onKeyDown={event => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          void addWorkspace(host)
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="dshr-button dshr-button-small"
-                      disabled={busy !== null}
-                      onClick={() => { void addWorkspace(host) }}
-                    >
-                      {busy === `workspace:${host.id}` ? t('settings.addingWorkspace') : t('settings.addWorkspace')}
-                    </button>
-                  </div>
-                  {workspaces[host.id] === undefined
-                    ? <p className="dshr-empty">{t('settings.readingWorkspaces')}</p>
-                    : workspaces[host.id]?.length === 0
-                      ? <p className="dshr-empty">{t('settings.noWorkspaces')}</p>
-                      : workspaces[host.id]?.map(workspace => {
-                        const workspaceKey = `${host.id}:${workspace.workspaceId}`
-                        const open = openWorkspace[workspaceKey] ?? false
-                        return (
-                          <div key={workspace.workspaceId} className="dshr-workspace">
-                            <div className="dshr-workspace-row">
-                              <button
-                                type="button"
-                                className="dshr-workspace-head"
-                                aria-expanded={open}
-                                onClick={() => { void toggleWorkspace(host.id, workspace.workspaceId) }}
-                              >
-                                <span className="dshr-caret">{open ? '▾' : '▸'}</span>
-                                <span>{workspace.title}</span>
-                                <code>{workspace.path}</code>
-                                <span className="dshr-count">{workspace.sessionIds.length} {t('settings.sessionsUnit')}</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="dshr-button dshr-button-small"
-                                disabled={busy !== null}
-                                onClick={() => { void newSession(host, workspace.workspaceId) }}
-                              >
-                                {busy === `create:${host.id}:${workspace.workspaceId}` ? t('settings.creating') : t('settings.newSession')}
-                              </button>
-                            </div>
-                            {open && (
-                              <div className="dshr-sessions">
-                                {sessions[workspaceKey] === undefined
-                                  ? <p className="dshr-empty">{t('settings.readingSessions')}</p>
-                                  : sessions[workspaceKey]?.length === 0
-                                    ? <p className="dshr-empty">{t('settings.noSessions')}</p>
-                                    : sessions[workspaceKey]?.map(session => (
-                                      <div key={session.sessionId} className="dshr-session">
-                                        <span className={session.live ? 'dshr-live' : 'dshr-idle'} />
-                                        <code>{session.sessionId}</code>
-                                        <span>{session.cwd ?? '—'}</span>
-                                        <span className="dshr-count">{session.eventCount ?? '—'} {t('settings.eventsUnit')}</span>
-                                      </div>
-                                    ))}
-                              </div>
+                            value={workspaceDraft}
+                            onChange={event => setWorkspaceDraft(event.target.value)}
+                            placeholder={t('settings.workspacePathPlaceholder')}
+                            spellCheck={false}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault()
+                                void addWorkspace(host)
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="dshr-button dshr-button-small"
+                            disabled={busy !== null}
+                            onClick={() => { void addWorkspace(host) }}
+                          >
+                            {busy === `workspace:${host.id}` ? t('settings.addingWorkspace') : t('settings.addWorkspace')}
+                          </button>
+                        </div>
+                        {workspaces[host.id] === undefined
+                          ? <p className="dshr-empty">{t('settings.readingWorkspaces')}</p>
+                          : workspaces[host.id]?.length === 0
+                            ? <p className="dshr-empty">{t('settings.noWorkspaces')}</p>
+                            : (
+                              <ul className="dshr-workspace-list">
+                                {workspaces[host.id]?.map(workspace => (
+                                  <li key={workspace.workspaceId} className="dshr-workspace-item">
+                                    <code>{workspace.path}</code>
+                                    <span className="dshr-count">
+                                      {workspace.sessionIds.length} {t('settings.sessionsUnit')}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                          </div>
-                        )
-                      })}
                       </div>
                     )}
                   </div>

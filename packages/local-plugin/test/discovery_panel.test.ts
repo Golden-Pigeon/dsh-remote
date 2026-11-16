@@ -266,6 +266,83 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.deepEqual(headings, ['settings.hosts', 'settings.discovered.title'])
   })
 
+  it('does not expand the host when the menu trigger is clicked', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-menu', label: 'Hosted', sshTarget: 'hosted',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    const trigger = renderer.root.findAllByType('button')
+      .find(entry => entry.props['aria-haspopup'] === 'menu')
+    assert.ok(trigger, 'the overflow trigger must exist')
+
+    // The trigger lives inside the row, whose click expands the host. Clicking
+    // it must open the menu only, or the row and the menu both react at once.
+    let propagated = false
+    await act(async () => {
+      trigger!.props.onClick({
+        stopPropagation() { propagated = true },
+        preventDefault() {},
+      })
+    })
+    assert.equal(propagated, true, 'the trigger must stop the click from reaching the row')
+    assert.equal(JSON.stringify(renderer.toJSON()).includes('dshr-host-detail'), false,
+      'the host must stay collapsed when only the menu was opened')
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('dshr-menu'),
+      'the menu itself must open')
+  })
+
+  it('lists workspaces without a session tree or new-session button', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-ws', label: 'With ws', sshTarget: 'with-ws',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 1, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+      workspaces: async () => ({
+        workspaces: [{
+          workspaceId: 'ws-1', title: 'trunk',
+          path: '/data/home/user00/trunk', sessionIds: ['a', 'b'],
+        }],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    // Expand the host so the workspace summary renders.
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+    await settle(renderer, text => text.includes('dshr-workspace-list'))
+
+    const json = JSON.stringify(renderer.toJSON())
+    assert.ok(json.includes('dshr-workspace-list'), 'workspaces are listed')
+    // Settings summarises workspaces; sessions are opened in the conversation view.
+    assert.equal(json.includes('dshr-sessions'), false, 'no session tree here')
+    assert.equal(json.includes('settings.newSession'), false, 'no new-session button here')
+  })
+
   it('offers no global refresh button and shows no scan time', async () => {
     const { renderer } = await render({})
     const text = JSON.stringify(renderer.toJSON())

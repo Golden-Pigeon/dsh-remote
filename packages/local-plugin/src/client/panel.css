@@ -53,12 +53,6 @@
 
 .dshr-subtitle code,
 .dshr-host-title code,
-.dshr-workspace-head code,
-.dshr-session code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.92em;
-}
-
 .dshr-card {
   display: flex;
   flex-direction: column;
@@ -249,44 +243,6 @@
 
 .dshr-caret-btn { font-size: 10px; }
 
-.dshr-workspaces {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 4px;
-  border-top: 1px dashed var(--dshr-border);
-}
-
-.dshr-workspace {
-  border-radius: 8px;
-  background: var(--dshr-softer);
-}
-
-.dshr-workspace-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  flex-wrap: wrap;
-}
-
-.dshr-workspace-head:hover {
-  background: var(--dshr-soft);
-}
-
-.dshr-workspace-head code {
-  opacity: 0.6;
-}
-
 .dshr-caret {
   width: 12px;
   opacity: 0.6;
@@ -297,47 +253,6 @@
   font-size: 11px;
   opacity: 0.55;
   white-space: nowrap;
-}
-
-.dshr-sessions {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 10px 8px 30px;
-}
-
-.dshr-session {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 3px 0;
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-
-.dshr-session > span:not(.dshr-live):not(.dshr-idle) {
-  opacity: 0.62;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dshr-live,
-.dshr-idle {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  transform: translateY(-1px);
-}
-
-.dshr-live {
-  background: var(--dshr-success);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dshr-success) 20%, transparent);
-}
-
-.dshr-idle {
-  background: color-mix(in srgb, currentColor 28%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -352,44 +267,10 @@
   color: var(--dshr-warning);
 }
 
-.dshr-workspace-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-right: 6px;
-}
-
-.dshr-workspace-row .dshr-workspace-head {
-  flex: 1;
-}
-
 .dshr-button-small {
   flex: none;
   padding: 3px 8px;
   font-size: 11px;
-}
-
-.dshr-workspace-add {
-  display: flex;
-  gap: 6px;
-  padding: 4px 0 6px;
-}
-
-.dshr-workspace-add input {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid var(--dshr-border);
-  border-radius: 7px;
-  background: var(--dshr-soft);
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  outline: none;
-}
-
-.dshr-workspace-add input:focus {
-  border-color: var(--dshr-accent);
 }
 
 .dshr-models {
@@ -671,3 +552,70 @@
   background: color-mix(in srgb, var(--dshr-danger) 7%, transparent);
   font-size: 12px;
 }
+
+/* Read-only workspace summary: the panel lists them, the conversation view is
+   where sessions get opened. */
+.dshr-workspace-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dshr-workspace-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--dshr-radius);
+  font-size: 12px;
+}
+
+.dshr-workspace-item:hover { background: var(--dshr-soft); }
+
+.dshr-workspace-item code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dshr-label-secondary);
+}
+
+/* Container for the workspace summary inside an expanded host. */
+.dshr-workspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--dshr-border);
+}
+
+.dshr-workspace-add {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.dshr-workspace-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dshr-border);
+  border-radius: var(--dshr-radius);
+  background: transparent;
+  color: var(--dshr-label);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.dshr-workspace-add input:focus {
+  border-color: var(--dshr-accent);
+}
+
+/* The connected agent is older than this build. */
+.dshr-agent-outdated { color: var(--dshr-warning); }
