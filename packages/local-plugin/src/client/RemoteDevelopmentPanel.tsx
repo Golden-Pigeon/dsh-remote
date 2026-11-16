@@ -121,6 +121,16 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
    * The URL points at the SSH tunnel's local port and already carries the
    * browser token, so the tab lands signed in on the remote host.
    */
+  /**
+   * Open the remote DSH Web UI in a browser tab.
+   *
+   * The URL points at the SSH tunnel's local port and already carries the
+   * browser token, so the tab lands signed in on the remote host.
+   *
+   * `window.open` returns null when the `noopener` feature is requested (the
+   * handle is intentionally severed), so a null return says nothing about
+   * whether the tab opened. Only a thrown error means opening failed.
+   */
   async function openWebUi(host: HostView): Promise<void> {
     const key = `web:${host.id}`
     setBusy(key)
@@ -128,13 +138,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     setNotice(null)
     try {
       const { url } = await api.webUrl(host.id)
-      // Open synchronously inside the click-derived task so the browser keeps
-      // treating it as a user gesture rather than a blocked popup.
-      const opened = window.open(url, '_blank', 'noopener,noreferrer')
-      if (opened === null) {
-        await navigator.clipboard.writeText(url).catch(() => undefined)
-        setNotice(t('settings.openWebUiBlocked'))
-      }
+      window.open(url, '_blank', 'noopener,noreferrer')
     } catch (failure) {
       setError(localizedError(t, failure, t('settings.openWebUiFailed')))
     } finally {
