@@ -55,16 +55,26 @@ describe('remote model catalog merge', () => {
   })
 
   it('keeps one group per remote provider, carrying every model', () => {
-    const groups = remoteGroups(catalog())
+    const groups = remoteGroups(catalog(), 'native1')
     assert.equal(groups.length, 1)
     const group = groups[0]!
     assert.equal(group.id, 'remote:deepseek-official')
-    assert.equal(group.name, 'DeepSeek', 'the remote display name is preserved')
     assert.deepEqual(group.models.map(model => model.id), ['deepseek-flash', 'deepseek-v4-pro'])
   })
 
+  it('qualifies the group name with its host', () => {
+    // A local provider and a remote one are commonly named after the same
+    // vendor. The selector renders `name` verbatim, so the host has to be part
+    // of it or the two sections are indistinguishable.
+    const group = remoteGroups(catalog(), 'native1')[0]!
+    assert.equal(group.name, 'DeepSeek (native1)', 'the host must qualify the group name')
+
+    const other = remoteGroups(catalog(), 'native3')[0]!
+    assert.notEqual(group.name, other.name, 'two hosts must not produce the same label')
+  })
+
   it('preserves reasoning metadata for the selector', () => {
-    const group = remoteGroups(catalog())[0]!
+    const group = remoteGroups(catalog(), 'native1')[0]!
     const flash = group.models.find(model => model.id === 'deepseek-flash')!
     assert.equal(flash.reasoning?.defaultEffort, 'high')
     assert.deepEqual(flash.reasoning?.efforts.map(effort => effort.id), ['low', 'high'])
@@ -79,7 +89,7 @@ describe('remote model catalog merge', () => {
       routableProviders: [],
       groups: [],
       failures: [],
-    }), [])
+    }, 'native1'), [])
   })
 
   it('skips a remote group that advertises no models', () => {
@@ -88,7 +98,7 @@ describe('remote model catalog merge', () => {
       routableProviders: [],
       groups: [{ id: 'empty-provider', name: 'Empty', models: [] }],
       failures: [],
-    })
+    }, 'native1')
     assert.deepEqual(groups, [], 'an empty provider group would render as a blank section')
   })
 })

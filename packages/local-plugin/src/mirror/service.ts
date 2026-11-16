@@ -1521,8 +1521,16 @@ export class RemoteMirrorService {
   mirrorFor(localSessionId: string): { hostId: string; remoteSessionId: string } | undefined {
     const record = Object.values(this.#state.sessions)
       .find(entry => entry.localSessionId === localSessionId)
-    if (record === undefined) return undefined
-    return { hostId: record.hostId, remoteSessionId: record.remoteSessionId }
+    if (record !== undefined) {
+      return { hostId: record.hostId, remoteSessionId: record.remoteSessionId }
+    }
+    // A brand-new mirrored conversation exists only as a pending blank until the
+    // first prompt materializes the remote Session. Its host is already known, so
+    // the composer can offer that host's models before anything has been sent —
+    // which is exactly when a model is picked.
+    const pending = this.#pendingBlanks.get(localSessionId)
+    if (pending === undefined) return undefined
+    return { hostId: pending.hostId, remoteSessionId: pending.remoteSessionId ?? '' }
   }
 
   /**
@@ -1535,7 +1543,21 @@ export class RemoteMirrorService {
    */
   setSelection(localSessionId: string, selection: MirrorModelSelection): void {
     const runtime = this.#runtimes.get(localSessionId)
-    if (runtime === undefined) throw new Error('this Session is not a remote mirror')
+    if (runtime === undefined) {
+      // A brand-new mirrored conversation has no runtime yet: the remote Session
+      // only comes into existence once the first prompt materializes it. Record
+      // the choice on the blank Session instead, in the same event the lazy agent
+      // reads, so it survives that materialization and the remote runs the model
+      // the user picked while looking at its catalog.
+      const pending = this.#pendingBlanks.get(localSessionId)
+      if (pending === undefined) throw new Error('this Session is not a remote mirror')
+      pending.session.append('model/selection', {
+        provider: selection.provider,
+        model: selection.model,
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as ReasoningEffort },
+      })
+      return
+    }
     if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
     this.forgetRejectedSelection(runtime, selection)
     runtime.session.append('model/selection', {

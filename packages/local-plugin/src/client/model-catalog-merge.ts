@@ -98,17 +98,23 @@ export function remoteProviderId(providerId: string): string {
  * `provider/model` pair the remote resolves itself, so the provider id it
  * receives has to be the id its own catalog reports. The local face of that id
  * is namespaced instead, and {@link decodeRemoteProvider} recovers the pair.
+ *
+ * The group name carries the host, because the selector renders `name` verbatim
+ * and a remote provider is usually named after the same vendor as a local one —
+ * two unlabelled "DeepSeek" sections give no way to tell which one bills the
+ * remote host or which one a mirrored Session can actually run.
  * @param catalog - the catalog the remote reported.
+ * @param hostLabel - display name of the mirrored host, used to qualify names.
  * @returns groups ready to append to a directory's `groups`.
  */
-export function remoteGroups(catalog: ModelCatalogResult): ProviderGroup[] {
+export function remoteGroups(catalog: ModelCatalogResult, hostLabel: string): ProviderGroup[] {
   const groups: ProviderGroup[] = []
   for (const group of catalog.groups) {
     const models = group.models.map(toSelectorModel)
     if (models.length === 0) continue
     groups.push({
       id: remoteProviderId(group.id),
-      name: group.name,
+      name: `${group.name} (${hostLabel})`,
       models,
     })
   }
@@ -202,7 +208,7 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         } catch {
           return
         }
-        const groups = remoteGroups(catalog)
+        const groups = remoteGroups(catalog, target.hostLabel)
         const signature = JSON.stringify(groups)
         const remembered = remoteCurrent.get(directory) ?? null
         const signatures = `${signature}|${JSON.stringify(remembered)}`

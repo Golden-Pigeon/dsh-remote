@@ -1131,3 +1131,89 @@ describe('native draft promotion', () => {
     }
   })
 })
+
+describe('blank mirror catalog access', () => {
+  /** Project a blank Session's recorded model choice the way the Host does. */
+  function projection(test: ReturnType<typeof harness>): void {
+    test.ctx.provide('sessionProjections', {
+      stateOf: (session: { snapshotEvents(): Array<{ type: string; data: unknown }> }, key: string) => {
+        if (key !== 'modelSelection') return undefined
+        for (const event of [...session.snapshotEvents()].reverse()) {
+          if (event.type !== 'model/selection') continue
+          const data = event.data as { provider?: unknown; model?: unknown }
+          if (typeof data.provider === 'string' && typeof data.model === 'string') {
+            return { lastUsed: { provider: data.provider, model: data.model } }
+          }
+        }
+        return undefined
+      },
+    } as never)
+    test.ctx.provide('agentPresets', {
+      defaultId: 'standard',
+      select: (agent: { session: { append(type: string, data: unknown): void } }, id: string) => {
+        agent.session.append('agent-preset/selected', { agentPreset: id })
+        return id
+      },
+    } as never)
+  }
+
+  it('resolves the host for a blank Session before anything was sent', async () => {
+    const test = harness()
+    try {
+      await test.service.start()
+      projection(test)
+      const localWorkspaceId = test.service.localWorkspaceIds()[0]
+      assert.ok(localWorkspaceId)
+      const blank = await test.service.startBlankSession('host-test', { localWorkspaceId, agentPreset: 'standard' })
+
+      // The composer asks for the host to build its model list. A blank Session
+      // has no remote id yet, but its host is already known, so the catalog must
+      // be reachable before the first prompt materializes the remote Session.
+      const target = test.service.mirrorFor(blank.localSessionId)
+      assert.ok(target !== undefined, 'a blank mirror must resolve its host')
+      assert.equal(target.hostId, 'host-test')
+      assert.equal(test.service.mirrorFor('session-not-a-mirror'), undefined)
+    } finally {
+      await test.service.dispose()
+      await test.ctx.fiber.dispose()
+    }
+  })
+
+  it('records a selection made on a blank Session and keeps it through promotion', async () => {
+    const test = harness()
+    try {
+      await test.service.start()
+      projection(test)
+      const localWorkspaceId = test.service.localWorkspaceIds()[0]
+      assert.ok(localWorkspaceId)
+      const blank = await test.service.startBlankSession('host-test', { localWorkspaceId, agentPreset: 'standard' })
+
+      // Picking from the remote catalog on the empty composer must not be lost.
+      // `deepseek-reasoner` is one the fixture's remote catalog actually offers:
+      // a pick the remote cannot route is deliberately dropped before sending.
+      test.service.setSelection(blank.localSessionId, { provider: 'deepseek-official', model: 'deepseek-reasoner' })
+      const lazy = test.liveAgents.get(blank.localSessionId) as unknown as {
+        session: unknown
+      }
+      assert.ok(lazy !== undefined)
+      const recorded = test.service.selectionForBlank(lazy.session as never)
+      assert.equal(recorded?.model, 'deepseek-reasoner', 'the pick must be readable before sending')
+      assert.equal(recorded?.provider, 'deepseek-official')
+
+      // Promotion is what creates the remote Session; the pick has to travel with it.
+      const sendable = lazy as unknown as {
+        send(message: unknown, target?: unknown, wakeup?: boolean): void
+      }
+      sendable.send({ id: 'message-1', role: 'user', content: [{ type: 'text', text: 'hi' }] }, undefined, true)
+      for (let attempt = 0; attempt < 100 && test.prompts.length === 0; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      assert.equal(test.prompts.length, 1)
+      assert.equal(test.prompts[0]?.selection?.model, 'deepseek-reasoner')
+      assert.equal(test.prompts[0]?.selection?.provider, 'deepseek-official')
+    } finally {
+      await test.service.dispose()
+      await test.ctx.fiber.dispose()
+    }
+  })
+})
