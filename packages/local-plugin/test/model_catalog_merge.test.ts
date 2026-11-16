@@ -6,6 +6,8 @@ import {
   isRemoteProvider,
   remoteGroups,
   remoteProviderId,
+  withRemoteGroups,
+  type DirectoryState,
 } from '../src/client/model-catalog-merge.ts'
 import type { ModelCatalogResult } from '@dsh-remote/protocol'
 
@@ -88,5 +90,66 @@ describe('remote model catalog merge', () => {
       failures: [],
     })
     assert.deepEqual(groups, [], 'an empty provider group would render as a blank section')
+  })
+})
+
+describe('directory snapshot merge', () => {
+  /** A snapshot shaped like the one ModelDirectory publishes. */
+  function state(overrides: Partial<DirectoryState> = {}): DirectoryState {
+    return {
+      current: null,
+      groups: [{ id: 'local-provider', name: 'Local', models: [{ id: 'local-model', name: 'Local' }] }],
+      failures: [],
+      error: null,
+      status: 'ready',
+      ...overrides,
+    }
+  }
+
+  it('appends remote groups after the local ones', () => {
+    const merged = withRemoteGroups(state(), [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] },
+    ])
+    assert.deepEqual(merged.groups.map(group => group.id), [
+      'local-provider',
+      'remote:deepseek-official',
+    ])
+    assert.equal(merged.status, 'ready', 'unrelated fields must survive')
+  })
+
+  it('replaces the previous remote contribution instead of duplicating it', () => {
+    const first = withRemoteGroups(state(), [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] },
+    ])
+    const second = withRemoteGroups(first, [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-pro', name: 'Pro' }] },
+    ])
+    const remote = second.groups.filter(group => group.id.startsWith('remote:'))
+    assert.equal(remote.length, 1, 'a refresh must not stack duplicate remote providers')
+    assert.deepEqual(remote[0]?.models.map(model => model.id), ['deepseek-v4-pro'])
+  })
+
+  it('drops the remote contribution when the catalog reports nothing', () => {
+    const withRemote = withRemoteGroups(state(), [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] },
+    ])
+    const cleared = withRemoteGroups(withRemote, [])
+    assert.deepEqual(cleared.groups.map(group => group.id), ['local-provider'])
+  })
+
+  it('keeps a recorded remote pick while the rows are re-applied', () => {
+    // The selector matches `current` against the offered rows to build its label,
+    // and a Host refresh rebuilds that snapshot, so the recorded pick has to
+    // survive re-application or the trigger falls back to "select a model".
+    const picked = state({
+      current: { provider: 'remote:deepseek-official', model: 'deepseek-v4-pro' },
+    })
+    const reapplied = withRemoteGroups(picked, [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-pro', name: 'Pro' }] },
+    ])
+    assert.deepEqual(reapplied.current, {
+      provider: 'remote:deepseek-official',
+      model: 'deepseek-v4-pro',
+    })
   })
 })

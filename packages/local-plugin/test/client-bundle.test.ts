@@ -14,7 +14,7 @@ interface Registration {
 }
 
 describe('client bundle artifact', () => {
-  it('registers the package, a Settings section, and the model-menu group', async () => {
+  it('registers the package and a Settings section', async () => {
     const loaded = await loadClientBundle()
     assert.equal(loaded.id, 'dsh-remote-local-plugin')
     const exports = loaded.factory((specifier) => {
@@ -59,18 +59,5 @@ describe('client bundle artifact', () => {
 
     const injected = section.inject() as { api: { state: () => Promise<unknown> } }
     assert.equal(typeof injected.api.state, 'function')
-
-    // The composer model menu gets a second contribution for remote models.
-    const models = registrations.find(entry => entry.name === 'conversation.input.model.options')
-    assert.ok(models, 'the remote model group must be registered')
-    assert.equal(models.id, 'dsh-remote')
-    assert.equal(typeof components.get('conversation.input.model.options'), 'function')
-
-    // `scope: 'session'` means the framework passes the Session id to `inject`.
-    // Losing it made the group silently render nothing, because every lookup ran
-    // with `undefined`; assert the contribution forwards what it receives.
-    const modelInjected = models.inject('session-abc') as { sessionId?: string }
-    assert.equal(modelInjected.sessionId, 'session-abc',
-      'the model-menu contribution must forward the Session id')
   })
 })

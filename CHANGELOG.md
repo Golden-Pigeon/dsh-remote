@@ -17,10 +17,14 @@
   profile-wide `credentialProxy` setting now only seeds hosts that never chose,
   so existing hosts keep their behaviour.
 
-- Offer the remote host's models inside the composer model menu for mirrored
-  Sessions. The native rows are untouched; a host group is appended so a model
-  the remote alone serves (`deepseek-v4-pro`, for example) can be selected
-  directly instead of falling back to the remote default.
+- Offer the remote host's models in the model menu for mirrored Sessions, by
+  merging them into the shared per-Session model directory. Every selector
+  reads that directory, so the rows appear for the native composer seat and for
+  a skin that draws its own menu; a model the remote alone serves
+  (`deepseek-v4-pro`, for example) can be chosen directly instead of falling
+  back to the remote default. Picking one installs the selection on the mirror
+  over the existing bridge, and a Session that is not a mirror keeps exactly the
+  Host's own list.
 
 - Add an "Open remote Web UI" action to each connected host in Settings, so the
   remote DSH Web UI (for installing remote plugins and similar) opens in a

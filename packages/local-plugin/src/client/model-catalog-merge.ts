@@ -48,8 +48,16 @@ interface SelectorModel {
   }
 }
 
-/** The slice of a directory store this module reads and writes. */
-interface DirectoryState {
+/**
+ * The slice of a directory store this module reads and writes.
+ *
+ * `current` is what the selector matches a row against to decide its label, so a
+ * pick has to be recorded here as well as forwarded to the remote. Leaving it
+ * alone makes the trigger fall back to "select a model" even though the remote
+ * accepted the choice.
+ */
+export interface DirectoryState {
+  readonly current: { readonly provider: string; readonly model: string; readonly reasoningEffort?: string } | null
   readonly groups: readonly ProviderGroup[]
   readonly failures: readonly { readonly id: string; readonly name: string; readonly message: string }[]
   readonly error: string | null
@@ -143,7 +151,7 @@ function toSelectorModel(model: RemoteModel): SelectorModel {
  * @param groups - remote groups to contribute.
  * @returns the extended snapshot.
  */
-function withRemoteGroups(state: DirectoryState, groups: readonly ProviderGroup[]): DirectoryState {
+export function withRemoteGroups(state: DirectoryState, groups: readonly ProviderGroup[]): DirectoryState {
   const local = state.groups.filter(group => !isRemoteProvider(group.id))
   if (groups.length === 0) return { ...state, groups: local }
   return { ...state, groups: [...local, ...groups] }
@@ -168,6 +176,15 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
     const applied = new WeakMap<object, string>()
     /** Host that contributed a Session's rows, which a pick must be sent to. */
     const hostOf = new WeakMap<object, string>()
+    /**
+     * The remote pick made for a directory.
+     *
+     * A Host refresh rebuilds `current` from the local projection, which knows
+     * nothing about a remote provider, so the pick would be dropped from the
+     * trigger. Re-applying it here keeps the label stable across refreshes; the
+     * remote is the authority for what actually runs, and this only mirrors it.
+     */
+    const remoteCurrent = new WeakMap<object, DirectoryState['current']>()
 
     const merge = (sessionId: string, directory: Directory): void => {
       const id = String(sessionId)
@@ -187,15 +204,20 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         }
         const groups = remoteGroups(catalog)
         const signature = JSON.stringify(groups)
-        if (applied.get(directory) === signature) return
-        applied.set(directory, signature)
+        const remembered = remoteCurrent.get(directory) ?? null
+        const signatures = `${signature}|${JSON.stringify(remembered)}`
+        if (applied.get(directory) === signatures) return
+        applied.set(directory, signatures)
         // Remember which host this Session's rows came from, so a pick can be
         // installed through the right mirror.
         hostOf.set(directory, target.hostId)
         const current = directory.store.getSnapshot()
         const next = withRemoteGroups(current, groups)
-        if (next.groups === current.groups) return
-        directory.store.set(next)
+        const withChoice = remembered === null || remembered === next.current
+          ? next
+          : { ...next, current: remembered }
+        if (withChoice.groups === current.groups && withChoice.current === current.current) return
+        directory.store.set(withChoice)
       })()
     }
 
@@ -226,6 +248,18 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
             model: selection.model,
             ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
           })
+          // Record the pick in the same shape a local selection takes. The
+          // selector derives its trigger label by matching `current` against the
+          // offered rows, so forwarding the choice without recording it leaves the
+          // trigger reading "select a model" after a successful pick.
+          const decided: NonNullable<DirectoryState['current']> = {
+            provider: selection.provider,
+            model: selection.model,
+            ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+          }
+          remoteCurrent.set(directory, decided)
+          const snapshot = directory.store.getSnapshot()
+          directory.store.set({ ...snapshot, current: decided })
           // Report success so the selector commits its own pending state; the
           // remote records the choice when the next prompt is sent.
           return { ok: true }
