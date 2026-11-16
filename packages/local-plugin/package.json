@@ -68,7 +68,8 @@
     "@goldenpigeon/dsh-remote-agent": "workspace:*",
     "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.2",
     "@deepseek-ai/cordis": "4.1.0",
-    "@deepseek-ai/dsh-client-ui-session": "0.2.2-rc.2"
+    "@deepseek-ai/dsh-client-ui-session": "0.2.2-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-rc.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.5 <4.2.0",

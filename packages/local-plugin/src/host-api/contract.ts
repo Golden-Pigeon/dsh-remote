@@ -54,6 +54,7 @@ export type HostApiEndpoint =
   | 'host/session/mirror'
   | 'host/session/model'
   | 'host/model-source'
+  | 'host/model-diagnostics'
   | 'host/files/list'
   | 'host/files/read'
   | 'host/files/stat'
@@ -194,6 +195,12 @@ export interface HostApiPayloads {
     reasoningEffort?: string
   }
   'host/model-source': { hostId: string; source: ModelSource }
+  /**
+   * Client-side record of what happened when the composer model group tried to
+   * register. Written to a file so the host owner can read it back without a
+   * browser console, which is not reachable when troubleshooting remotely.
+   */
+  'host/model-diagnostics': { event: string }
   'host/files/list': { sessionId: string; path: string }
   'host/files/read': { sessionId: string; path: string; offset?: number; limit?: number }
   'host/files/stat': { sessionId: string; path: string }
@@ -230,6 +237,7 @@ export interface HostApiValues {
   'host/session/mirror': MirrorTarget
   'host/session/model': AcceptedResult
   'host/model-source': HostView
+  'host/model-diagnostics': { recorded: true }
   'host/files/list': MirrorFileResult
   'host/files/read': MirrorFileResult
   'host/files/stat': MirrorFileResult

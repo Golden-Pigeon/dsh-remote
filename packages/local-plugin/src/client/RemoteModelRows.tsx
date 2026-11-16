@@ -83,10 +83,8 @@ export function RemoteModelRows(
   useInjectedStyle(rowsCss)
 
   useEffect(() => {
-    // Without a Session id there is no host to ask about. The menu passes it as
-    // a prop, so a forwarding mistake upstream silently disables the group; the
-    // slot's `inject` also supplies it, and this guard makes the dependency
-    // explicit instead of firing a lookup with `undefined`.
+    // Without a Session id there is no host to ask about, so there is nothing to
+    // look up; the menu supplies it for this slot's scope.
     if (sessionId === undefined) return
     let active = true
     void (async () => {
@@ -104,7 +102,7 @@ export function RemoteModelRows(
         // otherwise indistinguishable from a host with no models configured.
         setTarget(null)
         const detail = error instanceof Error ? error.message : String(error)
-        console.warn('dsh-remote-local: could not load the remote model catalog:', detail)
+        console.warn('[dshr-models] lookup failed:', detail)
         if (!reported.current) {
           reported.current = true
           reportFailure(`${t('model.loadFailed')}: ${detail}`)
@@ -116,7 +114,22 @@ export function RemoteModelRows(
 
   const rows = buildRows(catalog)
   const targetSession = sessionId
-  if (targetSession === undefined || target === null || target === undefined || rows.length === 0) return null
+  if (targetSession === undefined || target === null || target === undefined || rows.length === 0) {
+    // A mirror whose catalog came back empty would otherwise render nothing at
+    // all, which reads exactly like "the feature is missing". Show the reason
+    // so the failure is visible in the menu instead of only in DevTools.
+    if (target !== null && target !== undefined && rows.length === 0) {
+      return (
+        <div className="dshr-model-group">
+          <p className="dshr-model-heading">{t('model.groupTitlePrefix')}{target.hostLabel}</p>
+          <p className="dshr-model-empty" style={{ opacity: 0.62, fontSize: 11, padding: '2px 6px 4px' }}>
+            {t('model.emptyCatalog')}
+          </p>
+        </div>
+      )
+    }
+    return null
+  }
 
   const choose = (row: Row): void => {
     if (locked || pending !== null) return

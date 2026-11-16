@@ -262,6 +262,11 @@ async function dispatch(
       return service.webUrl(requireStringField(payload, 'hostId'))
     case 'host/model-catalog':
       return service.modelCatalog(requireStringField(payload, 'hostId'))
+    case 'host/model-diagnostics': {
+      const body = requireRecord(payload)
+      await mirrors?.recordModelDiagnostic(requireStringField(body, 'event'))
+      return { recorded: true }
+    }
     case 'host/model-source': {
       const body = requireRecord(payload)
       const source = requireStringField(body, 'source')

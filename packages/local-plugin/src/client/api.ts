@@ -66,6 +66,8 @@ export interface HostsApi {
   readonly modelCatalog: (hostId: string) => Promise<ModelCatalogResult>
   readonly sessionMirror: (localSessionId: string) => Promise<MirrorTarget>
   readonly setModelSource: (hostId: string, source: 'proxy' | 'direct') => Promise<HostView>
+  /** Record one client-side diagnostic line where the operator can read it. */
+  readonly reportModelSlot: (event: string) => Promise<{ recorded: true }>
   readonly setSessionModel: (input: {
     localSessionId: string
     provider: string
@@ -112,6 +114,7 @@ export function createHostsApi(ctx: Context): HostsApi {
     modelCatalog: hostId => call('host/model-catalog', { hostId }),
     sessionMirror: localSessionId => call('host/session/mirror', { localSessionId }),
     setModelSource: (hostId, source) => call('host/model-source', { hostId, source }),
+    reportModelSlot: event => call('host/model-diagnostics', { event }),
     setSessionModel: input => call('host/session/model', input),
     snapshot: (hostId, sessionId, limit) => call('host/session', {
       hostId,

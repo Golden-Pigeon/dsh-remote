@@ -14,7 +14,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { realpathSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile, appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { createScope, scopeTarget, type Scope } from '@deepseek-ai/dsh-scope'
@@ -502,6 +502,23 @@ export class RemoteMirrorService {
     this.#ctx = ctx
     this.#hosts = hosts
     this.#config = config
+  }
+
+  /**
+   * Append one client-side diagnostic line.
+   *
+   * The composer model group can only fail inside the browser, where its
+   * console is out of reach, so it reports here and the line lands in the
+   * remote state directory for the operator to read.
+   * @param event - short machine-readable description of what happened.
+   */
+  async recordModelDiagnostic(event: string): Promise<void> {
+    const line = `${new Date().toISOString()} ${event}\n`
+    try {
+      await appendFile(join(this.#config.stateDir, 'model-menu.log'), line, 'utf8')
+    } catch (error) {
+      this.#ctx.logger.warn('dsh-remote-local: could not write the model-menu diagnostic: %s', String(error))
+    }
   }
 
   /** Load mappings and begin periodic discovery. */
