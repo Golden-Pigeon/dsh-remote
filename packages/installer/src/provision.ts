@@ -9,11 +9,10 @@
  * @module @dsh-remote/installer/provision
  */
 
-import { execFile } from 'node:child_process'
 import { access } from 'node:fs/promises'
 import { renderBootstrapScript } from './bootstrap.ts'
 import type { StartMode } from './options.ts'
-import { parseTarget, runRemoteScript } from './ssh.ts'
+import { parseTarget, runRemoteScript, uploadFile } from './ssh.ts'
 
 /** Inputs for one remote provisioning run. */
 export interface ProvisionRemoteOptions {
@@ -24,8 +23,17 @@ export interface ProvisionRemoteOptions {
   /** Exact npm spec used before the bundled tarball fallback. */
   readonly agentPackageSpec?: string
   readonly sshBinary: string
+  /** scp binary; pairs with {@link sshBinary}. */
+  readonly scpBinary: string
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
   readonly profile: string
+  /**
+   * Remote `dsh web` port; `0` lets the OS pick one.
+   *
+   * The local plugin deliberately leaves this at `0` and depends on the
+   * published state file instead, so two hosts never collide on a fixed port.
+   */
+  readonly port?: number
   readonly installDir: string
   readonly dshHome: string
   readonly dshVersion: string
@@ -63,11 +71,15 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
   const timeoutMs = Math.max(options.timeoutMs ?? 600_000, 600_000)
 
   options.onProgress?.('dsh-remote: uploading agent package')
-  await uploadFile(options.agentTarballPath, remoteTarball, target, options)
+  await uploadFile(options.agentTarballPath, remoteTarball, target, {
+    binary: options.scpBinary,
+    strictHostKeyChecking: options.strictHostKeyChecking,
+    verbose: options.verbose ?? false,
+  })
   options.onProgress?.('dsh-remote: agent package uploaded')
   const script = renderBootstrapScript({
     profile: options.profile,
-    port: 0,
+    port: options.port ?? 0,
     installDir: options.installDir,
     dshHome: options.dshHome,
     dshVersion: options.dshVersion,
@@ -115,27 +127,4 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     onOutput: emitLines,
   })
   return { stdout: result.stdout, stderr: result.stderr, remoteTarball }
-}
-
-function uploadFile(
-  local: string,
-  remote: string,
-  target: ReturnType<typeof parseTarget>,
-  options: ProvisionRemoteOptions,
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const args = [
-      '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,
-      ...target.port === null ? [] : ['-P', String(target.port)],
-      local,
-      `${target.destination}:${remote}`,
-    ]
-    const child = execFile('scp', args, { timeout: 120_000 }, error => {
-      if (error === null) resolve()
-      else reject(error)
-    })
-    if (options.verbose === true) {
-      child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk))
-    }
-  })
 }

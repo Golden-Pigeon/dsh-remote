@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { fromOptions, renderBootstrapScript, renderSystemdUnit, shellPath } from '../src/bootstrap.ts'
-import { HELP, parseArgs, UsageError } from '../src/options.ts'
-import { parseTarget, sshArgs, type SshOptions } from '../src/ssh.ts'
+import { HELP, parseArgs, resolveScpBinary, UsageError } from '../src/options.ts'
+import { parseTarget, scpArgs, sshArgs, type ScpOptions, type SshOptions } from '../src/ssh.ts'
 
 const baseArgs = ['plan', '--target', 'example-host'] as const
 
@@ -67,6 +67,48 @@ describe('SSH target parsing', () => {
     assert.ok(args.includes('BatchMode=yes'))
     assert.ok(args.includes('StrictHostKeyChecking=accept-new'))
     assert.deepEqual(args.slice(-2), ['-p', '2222'])
+  })
+
+  it('builds the scp argv with an upper-case port flag', () => {
+    const options: ScpOptions = {
+      binary: 'scp',
+      strictHostKeyChecking: 'accept-new',
+      verbose: false,
+    }
+    const args = scpArgs(parseTarget('alice@example-host:2222'), options, '/tmp/a.tgz', '/tmp/b.tgz')
+    // scp uses -P while ssh uses -p; mixing them silently uploads to the wrong port.
+    assert.ok(args.includes('-P'))
+    assert.ok(!args.includes('-p'))
+    assert.deepEqual(args.slice(-2), ['/tmp/a.tgz', 'alice@example-host:/tmp/b.tgz'])
+  })
+})
+
+describe('scp binary pairing', () => {
+  it('keeps the bare scp on PATH for a bare ssh', () => {
+    assert.equal(resolveScpBinary('ssh', undefined), 'scp')
+    assert.equal(resolveScpBinary('ssh', ''), 'scp')
+    assert.equal(resolveScpBinary('ssh', '   '), 'scp')
+  })
+
+  it('pairs a custom ssh path with its sibling scp', () => {
+    const binary = resolveScpBinary('/opt/openssh/bin/ssh', undefined)
+    assert.match(binary, /scp$/u)
+    assert.ok(binary.includes('openssh'), `expected the sibling directory, got ${binary}`)
+  })
+
+  it('lets an explicit scp win', () => {
+    assert.equal(resolveScpBinary('/opt/openssh/bin/ssh', '/usr/bin/scp'), '/usr/bin/scp')
+    assert.equal(resolveScpBinary('ssh', '  /usr/bin/scp  '), '/usr/bin/scp')
+  })
+
+  it('exposes the pairing through the parsed options', () => {
+    assert.equal(parseArgs([...baseArgs]).scpBinary, 'scp')
+    assert.equal(parseArgs([...baseArgs, '--scp', '/usr/bin/scp']).scpBinary, '/usr/bin/scp')
+    assert.equal(parseArgs([...baseArgs, '--ssh', '/opt/bin/ssh']).scpBinary, resolveScpBinary('/opt/bin/ssh', undefined))
+  })
+
+  it('documents the flag in help', () => {
+    assert.match(HELP, /--scp/u)
   })
 })
 
@@ -214,5 +256,35 @@ describe('bootstrap rendering', () => {
     assert.match(script, /PROFILE='remote'/)
     assert.match(script, /PORT='9090'/)
     assert.match(script, /DSH_HOME='\/srv\/dsh-home'/)
+  })
+
+  it('names the planned tarball after the real agent version', async () => {
+    const { commandPlan } = await import('../src/commands.ts')
+    const { agentVersion } = await import('../src/commands.ts')
+    const version = agentVersion()
+    const script = commandPlan(parseArgs(baseArgs))
+    if (version === undefined) {
+      // An unreadable manifest must drop the version rather than invent one.
+      assert.match(script, /AGENT_TARBALL='\/tmp\/dsh-remote-agent\.tgz'/u)
+      return
+    }
+    assert.notEqual(version, '0.2.0')
+    assert.ok(script.includes(`AGENT_TARBALL='/tmp/dsh-remote-agent-${version}.tgz'`), script.slice(0, 600))
+  })
+
+  it('passes a requested port through the programmatic provisioner', () => {
+    // `port` defaults to 0 so the OS picks one, but an explicit value must win.
+    assert.match(renderBootstrapScript({
+      profile: 'web',
+      port: 7731,
+      installDir: '/opt/dsh',
+      dshHome: '/srv/dsh',
+      dshVersion: '0.2.1-rc.2',
+      pnpmVersion: '11.21.0',
+      nodeVersion: '22.19.0',
+      autoInstallNode: true,
+      start: 'nohup',
+      agentTarball: '/tmp/a.tgz',
+    }), /PORT='7731'/)
   })
 })

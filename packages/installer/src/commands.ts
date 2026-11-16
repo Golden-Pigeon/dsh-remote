@@ -5,6 +5,7 @@
  */
 
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,6 +23,7 @@ import {
   quoteRemote,
   runRemote,
   runRemoteScript,
+  uploadFile,
   type ParsedTarget,
   type SshOptions,
 } from './ssh.ts'
@@ -34,6 +36,29 @@ const REMOTE_TMP_DIR = '/tmp'
 /** Package root of dsh-remote-agent, resolved from source or bundled CLI. */
 function agentPackageDir(): string {
   return fileURLToPath(new URL('../../remote-agent', import.meta.url))
+}
+
+/** Version of the bundled dsh-remote-agent, or `undefined` when unreadable. */
+export function agentVersion(): string | undefined {
+  try {
+    const manifest = JSON.parse(readFileSync(join(agentPackageDir(), 'package.json'), 'utf8')) as { version?: unknown }
+    return typeof manifest.version === 'string' && manifest.version !== '' ? manifest.version : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Remote tarball name for `plan` output.
+ *
+ * Only a preview: `install` names the real upload after the running process.
+ * When the version cannot be read the name drops it rather than inventing one.
+ */
+function plannedTarballName(): string {
+  const version = agentVersion()
+  return version === undefined
+    ? `${REMOTE_TMP_DIR}/dsh-remote-agent.tgz`
+    : `${REMOTE_TMP_DIR}/dsh-remote-agent-${version}.tgz`
 }
 
 function sshOptions(options: InstallerOptions): SshOptions {
@@ -64,7 +89,7 @@ export async function packAgent(): Promise<string> {
 /** Print the bootstrap script without touching the host. */
 export function commandPlan(options: InstallerOptions): string {
   const target = requireTarget(options)
-  return fromOptions(options, `${REMOTE_TMP_DIR}/dsh-remote-agent-0.2.0.tgz`)
+  return fromOptions(options, plannedTarballName())
 }
 
 /** Pack and print the tarball path. */
@@ -80,7 +105,11 @@ export async function commandInstall(options: InstallerOptions): Promise<string>
   const tarball = options.agentTarball ?? await packAgent()
   const remoteTarball = `${REMOTE_TMP_DIR}/dsh-remote-agent-${Date.now()}.tgz`
   if (options.verbose) process.stderr.write(`uploading ${tarball} -> ${target.canonical}:${remoteTarball}\n`)
-  await uploadFile(tarball, remoteTarball, target, options)
+  await uploadFile(tarball, remoteTarball, target, {
+    binary: options.scpBinary,
+    strictHostKeyChecking: options.strictHostKeyChecking,
+    verbose: options.verbose,
+  })
   const script = fromOptions(options, remoteTarball)
   if (options.verbose) process.stderr.write(script)
   const result = await runRemoteScript(target, script, {
@@ -190,22 +219,4 @@ function displayStatePath(options: InstallerOptions): string {
 
 function quoteLocal(value: string): string {
   return `'${value.replace(/'/gu, `'\\''`)}'`
-}
-
-export function uploadFile(local: string, remote: string, target: ParsedTarget, options: InstallerOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const args = [
-      '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,
-      ...target.port === null ? [] : ['-P', String(target.port)],
-      local,
-      `${target.destination}:${remote}`,
-    ]
-    const child = execFile('scp', args, { timeout: 120_000 }, error => {
-      if (error === null) resolve()
-      else reject(error)
-    })
-    if (options.verbose) {
-      child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk))
-    }
-  })
 }

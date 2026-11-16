@@ -9,6 +9,7 @@
  */
 
 import { spawn } from 'node:child_process'
+import { installerErrorForExit } from './errors.ts'
 
 /** One validated destination. */
 export interface ParsedTarget {
@@ -95,6 +96,15 @@ export interface SshOptions {
   readonly onOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void
 }
 
+/** Options shared by every upload. */
+export interface ScpOptions {
+  /** scp binary; defaults to the sibling of {@link SshOptions.binary}. */
+  readonly binary: string
+  readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
+  readonly verbose: boolean
+  readonly timeoutMs?: number
+}
+
 /** Result of a remote command. */
 export interface RemoteResult {
   readonly stdout: string
@@ -112,6 +122,54 @@ export function sshArgs(target: ParsedTarget, options: SshOptions): string[] {
     '-o', 'ServerAliveCountMax=3',
     ...target.port === null ? [] : ['-p', String(target.port)],
   ]
+}
+
+/** Build the common scp argv. */
+export function scpArgs(target: ParsedTarget, options: ScpOptions, local: string, remote: string): string[] {
+  return [
+    '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,
+    ...target.port === null ? [] : ['-P', String(target.port)],
+    local,
+    `${target.destination}:${remote}`,
+  ]
+}
+
+/** Upload one local file to a remote path. */
+export function uploadFile(
+  local: string,
+  remote: string,
+  target: ParsedTarget,
+  options: ScpOptions,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(options.binary, scpArgs(target, options, local, remote), {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    })
+    const stderr: Buffer[] = []
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr.push(chunk)
+      if (options.verbose) process.stderr.write(chunk)
+    })
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      reject(new Error(`scp timed out after ${String(options.timeoutMs ?? 120_000)}ms`))
+    }, options.timeoutMs ?? 120_000)
+    timer.unref?.()
+    child.once('error', error => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.once('exit', code => {
+      clearTimeout(timer)
+      if (code === 0) {
+        resolve()
+        return
+      }
+      const detail = Buffer.concat(stderr).toString('utf8').trim().split(/\r?\n/u).pop() ?? ''
+      reject(new Error(`scp failed with ${String(code ?? 1)}${detail === '' ? '' : `: ${detail}`}`))
+    })
+  })
 }
 
 /** Run one command through the remote shell and collect bounded output. */
@@ -238,6 +296,13 @@ export function runRemoteScript(
         .slice(-2)
         .join(' | ')
         .slice(0, 500)
+      // A deliberate `exit 21`-`exit 26` carries a known cause; anything else
+      // keeps the raw code so an unexpected shell failure is still visible.
+      const known = installerErrorForExit(result.code, tail === '' ? undefined : tail)
+      if (known !== undefined) {
+        reject(Object.assign(known, { result }))
+        return
+      }
       const message = `remote bootstrap exited with ${String(result.code)}${tail === '' ? '' : `: ${tail}`}`
       reject(Object.assign(new Error(message), { result }))
     })

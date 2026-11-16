@@ -11,12 +11,13 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
+import { InstallerError, resolveScpBinary, type InstallerErrorCode } from '@dsh-remote/installer'
 import { provisionRemoteAgent } from '@dsh-remote/installer'
 import { isAgentLive } from '@dsh-remote/protocol'
 import { compareVersions, resolveLocalDshVersion } from '../version.ts'
 import type { ResolvedConfig } from '../config.ts'
 import { LocalError } from '../errors.ts'
-import type { HostDetail } from '../messages.ts'
+import type { HostDetail, UiText } from '../messages.ts'
 import { discoverAgent } from '../ssh/probe.ts'
 import type { ParsedSshTarget } from '../ssh/target.ts'
 
@@ -101,6 +102,7 @@ export class RemoteProvisioner {
         agentTarballPath: tarball,
         ...agentPackageSpec === undefined ? {} : { agentPackageSpec },
         sshBinary: this.#config.sshBinary,
+        scpBinary: resolveScpBinary(this.#config.sshBinary, this.#config.scpBinary),
         strictHostKeyChecking: this.#config.strictHostKeyChecking,
         profile: 'web',
         installDir: this.#config.remoteInstallDir,
@@ -127,10 +129,10 @@ export class RemoteProvisioner {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       throw new LocalError('agent/unavailable', `远端自动安装失败：${detail}`, {
-        details: { host: target.canonical },
+        details: { host: target.canonical, installerCode: installerCodeOf(error) ?? null },
         retryable: true,
         cause: error,
-        ui: { key: 'error.agentInstallFailed' },
+        ui: installerUi(error),
       })
     }
 
@@ -237,7 +239,7 @@ const PROVISION_PROGRESS: readonly (readonly [string, HostDetail])[] = [
   ['installed node.js', 'nodeInstalled'],
   ['node ready', 'nodeReady'],
   ['installing pnpm@', 'pnpmInstalling'],
-  ['upgrading @deepseek-ai/dsh@', 'dshUpdating'],
+  ['upgrading @deepseek-ai/dsh', 'dshUpdating'],
   ['installing @deepseek-ai/dsh@', 'dshInstalling'],
   ['adding plugin to profile', 'agentInstalling'],
   ['restarting systemd user unit', 'webStarting'],
@@ -247,6 +249,53 @@ const PROVISION_PROGRESS: readonly (readonly [string, HostDetail])[] = [
   ['agent ready', 'agentReady'],
   ['installed', 'installed'],
 ]
+
+/** Installer failure code carried by a failed provisioning run, if any. */
+export function installerCodeOf(error: unknown): InstallerErrorCode | undefined {
+  if (error instanceof InstallerError) return error.installerCode
+  // `instanceof` fails when the installer is loaded twice (source and built
+  // bundle), so accept its structural shape as well.
+  const candidate = error as { installerCode?: unknown } | null
+  const code = candidate?.installerCode
+  return typeof code === 'string' && INSTALLER_CODES.has(code) ? code as InstallerErrorCode : undefined
+}
+
+/** Every installer code, for the structural check above. */
+const INSTALLER_CODES: ReadonlySet<string> = new Set<InstallerErrorCode>([
+  'install/node-missing',
+  'install/node-outdated',
+  'install/npm-missing',
+  'install/dsh-missing',
+  'install/node-install-failed',
+  'install/profile-migrate-failed',
+])
+
+/**
+ * Pick the localized message for an installer failure.
+ *
+ * A missing or outdated Node.js is something the operator can fix and deserves
+ * its own wording; everything else keeps the generic "check the log" text.
+ */
+export function installerUi(error: unknown): UiText {
+  const code = installerCodeOf(error)
+  switch (code) {
+    case 'install/node-missing':
+      return { key: 'error.agentInstallNodeMissing' }
+    case 'install/node-outdated':
+      return { key: 'error.agentInstallNodeOutdated', params: { required: MINIMUM_NODE_VERSION } }
+    case 'install/npm-missing':
+      return { key: 'error.agentInstallNoNpm' }
+    case 'install/node-install-failed':
+      return { key: 'error.agentInstallNodeDownloadFailed' }
+    case 'install/dsh-missing':
+      return { key: 'error.agentInstallDshMissing' }
+    default:
+      return { key: 'error.agentInstallFailed' }
+  }
+}
+
+/** Minimum remote Node.js the bootstrap script accepts. */
+export const MINIMUM_NODE_VERSION = '22.19.0'
 
 /** Whether a discovered runtime is the version this install intended to start. */
 export function agentVersionMatches(actual: string, expected: string | undefined): boolean {

@@ -4,6 +4,8 @@
  * @module @dsh-remote/installer/options
  */
 
+import { dirname, sep } from 'node:path'
+
 /** Supported subcommands. */
 export type Command = 'install' | 'plan' | 'doctor' | 'discover' | 'tunnel' | 'pack' | 'help'
 
@@ -27,6 +29,8 @@ export interface InstallerOptions {
   /** Exact npm spec for the remote agent, when the caller wants npm-first installation. */
   readonly agentPackageSpec?: string
   readonly sshBinary: string
+  /** scp binary used to upload the agent tarball; paired with {@link sshBinary}. */
+  readonly scpBinary: string
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
   readonly timeoutMs: number
   readonly json: boolean
@@ -57,6 +61,7 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
   let start: StartMode = 'systemd'
   let agentTarball: string | undefined
   let sshBinary = 'ssh'
+  let scpBinary: string | undefined
   let strict: InstallerOptions['strictHostKeyChecking'] = 'accept-new'
   let timeoutMs = 30_000
   let json = false
@@ -128,6 +133,9 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
       case '--ssh':
         sshBinary = value()
         break
+      case '--scp':
+        scpBinary = value()
+        break
       case '--strict-host-key-checking':
         strict = parseStrict(value())
         break
@@ -169,11 +177,25 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
     start,
     agentTarball,
     sshBinary,
+    scpBinary: resolveScpBinary(sshBinary, scpBinary),
     strictHostKeyChecking: strict,
     timeoutMs,
     json,
     verbose,
   }
+}
+
+/**
+ * Pair scp with the ssh binary the caller chose.
+ *
+ * An explicit `--scp` always wins. Otherwise a bare `ssh` keeps the bare `scp`
+ * on PATH, and a path such as `/opt/bin/ssh` is paired with its sibling so a
+ * custom OpenSSH build uploads with the matching scp instead of the system one.
+ */
+export function resolveScpBinary(sshBinary: string, explicit: string | undefined): string {
+  if (explicit !== undefined && explicit.trim() !== '') return explicit.trim()
+  if (!sshBinary.includes('/') && !sshBinary.includes('\\')) return 'scp'
+  return `${dirname(sshBinary)}${sep}scp`
 }
 
 function parseInteger(raw: string, flag: string, min: number, max: number): number {
@@ -220,6 +242,7 @@ Options:
   --no-start               Same as --start none
   --agent-tarball          Use an existing dsh-remote-agent .tgz
   --ssh                    SSH binary (default: ssh)
+  --scp                    scp binary (default: scp beside --ssh)
   --strict-host-key-checking  yes | no | ask | accept-new (default: accept-new)
   --timeout-ms             SSH command timeout (default: 30000)
   --json                   Machine-readable output where supported
