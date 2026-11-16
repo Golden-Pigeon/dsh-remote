@@ -408,64 +408,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
 
       <section className="dshr-card">
         <div className="dshr-section-title">
-          <h3>{t('settings.discovered.title')}</h3>
-          <button
-            type="button"
-            className="dshr-button dshr-button-small"
-            disabled={busy !== null}
-            onClick={() => { void scan(true) }}
-          >
-            {busy === 'discover' ? t('settings.discovered.scanning') : t('settings.discovered.rescan')}
-          </button>
-        </div>
-        <p className="dshr-hint">{t('settings.discovered.hint')}</p>
-        {discoveryError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{discoveryError}</p>}
-        {discovery?.error != null && <p className="dshr-banner dshr-banner-error" role="alert">{discovery.error}</p>}
-        {discovery === null
-          ? <p className="dshr-empty">{t('settings.discovered.scanning')}</p>
-          : discovery.hosts.length === 0
-            ? <p className="dshr-empty">{t('settings.discovered.empty')}</p>
-            : (
-              <ul className="dshr-discovered">
-                {discovery.hosts.map(entry => (
-                  <li key={entry.canonical} className="dshr-discovered-row">
-                    <div className="dshr-discovered-main">
-                      <strong>{entry.alias}</strong>
-                      {entry.aliases.map(name => (
-                        <span key={name} className="dshr-alias-tag">{name}</span>
-                      ))}
-                      <code className="dshr-discovered-endpoint">
-                        {entry.user === null ? '' : `${entry.user}@`}
-                        {entry.hostname}
-                        {entry.port === null ? '' : `:${entry.port}`}
-                      </code>
-                      {entry.proxyJump && <span className="dshr-badge">{t('settings.discovered.proxy')}</span>}
-                    </div>
-                    {entry.registeredHostId !== null
-                      ? <span className="dshr-hint">{t('settings.discovered.added')}</span>
-                      : (
-                        <button
-                          type="button"
-                          className="dshr-button dshr-button-small dshr-button-primary"
-                          disabled={busy !== null}
-                          onClick={() => { void connectDiscovered(entry) }}
-                        >
-                          {busy === `discover:${entry.alias}`
-                            ? t('settings.discovered.connecting')
-                            : t('settings.discovered.connect')}
-                        </button>
-                      )}
-                  </li>
-                ))}
-              </ul>
-            )}
-        {discovery !== null && discovery.hosts.length === 0 && discovery.error === null && (
-          <p className="dshr-hint">{t('settings.discovered.emptyHint')}</p>
-        )}
-      </section>
-
-      <section className="dshr-card">
-        <div className="dshr-section-title">
           <h3>{t('settings.hosts')}</h3>
           <span className="dshr-hint">{hosts.length} {t('settings.hostsUnit')}</span>
         </div>
@@ -788,6 +730,64 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
             )
           })}
         </div>
+      </section>
+
+      <section className="dshr-card">
+        <div className="dshr-section-title">
+          <h3>{t('settings.discovered.title')}</h3>
+          <button
+            type="button"
+            className="dshr-button dshr-button-small"
+            disabled={busy !== null}
+            onClick={() => { void scan(true) }}
+          >
+            {busy === 'discover' ? t('settings.discovered.scanning') : t('settings.discovered.rescan')}
+          </button>
+        </div>
+        <p className="dshr-hint">{t('settings.discovered.hint')}</p>
+        {discoveryError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{discoveryError}</p>}
+        {discovery?.error != null && <p className="dshr-banner dshr-banner-error" role="alert">{discovery.error}</p>}
+        {discovery === null
+          ? <p className="dshr-empty">{t('settings.discovered.scanning')}</p>
+          : discovery.hosts.length === 0
+            ? <p className="dshr-empty">{t('settings.discovered.empty')}</p>
+            : (
+              <ul className="dshr-discovered">
+                {discovery.hosts.map(entry => (
+                  <li key={entry.canonical} className="dshr-discovered-row">
+                    <div className="dshr-discovered-main">
+                      <strong>{entry.alias}</strong>
+                      {entry.aliases.map(name => (
+                        <span key={name} className="dshr-alias-tag">{name}</span>
+                      ))}
+                      <code className="dshr-discovered-endpoint">
+                        {entry.user === null ? '' : `${entry.user}@`}
+                        {entry.hostname}
+                        {entry.port === null ? '' : `:${entry.port}`}
+                      </code>
+                      {entry.proxyJump && <span className="dshr-badge">{t('settings.discovered.proxy')}</span>}
+                    </div>
+                    {entry.registeredHostId !== null
+                      ? <span className="dshr-hint">{t('settings.discovered.added')}</span>
+                      : (
+                        <button
+                          type="button"
+                          className="dshr-button dshr-button-small dshr-button-primary"
+                          disabled={busy !== null}
+                          onClick={() => { void connectDiscovered(entry) }}
+                        >
+                          {busy === `discover:${entry.alias}`
+                            ? t('settings.discovered.connecting')
+                            : t('settings.discovered.connect')}
+                        </button>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            )}
+        {discovery !== null && discovery.hosts.length === 0 && discovery.error === null && (
+          <p className="dshr-hint">{t('settings.discovered.emptyHint')}</p>
+        )}
       </section>
 
     </div>

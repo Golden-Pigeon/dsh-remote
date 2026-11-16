@@ -241,6 +241,31 @@ describe('SSH config discovery in the Settings panel', () => {
       'rediscover moved into the menu')
   })
 
+  it('lists registered hosts before the scanned ones', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-first', label: 'Registered', sshTarget: 'registered',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+    const headings = renderer.root
+      .findAllByType('h3')
+      .map(node => node.children.map(child => String(child)).join(''))
+    // The hosts you keep come first; the scanned list is setup, not routine.
+    assert.deepEqual(headings, ['settings.hosts', 'settings.discovered.title'])
+  })
+
   it('offers no global refresh button and shows no scan time', async () => {
     const { renderer } = await render({})
     const text = JSON.stringify(renderer.toJSON())
