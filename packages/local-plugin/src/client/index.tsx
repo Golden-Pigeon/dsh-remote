@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { createHostsApi } from './api.ts'
 import { RemoteDevelopmentPanel } from './RemoteDevelopmentPanel.tsx'
+import { RemoteModelRows } from './RemoteModelRows.tsx'
 import { installNativeWorkspaceRouting } from './routing.ts'
 import { installRemoteFiles } from './remote-files.ts'
 import { NS, en, zh, type LocaleFace } from './locale.ts'
@@ -78,4 +79,12 @@ export function apply(ctx: Context): void {
     locale: NS,
     inject: () => ({ api }),
   }, RemoteDevelopmentPanel))
+  // Append the remote host's catalog to the composer model menu. The native
+  // rows stay untouched; this only adds rows a mirror can actually run.
+  ctx.slots.inject('conversation.input.model.options', () => ctx.slots.register({
+    name: 'conversation.input.model.options',
+    id: 'dsh-remote',
+    locale: NS,
+    inject: () => ({ api, t }),
+  }, RemoteModelRows))
 }

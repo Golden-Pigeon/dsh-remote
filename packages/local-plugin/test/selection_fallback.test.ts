@@ -143,6 +143,43 @@ describe('remote model-selection fallback', () => {
     } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
   })
 
+  it('installs an explicit remote selection and stops treating it as rejected', async () => {
+    const test = await mounted()
+    const unavailable = { provider: 'local-only', model: 'not-on-remote' }
+    test.setRejectSelection(unavailable)
+    withoutCatalog(test)
+    try {
+      // First reaching the fallback records the rejection.
+      test.agent.model.select(unavailable)
+      test.agent.send(userMessage('first'))
+      await new Promise(resolve => setTimeout(resolve, 50))
+      assert.equal(test.rejectedPrompts.length, 1)
+      assert.equal(test.agent.model.current(), undefined)
+
+      // Installing the same selection through the remote menu must clear the
+      // rejection, so the mirror advertises it again instead of skipping it.
+      // (The open turn is not closed here: this fixture does not drive the
+      // remote event stream that would end it, so a second prompt would queue.)
+      test.service.setSelection(test.record.localSessionId, unavailable)
+      assert.deepEqual(test.agent.model.current(), unavailable)
+    } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
+  })
+
+  it('reports the host behind a mirrored Session and rejects ordinary ones', async () => {
+    const test = await mounted()
+    try {
+      assert.deepEqual(test.service.mirrorFor(test.record.localSessionId), {
+        hostId: 'host-test',
+        remoteSessionId: 'session-parent',
+      })
+      assert.equal(test.service.mirrorFor('session-not-a-mirror'), undefined)
+      assert.throws(
+        () => { test.service.setSelection('session-not-a-mirror', { provider: 'p', model: 'm' }) },
+        /not a remote mirror/,
+      )
+    } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
+  })
+
   it('does not resend when the remote fails for a reason other than the selection', async () => {
     const test = await mounted()
     try {

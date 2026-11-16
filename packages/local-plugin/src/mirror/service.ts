@@ -1418,7 +1418,41 @@ export class RemoteMirrorService {
     runtime.rejectedSelections.delete(selectionKey(selection))
   }
 
-  /** Read the recorded mirror choice, optionally falling back to its initial options. */  selectionFor(runtime: MirrorRuntime, fallbackToOptions = true): { provider: string; model: string; reasoningEffort?: string } | undefined {
+  /**
+   * Resolve the mirror record for a local Session id.
+   *
+   * The Settings page needs this to tell a mirrored Session (which has a remote
+   * host behind it) from an ordinary local one before offering remote models.
+   */
+  mirrorFor(localSessionId: string): { hostId: string; remoteSessionId: string } | undefined {
+    const record = Object.values(this.#state.sessions)
+      .find(entry => entry.localSessionId === localSessionId)
+    if (record === undefined) return undefined
+    return { hostId: record.hostId, remoteSessionId: record.remoteSessionId }
+  }
+
+  /**
+   * Install a model selection chosen from the remote catalog.
+   *
+   * Writes the mirror's own `model/selection` event so the existing bridge
+   * forwards it to the remote host, exactly as a pick in the native selector
+   * would. The recorded rejection is cleared first: an explicit choice asserts
+   * the model should work, so it must not be silently skipped.
+   */
+  setSelection(localSessionId: string, selection: MirrorModelSelection): void {
+    const runtime = this.#runtimes.get(localSessionId)
+    if (runtime === undefined) throw new Error('this Session is not a remote mirror')
+    if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
+    this.forgetRejectedSelection(runtime, selection)
+    runtime.session.append('model/selection', {
+      provider: selection.provider,
+      model: selection.model,
+      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as never },
+    })
+  }
+
+  /** Read the recorded mirror choice, optionally falling back to its initial options. */
+  selectionFor(runtime: MirrorRuntime, fallbackToOptions = true): { provider: string; model: string; reasoningEffort?: string } | undefined {
     const projections = this.#ctx.get('sessionProjections') as unknown as {
       stateOf?: (session: Session, key: string) => unknown
     } | undefined

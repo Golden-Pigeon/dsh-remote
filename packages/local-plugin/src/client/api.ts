@@ -18,6 +18,7 @@ import {
   HOST_API_PATH,
   type HostApiPayloads,
   type HostApiValues,
+  type MirrorTarget,
   type RemoteHostsState,
   type SessionsResult,
   type ValidatedTarget,

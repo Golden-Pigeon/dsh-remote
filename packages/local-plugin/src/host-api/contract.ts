@@ -114,6 +114,18 @@ export interface WebUrlResult {
   readonly url: string
 }
 
+/**
+ * The remote host behind one local Session, or null for an ordinary Session.
+ *
+ * The composer's model menu uses this to decide whether to offer that host's
+ * model catalog alongside the local providers.
+ */
+export type MirrorTarget = {
+  readonly hostId: string
+  readonly hostLabel: string
+  readonly remoteSessionId: string
+} | null
+
 /** One request body. */
 export interface HostApiRequest {
   readonly endpoint: HostApiEndpoint
@@ -228,4 +240,3 @@ export interface HostApiValues {
 export interface HostSummary extends Pick<HostView, 'id' | 'label' | 'sshTarget' | 'phase'> {
   readonly hostInfo: HostInfo | null
 }
-
