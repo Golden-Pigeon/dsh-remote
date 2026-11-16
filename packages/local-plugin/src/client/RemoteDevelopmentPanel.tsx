@@ -17,7 +17,21 @@ import type { HostsApi } from './api.ts'
 import { formatUiText, localizedError } from './errors.ts'
 import type { CopyKey, Translate } from './locale.ts'
 import { HostActionMenu, type MenuAction } from './HostActionMenu.tsx'
+import { pickRemoteDirectory } from './workspace-add.ts'
 import panelCss from './panel.css'
+
+/**
+ * Last segment of a remote POSIX path, used as a workspace title.
+ *
+ * Pure string handling rather than `node:path`: the value is a path on the
+ * remote host, so the platform module here would pick the wrong separator.
+ */
+function folderName(path: string): string {
+  const trimmed = path.replace(/\/+$/u, '')
+  const index = trimmed.lastIndexOf('/')
+  const name = index === -1 ? trimmed : trimmed.slice(index + 1)
+  return name === '' ? trimmed : name
+}
 
 /** Props injected by the Settings page. */
 interface PanelProps {
@@ -317,6 +331,22 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     }
   }
 
+  /**
+   * Pick a workspace folder on the remote host.
+   *
+   * Uses the sidebar dialog's folder browser, so both entry points behave the
+   * same; the chosen path also names the workspace, which the user can override
+   * by editing the field afterwards.
+   */
+  async function browseWorkspace(host: HostView): Promise<void> {
+    const start = workspaceDraft.trim() === '' ? '~' : workspaceDraft.trim()
+    await pickRemoteDirectory({ api, t, host, initialPath: start }, path => {
+      setWorkspaceDraft(path)
+    }).catch(failure => {
+      setError(localizedError(t, failure, t('settings.addWorkspaceFailed')))
+    })
+  }
+
   async function addWorkspace(host: HostView): Promise<void> {
     const path = workspaceDraft.trim()
     if (path === '') {
@@ -326,7 +356,9 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     setBusy(`workspace:${host.id}`)
     setError(null)
     try {
-      await api.createWorkspace(host.id, { path })
+      // Name the workspace after the folder unless the agent already has one.
+      // A bare path is hard to scan in the list, and the server accepts a title.
+      await api.createWorkspace(host.id, { path, title: folderName(path) })
       setWorkspaceDraft('')
       await loadWorkspaces(host.id)
       setExpandedHost(host.id)
@@ -695,6 +727,14 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                           <button
                             type="button"
                             className="dshr-button dshr-button-small"
+                            disabled={busy !== null}
+                            onClick={() => { void browseWorkspace(host) }}
+                          >
+                            {t('settings.browseWorkspace')}
+                          </button>
+                          <button
+                            type="button"
+                            className="dshr-button dshr-button-small dshr-button-primary"
                             disabled={busy !== null}
                             onClick={() => { void addWorkspace(host) }}
                           >

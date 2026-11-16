@@ -27,6 +27,14 @@ interface WorkspaceFlowContext {
   readonly t: Translate
 }
 
+/**
+ * The fields the folder browser actually reads.
+ *
+ * The browser never touches the Cordis context, so Settings can drive it
+ * without holding one.
+ */
+type BrowserContext = Omit<WorkspaceFlowContext, 'ctx'>
+
 type Destination = { readonly kind: 'local' } | { readonly kind: 'remote'; readonly host: HostView }
 
 interface HostDirectoryPicker {
@@ -355,8 +363,41 @@ function openDestinationMenu(
   window.addEventListener('pointerdown', dismiss, true)
 }
 
+/**
+ * Open the same folder browser the sidebar dialog uses.
+ *
+ * Exported so Settings can offer path picking for a remote workspace without
+ * growing a second browser: both entry points share one implementation, so the
+ * list, the up-navigation, the manual path field and the error copy stay in
+ * step.
+ *
+ * @param options - the host to browse, the starting path, and the picker text.
+ * @param onPick - called with the chosen absolute path.
+ * @returns a promise that settles once the browser is closed.
+ */
+export async function pickRemoteDirectory(
+  options: {
+    readonly api: HostsApi
+    readonly t: Translate
+    readonly host: HostView
+    /** Path the browser opens at; `~` is resolved by the agent. */
+    readonly initialPath: string
+  },
+  onPick: (path: string) => void,
+): Promise<void> {
+  // The browser is styled by the dialog's stylesheet, which is otherwise only
+  // installed when the sidebar dialog opens.
+  ensureStyles()
+  await openDirectoryBrowser(
+    { api: options.api, t: options.t },
+    { kind: 'remote', host: options.host },
+    options.initialPath,
+    onPick,
+  )
+}
+
 async function openDirectoryBrowser(
-  flow: WorkspaceFlowContext,
+  flow: BrowserContext,
   destination: Destination,
   initialPath: string,
   onPick: (path: string) => void,

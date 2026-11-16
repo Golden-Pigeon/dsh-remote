@@ -394,6 +394,83 @@ describe('SSH config discovery in the Settings panel', () => {
       'a failed automatic load must not surface as a page banner')
   })
 
+  it('offers a folder browser beside the workspace path field', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-browse', label: 'Browser', sshTarget: 'browser',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+      workspaces: async () => ({ workspaces: [] }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+    await settle(renderer, text => text.includes('dshr-workspace-add'))
+
+    const texts = renderer.root.findAllByType('button')
+      .map(entry => entry.children.map(child => typeof child === 'string' ? child : '').join(''))
+    assert.ok(texts.includes('settings.browseWorkspace'),
+      'the path field needs a browse action so it is not typing-only')
+    assert.ok(texts.includes('settings.addWorkspace'), 'adding still works directly')
+  })
+
+  it('names a new workspace after its folder', async () => {
+    const created: { path: string; title?: string }[] = []
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-title', label: 'Titled', sshTarget: 'titled',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+      workspaces: async () => ({ workspaces: [] }),
+      createWorkspace: async (_hostId: string, input: { path: string; title?: string }) => {
+        created.push(input)
+        return { workspaceId: 'ws-new', title: input.title ?? '', path: input.path, sessionIds: [] }
+      },
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+    await settle(renderer, text => text.includes('dshr-workspace-add'))
+
+    // Type a nested path, then add it.
+    const input = renderer.root.findAllByType('input')
+      .find(node => node.props?.placeholder === 'settings.workspacePathPlaceholder')
+    assert.ok(input, 'the path field must exist')
+    await act(async () => { input!.props.onChange({ target: { value: '/data/home/user00/pangusvr-git/trunk/' } }) })
+    const add = renderer.root.findAllByType('button')
+      .find(entry => entry.children.some(child => String(child) === 'settings.addWorkspace'))
+    await act(async () => { await add!.props.onClick() })
+
+    assert.equal(created.length, 1)
+    assert.equal(created[0]?.path, '/data/home/user00/pangusvr-git/trunk/')
+    // Trailing slash must not become the name.
+    assert.equal(created[0]?.title, 'trunk', 'the folder name becomes the title')
+  })
+
   it('offers no separate expand button on the row', async () => {
     const { renderer } = await render({
       state: async () => ({
