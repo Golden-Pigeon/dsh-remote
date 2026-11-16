@@ -10,7 +10,7 @@
  * @module dsh-remote-local/client/RemoteModelRows
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ModelCatalogResult } from '@dsh-remote/protocol'
 import type { HostsApi } from './api.ts'
 import type { MirrorTarget } from '../host-api/contract.ts'
@@ -69,6 +69,8 @@ export function RemoteModelRows(
   const [target, setTarget] = useState<MirrorTarget | undefined>(undefined)
   const [catalog, setCatalog] = useState<ModelCatalogResult | undefined>(undefined)
   const [pending, setPending] = useState<string | null>(null)
+  /** One failure report per mount: reopening the menu must not re-toast. */
+  const reported = useRef(false)
 
   useInjectedStyle(rowsCss)
 
@@ -82,13 +84,22 @@ export function RemoteModelRows(
         if (mirror === null) return
         const next = await api.modelCatalog(mirror.hostId)
         if (active) setCatalog(next)
-      } catch {
-        // A host that cannot answer leaves the menu exactly as it was.
-        if (active) setTarget(null)
+      } catch (error) {
+        if (!active) return
+        // Stay additive: a host that cannot answer must not break the menu, but
+        // it must not fail invisibly either — the rows simply not appearing is
+        // otherwise indistinguishable from a host with no models configured.
+        setTarget(null)
+        const detail = error instanceof Error ? error.message : String(error)
+        console.warn('dsh-remote-local: could not load the remote model catalog:', detail)
+        if (!reported.current) {
+          reported.current = true
+          reportFailure(`${t('model.loadFailed')}: ${detail}`)
+        }
       }
     })()
     return () => { active = false }
-  }, [api, sessionId])
+  }, [api, sessionId, reportFailure, t])
 
   const rows = buildRows(catalog)
   if (target === null || target === undefined || rows.length === 0) return null

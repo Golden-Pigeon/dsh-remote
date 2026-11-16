@@ -119,8 +119,14 @@ interface MirrorRuntime {
   waiters: Array<() => void>
   /**
    * Selections this mirror already learned the remote cannot serve, keyed by
-   * `provider/model`. Remembering them keeps later prompts from repeating the
-   * rejected round trip on every message.
+   * `provider/model`.
+   *
+   * This is a **display-only** record: it keeps the model selector from
+   * offering a model the remote just refused. It must never decide whether a
+   * prompt is sent — that is the remote catalog's job (`#selectionUnavailable`)
+   * with the rejection fallback as the backstop. Cache-only by design: it dies
+   * with the runtime, and losing it costs nothing but showing a stale option
+   * again. An explicit choice clears its entry (`forgetRejectedSelection`).
    */
   rejectedSelections: Set<string>
 }
@@ -956,15 +962,13 @@ export class RemoteMirrorService {
       this.#schedule(runtime)
     }
     const selection = this.selectionFor(runtime)
-    if (selection !== undefined && !selectionRejected(runtime, selection)) {
-      Object.assign(runtime.agent.options, selection)
-    }
+    // The selection returned here already excludes models this mirror learned
+    // the remote cannot serve, so it is the value to forward as-is.
+    if (selection !== undefined) Object.assign(runtime.agent.options, selection)
     try {
       const { text, content } = await this.#promptContent(message)
       if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
-      let candidate = selection !== undefined && !selectionRejected(runtime, selection)
-        ? selection
-        : undefined
+      let candidate = selection
       // Skip a selection the remote catalog does not offer, so the common case
       // costs no failed round trip at all. The rejection fallback below stays as
       // the backstop for a catalog that is stale or unavailable.
@@ -1407,12 +1411,12 @@ export class RemoteMirrorService {
   }
 
   /**
-   * Drop a rejection record so an explicit selection can be tried again.
+   * Drop a rejection record so the picker offers the selection again.
    *
-   * A rejection only reflects the remote catalog at the time it happened. When
-   * the user picks the model again they are asserting it should work now (for
-   * example after installing it on the host), so the next prompt must forward
-   * the selection rather than keep falling back silently.
+   * The record only reflects the remote catalog at the time of the failure, and
+   * it exists to keep the picker honest rather than to gate sending. When the
+   * user picks the model again they assert it should work now (for example
+   * after installing it on the host), so the stale entry must go.
    */
   forgetRejectedSelection(runtime: MirrorRuntime, selection: MirrorModelSelection): void {
     runtime.rejectedSelections.delete(selectionKey(selection))
@@ -1447,7 +1451,7 @@ export class RemoteMirrorService {
     runtime.session.append('model/selection', {
       provider: selection.provider,
       model: selection.model,
-      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as never },
+      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as ReasoningEffort },
     })
   }
 
@@ -2755,12 +2759,12 @@ function contentText(message: unknown): string {
   return texts.join('\n').trim()
 }
 
-/** Whether this mirror already recorded that the remote rejects the selection. */
+/** Whether the picker should stop offering a selection the remote refused. */
 function selectionRejected(runtime: MirrorRuntime, selection: MirrorModelSelection): boolean {
   return runtime.rejectedSelections.has(selectionKey(selection))
 }
 
-/** Record a rejected selection so later prompts skip the failing round trip. */
+/** Hide a refused selection from the picker; it does not gate sending. */
 function rejectSelection(runtime: MirrorRuntime, selection: MirrorModelSelection): void {
   runtime.rejectedSelections.add(selectionKey(selection))
 }
@@ -2774,16 +2778,19 @@ function selectionKey(selection: MirrorModelSelection): string {
  *
  * `RemoteHostsService.promptSession` normalizes every remote failure into a
  * `LocalError` whose `details.remoteCode` carries the protocol code, so that is
- * the authoritative signal. The remote agent reports an unusable model as
- * `session/model-unavailable`; older agents collapsed it into `internal`, so
- * both are accepted. Matching on the code keeps genuine transport failures out
- * of the fallback path, which would otherwise resend the prompt and risk
- * delivering it twice.
+ * the authoritative signal.
+ *
+ * Only `session/model-unavailable` qualifies. A generic `internal` code is the
+ * remote HTTP layer's catch-all for *any* unexpected throw, so treating it as a
+ * model problem would discard the user's selection on an unrelated fault — and
+ * resending could deliver the same prompt twice if the remote had already
+ * queued it. Older agents collapsed the rejection into `internal`, but this
+ * plugin ships its own agent, and that agent translates the code, so no
+ * compatibility window remains.
  */
 function isSelectionRejection(error: unknown): boolean {
   const candidate = error as { details?: { remoteCode?: unknown } } | null | undefined
-  const code = candidate?.details?.remoteCode
-  return code === 'session/model-unavailable' || code === 'internal'
+  return candidate?.details?.remoteCode === 'session/model-unavailable'
 }
 
 function canonicalPath(path: string): string {

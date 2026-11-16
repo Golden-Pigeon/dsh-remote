@@ -72,18 +72,27 @@ describe('remote model-selection fallback', () => {
     } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
   })
 
-  it('falls back for an older agent that collapses the rejection into internal', async () => {
+  it('does not treat a generic internal failure as a model rejection', async () => {
     const test = await mounted()
-    const unavailable = { provider: 'local-only', model: 'not-on-remote' }
-    test.setRejectSelection(unavailable)
+    const selection = { provider: 'deepseek-official', model: 'deepseek-flash' }
+    test.setRejectSelection(selection)
     test.setLegacyRejection(true)
     withoutCatalog(test)
     try {
-      test.agent.model.select(unavailable)
-      test.agent.send(userMessage('legacy'))
+      test.agent.model.select(selection)
+      test.agent.send(userMessage('transport fault'))
       await new Promise(resolve => setTimeout(resolve, 50))
-      assert.equal(test.prompts.length, 1)
-      assert.equal(test.prompts[0]!.selection, undefined)
+
+      // `internal` is the remote HTTP layer's catch-all for any unexpected
+      // throw, so it must surface as an error instead of silently dropping the
+      // selection and resending — a resend could deliver the prompt twice when
+      // the remote had already queued it.
+      assert.equal(test.rejectedPrompts.length, 1, 'the remote did refuse this attempt')
+      assert.equal(test.prompts.length, 0, 'an internal fault must not be retried')
+      assert.ok(
+        test.warnings.some(line => line.includes('remote prompt failed')),
+        'the failure must still be reported',
+      )
     } finally { await test.service.dispose(); await test.ctx.fiber.dispose() }
   })
 
