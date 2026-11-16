@@ -266,6 +266,41 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.deepEqual(headings, ['settings.hosts', 'settings.discovered.title'])
   })
 
+  it('offers no separate expand button on the row', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-no-caret', label: 'No caret', sshTarget: 'no-caret',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    // The row itself toggles, so a dedicated chevron would be a second control
+    // for the same thing.
+    const expanders = renderer.root.findAllByType('button').filter(entry =>
+      entry.props['aria-label'] === 'settings.expandWorkspaces'
+      || entry.props['aria-label'] === 'settings.collapseWorkspaces')
+    assert.equal(expanders.length, 0, 'the row must not carry a separate expand button')
+
+    // Expanding still works through the row.
+    const row = renderer.root.findAll(node =>
+      node.props?.className === 'dshr-host-row' && typeof node.props?.onClick === 'function')[0]
+    assert.ok(row, 'the summary row must exist')
+    await act(async () => { await row!.props.onClick({ preventDefault() {} }) })
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('dshr-host-detail'),
+      'clicking the row still opens the details')
+  })
+
   it('does not expand the host when the menu trigger is clicked', async () => {
     const { renderer } = await render({
       state: async () => ({

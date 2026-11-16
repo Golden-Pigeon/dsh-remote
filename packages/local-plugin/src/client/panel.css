@@ -241,13 +241,6 @@
   outline-offset: -2px;
 }
 
-.dshr-caret-btn { font-size: 10px; }
-
-.dshr-caret {
-  width: 12px;
-  opacity: 0.6;
-}
-
 .dshr-count {
   margin-left: auto;
   font-size: 11px;
@@ -619,3 +612,9 @@
 
 /* The connected agent is older than this build. */
 .dshr-agent-outdated { color: var(--dshr-warning); }
+
+/* The row is the disclosure control now: tint it when open so the expanded
+   state is still visible without a chevron. */
+.dshr-host-open .dshr-host-row {
+  box-shadow: inset 3px 0 0 var(--dshr-accent);
+}

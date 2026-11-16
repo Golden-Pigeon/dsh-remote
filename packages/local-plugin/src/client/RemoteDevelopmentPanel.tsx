@@ -458,19 +458,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                       label={`${t('settings.hostActions')}: ${host.label}`}
                       actions={hostActions(host)}
                     />
-                    <button
-                      type="button"
-                      className="dshr-icon-btn dshr-caret-btn"
-                      aria-label={expanded ? t('settings.collapseWorkspaces') : t('settings.expandWorkspaces')}
-                      title={expanded ? t('settings.collapseWorkspaces') : t('settings.expandWorkspaces')}
-                      aria-expanded={expanded}
-                      onClick={event => {
-                        event.stopPropagation()
-                        void toggleHost(host)
-                      }}
-                    >
-                      <span className="dshr-caret" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-                    </button>
                   </div>
                 </div>
 
