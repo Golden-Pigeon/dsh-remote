@@ -62,12 +62,13 @@ describe('remote model catalog merge', () => {
     assert.deepEqual(group.models.map(model => model.id), ['deepseek-flash', 'deepseek-v4-pro'])
   })
 
-  it('qualifies the group name with its host', () => {
+  it('qualifies the group name with a remote marker and its host', () => {
     // A local provider and a remote one are commonly named after the same
     // vendor. The selector renders `name` verbatim, so the host has to be part
-    // of it or the two sections are indistinguishable.
+    // of it or the two sections are indistinguishable — and it has to say the
+    // models are remote, since a bare host name reads as another local section.
     const group = remoteGroups(catalog(), 'native1')[0]!
-    assert.equal(group.name, 'DeepSeek (native1)', 'the host must qualify the group name')
+    assert.equal(group.name, 'Remote · DeepSeek (native1)', 'the name must mark it remote and name the host')
 
     const other = remoteGroups(catalog(), 'native3')[0]!
     assert.notEqual(group.name, other.name, 'two hosts must not produce the same label')

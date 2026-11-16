@@ -102,7 +102,10 @@ export function remoteProviderId(providerId: string): string {
  * The group name carries the host, because the selector renders `name` verbatim
  * and a remote provider is usually named after the same vendor as a local one —
  * two unlabelled "DeepSeek" sections give no way to tell which one bills the
- * remote host or which one a mirrored Session can actually run.
+ * remote host or which one a mirrored Session can actually run. The name is
+ * qualified with a remote marker rather than the host alone: `DeepSeek (native1)`
+ * still reads as a local section that happens to be labelled, while a model runs
+ * on the remote Host and is subject to its credentials and catalog.
  * @param catalog - the catalog the remote reported.
  * @param hostLabel - display name of the mirrored host, used to qualify names.
  * @returns groups ready to append to a directory's `groups`.
@@ -114,11 +117,27 @@ export function remoteGroups(catalog: ModelCatalogResult, hostLabel: string): Pr
     if (models.length === 0) continue
     groups.push({
       id: remoteProviderId(group.id),
-      name: `${group.name} (${hostLabel})`,
+      name: remoteGroupName(group.name, hostLabel),
       models,
     })
   }
   return groups
+}
+
+/**
+ * Qualify a remote provider name so it reads as remote, not as another vendor row.
+ *
+ * The selector renders this string verbatim, and several renderers ignore
+ * styling hooks, so the distinction has to live in the text itself. `Remote` is
+ * a fixed marker rather than a translated word: the provider name came from the
+ * remote's own catalog and is not localized here either, and mixing a translated
+ * marker with an untranslated name reads worse than a plain one.
+ * @param groupName - provider name as the remote catalog reported it.
+ * @param hostLabel - display name of the mirrored host.
+ * @returns the label to show for that remote provider.
+ */
+export function remoteGroupName(groupName: string, hostLabel: string): string {
+  return `Remote · ${groupName} (${hostLabel})`
 }
 
 /**
