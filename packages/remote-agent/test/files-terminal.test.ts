@@ -28,7 +28,12 @@ describe('remote files', () => {
 })
 
 describe('remote terminal', () => {
-  it('allocates a PTY, sends input, and streams output', async () => {
+  // The remote terminal drives a POSIX pty helper (`/bin/bash` plus the Python
+  // `pty` module), so it cannot allocate a session on Windows. Skip rather than
+  // weaken the assertions: what the test proves is only meaningful on POSIX.
+  const posix = process.platform !== 'win32'
+
+  it('allocates a PTY, sends input, and streams output', { skip: !posix && 'requires a POSIX pty' }, async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-remote-term-'))
     const manager = new RemoteTerminalManager()
     const controller = new AbortController()

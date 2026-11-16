@@ -79,7 +79,10 @@ describe('agent HTTP file and terminal surface', () => {
     assert.equal(response.status, 405)
   })
 
-  it('serves terminal create, attach, input, list, and close', async () => {
+  // The terminal surface rides the same POSIX pty helper, so it cannot run on
+  // Windows. Skip rather than weaken: the assertions only mean something on a
+  // host that can actually allocate a pty.
+  it('serves terminal create, attach, input, list, and close', { skip: process.platform === 'win32' && 'requires a POSIX pty' }, async () => {
     const client = new RemoteAgentClient({ baseUrl, token })
     const info = await client.createTerminal({ id: 'http-t1', cwd: dir, cols: 80, rows: 24 })
     assert.equal(info.state, 'running')

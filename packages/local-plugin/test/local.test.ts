@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { after, describe, it } from 'node:test'
 
 import { resolveConfig } from '../src/config.ts'
@@ -96,7 +96,9 @@ describe('tunnel argv', () => {
 describe('config', () => {
   it('resolves state and SSH defaults', () => {
     const config = resolveConfig({}, { DSH_HOME: '/srv/dsh' })
-    assert.equal(config.stateDir, '/srv/dsh/remote')
+    // DSH_HOME names a path on this machine, so resolution follows the host
+    // platform: Windows anchors it to a drive, POSIX keeps it absolute.
+    assert.equal(config.stateDir, resolve('/srv/dsh', 'remote'))
     assert.equal(config.sshBinary, 'ssh')
     assert.equal(config.reconnect, true)
     assert.equal(config.credentialProxy, false)
@@ -129,7 +131,12 @@ describe('host store', () => {
     const file = join(dir, 'hosts.json')
     const store = new HostStore(file)
     await store.add(record)
-    assert.equal((await stat(file)).mode & 0o777, 0o600)
+    // Windows has no POSIX permission bits, so chmod is a no-op there and the
+    // recorded mode keeps the platform default; the containment assertion only
+    // means something where the bits are actually honoured.
+    if (process.platform !== 'win32') {
+      assert.equal((await stat(file)).mode & 0o777, 0o600)
+    }
     const loaded = await store.load()
     assert.deepEqual(loaded.hosts, [record])
     assert.deepEqual(loaded.warnings, [])
