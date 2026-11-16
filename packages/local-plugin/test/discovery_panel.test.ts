@@ -266,6 +266,36 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.deepEqual(headings, ['settings.hosts', 'settings.discovered.title'])
   })
 
+  it('draws the row icons as SVG rather than font glyphs', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-icons', label: 'Icons', sshTarget: 'icons',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+
+    // Two actions on the row, both rendered as vector art.
+    const svgs = renderer.root.findAllByType('svg' as never)
+    assert.ok(svgs.length >= 2, `the row actions must be SVG, found ${svgs.length}`)
+
+    // Glyph fonts render these two at mismatched sizes, which is what made the
+    // connect icon look smaller than its neighbours.
+    const text = JSON.stringify(renderer.toJSON())
+    assert.equal(text.includes('\u23FB'), false, 'the power glyph must be gone')
+    assert.equal(text.includes('\u23F5'), false, 'the play glyph must be gone')
+  })
+
   it('offers no separate expand button on the row', async () => {
     const { renderer } = await render({
       state: async () => ({

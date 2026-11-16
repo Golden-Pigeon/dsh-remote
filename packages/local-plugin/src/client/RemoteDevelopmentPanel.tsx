@@ -25,6 +25,61 @@ interface PanelProps {
   readonly t: Translate
 }
 
+/**
+ * Row action icons.
+ *
+ * Drawn as inline SVG rather than characters: glyph fonts render `⏻` and `⏵`
+ * at different weights and sizes depending on which fallback the platform
+ * picks, so the row icons never lined up. A fixed 14px viewBox with
+ * `currentColor` strokes keeps them identical and lets them inherit the
+ * button's colour.
+ */
+function PowerIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        d="M8 2.5v5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M4.6 4.9a4.6 4.6 0 1 0 6.8 0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/** Play-in-circle, shown when the host is not connected. */
+function PlugIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M6.6 5.6l4 2.4-4 2.4z" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** Globe, for opening the remote DSH Web UI. */
+function GlobeIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M2.4 8h11.2M8 2.4c1.6 1.5 2.4 3.4 2.4 5.6s-.8 4.1-2.4 5.6c-1.6-1.5-2.4-3.4-2.4-5.6S6.4 3.9 8 2.4z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </svg>
+  )
+}
+
 function phaseLabel(t: Translate, phase: HostView['phase']): string {
   return t(`phase.${phase}` as CopyKey)
 }
@@ -438,8 +493,8 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                       }}
                     >
                       {busy === `disconnect:${host.id}` || busy === `connect:${host.id}`
-                        ? '⋯'
-                        : connected ? '⏻' : '⏵'}
+                        ? <span className="dshr-icon-spin" aria-hidden="true">⋯</span>
+                        : connected ? <PowerIcon /> : <PlugIcon />}
                     </button>
                     <button
                       type="button"
@@ -452,7 +507,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                         void openWebUi(host)
                       }}
                     >
-                      {busy === `web:${host.id}` ? '⋯' : '🌐'}
+                      {busy === `web:${host.id}` ? <span className="dshr-icon-spin" aria-hidden="true">⋯</span> : <GlobeIcon />}
                     </button>
                     <HostActionMenu
                       label={`${t('settings.hostActions')}: ${host.label}`}

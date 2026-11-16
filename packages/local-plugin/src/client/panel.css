@@ -618,3 +618,27 @@
 .dshr-host-open .dshr-host-row {
   box-shadow: inset 3px 0 0 var(--dshr-accent);
 }
+
+/* Row icons inherit the button colour; keep them optically centred so the
+   stroke weight matches across the three buttons. */
+.dshr-icon-btn svg {
+  display: block;
+  flex: none;
+}
+
+/* Busy marker while an action is in flight. */
+.dshr-icon-spin {
+  display: inline-block;
+  animation: dshr-spin 1s linear infinite;
+  font-size: 12px;
+  line-height: 1;
+}
+
+@keyframes dshr-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dshr-icon-spin { animation: none; }
+}
