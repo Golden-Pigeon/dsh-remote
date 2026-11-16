@@ -31,11 +31,12 @@
   line-height: 1.5;
 }
 
+/* The header now holds only the title block: no action sits opposite it, so it
+   is a plain column rather than a two-ended row. */
 .dshr-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .dshr-header h2 {
@@ -205,34 +206,6 @@
   background: color-mix(in srgb, var(--dshr-accent) 9%, transparent);
 }
 
-.dshr-hosts {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.dshr-host {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--dshr-border);
-  border-radius: 10px;
-  background: var(--dshr-soft);
-}
-
-.dshr-host-title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.dshr-host-title strong {
-  font-size: 14px;
-}
-
 .dshr-host-error {
   margin: 0;
   color: var(--dshr-danger);
@@ -335,16 +308,6 @@
 
 .dshr-idle {
   background: color-mix(in srgb, currentColor 28%, transparent);
-}
-
-@media (max-width: 720px) {
-  .dshr-form {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dshr-header {
-    flex-direction: column;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

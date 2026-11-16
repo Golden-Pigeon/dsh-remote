@@ -397,14 +397,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
             {t('settings.subtitle.body')}
           </p>
         </div>
-        <button
-          type="button"
-          className="dshr-button"
-          onClick={() => { void refresh().catch(failure => setError(localizedError(t, failure, t('settings.refreshFailed')))) }}
-          disabled={busy !== null}
-        >
-          {t('settings.refresh')}
-        </button>
       </header>
 
       {error !== null && <p className="dshr-banner dshr-banner-error" role="alert">{error}</p>}
@@ -467,13 +459,6 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         {discovery !== null && discovery.hosts.length === 0 && discovery.error === null && (
           <p className="dshr-hint">{t('settings.discovered.emptyHint')}</p>
         )}
-        {discovery !== null && (
-          <p className="dshr-hint">
-            {t('settings.discovered.lastScanned')}
-            {' '}
-            {new Date(discovery.scannedAt).toLocaleTimeString()}
-          </p>
-        )}
       </section>
 
       <section className="dshr-card">
@@ -505,7 +490,11 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                   <div className="dshr-host-main">
                     <div className="dshr-host-title">
                       <strong>{host.label}</strong>
-                      <code className="dshr-endpoint">{host.sshTarget}</code>
+                      {/* The label often defaults to the SSH destination, so
+                          repeating it right beside itself adds nothing. */}
+                      {host.sshTarget !== host.label && (
+                        <code className="dshr-endpoint">{host.sshTarget}</code>
+                      )}
                     </div>
                     <div className="dshr-host-sub">
                       <span>{phaseLabel(t, host.phase)}</span>

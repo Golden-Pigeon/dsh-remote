@@ -202,6 +202,80 @@ describe('SSH config discovery in the Settings panel', () => {
     assert.ok(endpoints.includes('bob@192.0.2.16:36000'))
   })
 
+  it('offers no global refresh button and shows no scan time', async () => {
+    const { renderer } = await render({})
+    const text = JSON.stringify(renderer.toJSON())
+    // The rescan action on the discovered list covers manual refresh, so a
+    // second button in the header was redundant.
+    assert.equal(text.includes('settings.refresh'), false,
+      'the header refresh button was removed')
+    // The scan timestamp is noise; the list itself is the useful information.
+    assert.equal(text.includes('settings.discovered.lastScanned'), false,
+      'the scan-time line was removed')
+    // The rescan control must remain: it is now the only manual refresh path.
+    assert.ok(text.includes('settings.discovered.rescan'))
+  })
+
+  it('does not repeat the name when the label equals the SSH target', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-dup', label: 'native2', sshTarget: 'native2',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+    // The title holds nested elements, so collect text recursively rather than
+    // stringifying the children.
+    const collect = (node: unknown): string => {
+      if (node === null || node === undefined) return ''
+      if (typeof node === 'string' || typeof node === 'number') return String(node)
+      if (Array.isArray(node)) return node.map(collect).join('')
+      const candidate = node as { children?: unknown[] }
+      return Array.isArray(candidate.children) ? candidate.children.map(collect).join('') : ''
+    }
+    const shown = renderer.root
+      .findAllByProps({ className: 'dshr-host-title' })
+      .map(node => collect(node.children))
+    assert.equal(shown.length, 1)
+    // `native2` appears once as the label; the endpoint is suppressed because it
+    // would say exactly the same thing.
+    assert.equal((shown[0]?.match(/native2/g) ?? []).length, 1,
+      `the name must not be printed twice, got: ${shown[0]}`)
+  })
+
+  it('shows the endpoint when it differs from the label', async () => {
+    const { renderer } = await render({
+      state: async () => ({
+        hosts: [{
+          id: 'host-diff', label: 'Native two', sshTarget: 'native2',
+          sshPort: null, remoteAgentPort: 1, autoConnect: true,
+          createdAt: 'now', updatedAt: 'now', hasToken: true,
+          phase: 'connected', localPort: 2, localUrl: 'http://127.0.0.1:2',
+          hostInfo: null, workspaceCount: 0, error: null, errorCode: null,
+          connectedAt: 'now', detail: null, errorUi: null, agentOutdated: false,
+          modelProxy: false, modelDirect: true, modelSource: 'direct',
+          dshUpdate: null, retry: null,
+        }],
+        mirroredWorkspaceIds: [],
+        mirroredWorkspaces: [],
+      }),
+    })
+    await settle(renderer, text => text.includes('dshr-host-row'))
+    const text = JSON.stringify(renderer.toJSON())
+    assert.ok(text.includes('Native two'))
+    assert.ok(text.includes('native2'), 'a distinct endpoint must still be shown')
+  })
+
   it('shows the empty state without inventing a host', async () => {
     const { renderer } = await render({
       discover: async () => discovery({ hosts: [], skipped: [] }),
