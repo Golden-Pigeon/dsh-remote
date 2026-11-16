@@ -338,16 +338,6 @@ function openDestinationMenu(
     menu.append(section)
     for (const host of hosts) add(host.label, { kind: 'remote', host })
   }
-  const addRemote = document.createElement('button')
-  addRemote.type = 'button'
-  addRemote.className = `${DIALOG_CLASS}-destination-item ${DIALOG_CLASS}-destination-add`
-  addRemote.textContent = t('dialog.addRemote')
-  addRemote.addEventListener('click', () => {
-    close()
-    const error = document.querySelector(`.${DIALOG_CLASS}-error`)
-    if (error !== null) error.textContent = t('dialog.addRemoteHint')
-  })
-  menu.append(addRemote)
   document.body.append(menu)
   const rect = anchor.getBoundingClientRect()
   menu.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`
@@ -677,7 +667,6 @@ function ensureStyles(): void {
       font-size: 11px; line-height: 16px;
     }
     .${DIALOG_CLASS}-destination-check { color: var(--dsw-alias-label-secondary); }
-    .${DIALOG_CLASS}-destination-add { color: var(--dsw-alias-label-tertiary); }
     .${DIALOG_CLASS}-browser-overlay {
       position: fixed; inset: 0; z-index: 100002; display: grid; place-items: center;
       padding: 24px; background: var(--dsw-alias-bg-mask-3);
