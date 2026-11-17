@@ -10,6 +10,7 @@ import { copyFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { npmInvocation } from './package-manager.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const pluginDir = join(root, 'packages', 'local-plugin')
@@ -54,7 +55,8 @@ try {
   }
   writeFileSync(join(staging, 'package.json'), `${JSON.stringify(published, null, 2)}\n`)
 
-  const packOutput = execFileSync('npm', ['pack', '--silent', '--pack-destination', staging], {
+  const npm = npmInvocation()
+  const packOutput = execFileSync(npm.command, [...npm.prefixArgs, 'pack', '--silent', '--pack-destination', staging], {
     cwd: staging,
     encoding: 'utf8',
   }).trim().split('\n').at(-1)

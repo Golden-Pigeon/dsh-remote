@@ -27,6 +27,10 @@ export const HOST_API_PATH = '/api/dsh-remote'
 /** Endpoint names. */
 export type HostApiEndpoint =
   | 'state'
+  | 'settings/copy-model-key'
+  | 'settings/credential-proxy'
+  | 'host/model-source'
+  | 'host/copy-model-key'
   | 'target/validate'
   | 'host/add'
   | 'host/remove'
@@ -66,6 +70,10 @@ export interface MirroredWorkspace {
 export interface RemoteHostsState {
   readonly protocolVersion: number
   readonly hosts: readonly HostView[]
+  readonly settings: {
+    readonly copyModelKey: boolean
+    readonly credentialProxy: boolean
+  }
   /** Local workspace ids whose Session creation is owned by a remote host. */
   readonly mirroredWorkspaceIds: readonly string[]
   /** Titles of active mirrored workspaces, used to scope workspace-delete copy. */
@@ -143,6 +151,10 @@ export type HostApiResult<T> =
 /** Payloads accepted by each endpoint. */
 export interface HostApiPayloads {
   state: undefined
+  'settings/copy-model-key': { copyModelKey: boolean }
+  'settings/credential-proxy': { credentialProxy: boolean }
+  'host/model-source': { hostId: string; source: 'proxy' | 'direct' | null }
+  'host/copy-model-key': { hostId: string; copyModelKey: boolean | null }
   'target/validate': { sshTarget: string }
   'host/add': {
     sshTarget: string
@@ -189,6 +201,10 @@ export interface HostApiPayloads {
 /** Values returned by each endpoint. */
 export interface HostApiValues {
   state: RemoteHostsState
+  'settings/copy-model-key': { copyModelKey: boolean }
+  'settings/credential-proxy': { credentialProxy: boolean }
+  'host/model-source': HostView
+  'host/copy-model-key': HostView
   'target/validate': ValidatedTarget
   'host/add': HostView
   'host/remove': { removed: true }

@@ -6,8 +6,9 @@
 
 > **Implementation note:** this is an early design note. The implemented plugin now mirrors remote
 > sessions into the native conversation UI, bridges approvals/files/terminal traffic, and defaults to a
-> direct model key in the remote service environment (`credentialProxy: true` keeps it local). See the
-> root README and `docs/operations.md` for the current behavior.
+> direct model key in the remote service environment. Settings has global defaults and per-host
+> overrides for the model key source (direct or local proxy) and copying; choosing the proxy keeps the
+> key local. See the root README and `docs/operations.md` for the current behavior.
 >
 > This is a repository copy of `../../docs/remote-development-design.md` from the umbrella
 > workspace, kept with the implementation so the design intent travels with the code. The
@@ -298,7 +299,9 @@ DSH 客户端目前是单 Host。B-native 需要改这些层：
 - 默认直连模式下模型 API Key 存在于远端 service 环境；代理模式下只存在本地；
 - 本地起一个反向代理/隧道端点；
 - 代理模式下远端 runtime 使用占位 token，请求经隧道回到本地代理，由本地注入真实 key；
-- 代理模式下远端磁盘上不落真实 key；直连模式会写入远端 service 环境。
+- 代理模式下远端磁盘上不落真实 key；直连模式会写入远端 service 环境；
+- 默认直连复制 key 是为了新主机一键可用；设置页提供“使用本地模型代理”和“复制模型 API Key
+  到远端主机”两个全局默认，每台主机可单独覆盖，主机设置优先；修改在下次连接或重装时生效。
 
 备选：
 

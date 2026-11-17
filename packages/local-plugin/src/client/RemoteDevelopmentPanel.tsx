@@ -42,6 +42,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   const [now, setNow] = useState(() => Date.now())
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const savingModel = useRef(false)
   const [expandedHost, setExpandedHost] = useState<string | null>(null)
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const loadingWorkspaces = useRef(new Map<string, Promise<void>>())
@@ -69,7 +70,7 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     const load = async (): Promise<void> => {
       try {
         const next = await api.state()
-        if (!cancelled) {
+        if (!cancelled && !savingModel.current) {
           setState(next)
           setPollError(null)
         }
@@ -102,15 +103,123 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   async function run(key: string, task: () => Promise<void>): Promise<void> {
     setBusy(key)
     setError(null)
-    setNotice(null)
     try {
       await task()
       await refresh()
     } catch (failure) {
+      setNotice(null)
       setError(localizedError(t, failure, t('settings.operationFailed')))
+      // Drop an optimistic checkbox change if the host rejected it.
+      await refresh().catch(() => {})
     } finally {
       setBusy(null)
     }
+  }
+
+  /**
+   * Save a model setting without toggling the global busy state. Model changes
+   * are optimistic and quick; disabling every button/checkbox for the request
+   * made the whole panel visibly blink.
+   */
+  async function saveModel(apply: () => void, task: () => Promise<void>): Promise<void> {
+    if (savingModel.current) return
+    savingModel.current = true
+    try {
+      apply()
+      setError(null)
+      await task()
+      await refresh()
+    } catch (failure) {
+      setNotice(null)
+      setError(localizedError(t, failure, t('settings.operationFailed')))
+      await refresh().catch(() => {})
+    } finally {
+      savingModel.current = false
+    }
+  }
+
+  async function onCopyModelKey(value: boolean): Promise<void> {
+    await saveModel(
+      () => setState(current => current === null
+        ? current
+        : {
+          ...current,
+          settings: { ...current.settings, copyModelKey: value },
+          hosts: current.hosts.map(host => host.copyModelKeyOverride === null
+            ? { ...host, copyModelKey: value }
+            : host),
+        }),
+      async () => {
+        await api.setCopyModelKey(value)
+        setNotice(t('settings.modelSettingsSaved'))
+      },
+    )
+  }
+
+  async function onGlobalProxy(value: boolean): Promise<void> {
+    await saveModel(
+      () => setState(current => current === null
+        ? current
+        : {
+          ...current,
+          settings: { ...current.settings, credentialProxy: value },
+          hosts: current.hosts.map(host => host.modelSourceOverride === null
+            ? { ...host, modelSource: value ? 'proxy' : 'direct' }
+            : host),
+        }),
+      async () => {
+        await api.setCredentialProxy(value)
+        setNotice(t('settings.modelSettingsSaved'))
+      },
+    )
+  }
+
+  async function onHostSource(host: HostView, source: boolean | null): Promise<void> {
+    await saveModel(
+      () => setState(current => {
+        if (current === null) return current
+        const effective = source === null
+          ? current.settings.credentialProxy ? 'proxy' : 'direct'
+          : source ? 'proxy' : 'direct'
+        return {
+          ...current,
+          hosts: current.hosts.map(item => item.id === host.id
+            ? {
+              ...item,
+              modelSource: effective,
+              modelSourceOverride: source === null ? null : effective,
+            }
+            : item),
+        }
+      }),
+      async () => {
+        await api.setHostModelSource(host.id, source === null ? null : source ? 'proxy' : 'direct')
+        setNotice(t('settings.modelSettingsSaved'))
+      },
+    )
+  }
+
+  async function onHostCopy(host: HostView, copyModelKey: boolean | null): Promise<void> {
+    await saveModel(
+      () => setState(current => {
+        if (current === null) return current
+        const effective = copyModelKey === null ? current.settings.copyModelKey : copyModelKey
+        return {
+          ...current,
+          hosts: current.hosts.map(item => item.id === host.id
+            ? {
+              ...item,
+              copyModelKey: effective,
+              copyModelKeyOverride: copyModelKey,
+            }
+            : item),
+        }
+      }),
+      async () => {
+        await api.setHostCopyModelKey(host.id, copyModelKey)
+        setNotice(t('settings.modelSettingsSaved'))
+      },
+    )
   }
 
   async function onAdd(): Promise<void> {
@@ -260,6 +369,47 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       {pollError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{pollError}</p>}
       {notice !== null && <p className="dshr-banner dshr-banner-info" role="status">{notice}</p>}
 
+      {state !== null && state.settings !== undefined && (
+        <section className="dshr-card">
+          <h3>{t('settings.modelKey')}</h3>
+          <div className="dshr-setting-list">
+            <div className="dshr-setting-row">
+              <label className="dshr-setting-copy" htmlFor="dshr-global-proxy">
+                <span className="dshr-setting-label">{t('settings.useLocalProxy')}</span>
+                <span className="dshr-setting-description">{t('settings.useLocalProxyHint')}</span>
+              </label>
+              <div className="dshr-setting-control">
+                <input
+                  id="dshr-global-proxy"
+                  className="dshr-checkbox"
+                  type="checkbox"
+                  checked={state.settings.credentialProxy}
+                  disabled={busy !== null}
+                  onChange={event => { void onGlobalProxy(event.target.checked) }}
+                />
+              </div>
+            </div>
+            <div className="dshr-setting-row">
+              <label className="dshr-setting-copy" htmlFor="dshr-global-copy">
+                <span className="dshr-setting-label">{t('settings.copyModelKey')}</span>
+                <span className="dshr-setting-description">{t('settings.copyModelKeyHint')}</span>
+              </label>
+              <div className="dshr-setting-control">
+                <input
+                  id="dshr-global-copy"
+                  className="dshr-checkbox"
+                  type="checkbox"
+                  checked={state.settings.copyModelKey}
+                  disabled={busy !== null}
+                  onChange={event => { void onCopyModelKey(event.target.checked) }}
+                />
+              </div>
+            </div>
+          </div>
+          <p className="dshr-hint">{t('settings.modelDefaultsHint')}</p>
+        </section>
+      )}
+
       <section className="dshr-card">
         <h3>{t('settings.addHost')}</h3>
         <form
@@ -322,6 +472,71 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                 <div><dt>{t('settings.token')}</dt><dd>{host.hasToken ? t('settings.saved') : t('settings.unsaved')}</dd></div>
                 <div><dt>{t('settings.modelProxy')}</dt><dd>{host.modelProxy ? t('settings.localProxy') : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}</dd></div>
               </dl>
+
+              <div className="dshr-model-settings">
+                <div className="dshr-model-settings-title">
+                  <span>{t('settings.modelKey')}</span>
+                  {(host.modelSourceOverride !== null || host.copyModelKeyOverride !== null) && (
+                    <span className="dshr-badge">{t('settings.modified')}</span>
+                  )}
+                </div>
+                <div className="dshr-setting-row">
+                  <label className="dshr-setting-copy" htmlFor={`dshr-proxy-${host.id}`}>
+                    <span className="dshr-setting-label">{t('settings.useLocalProxy')}</span>
+                    <span className="dshr-setting-description">{t('settings.useLocalProxyHint')}</span>
+                  </label>
+                  <div className="dshr-setting-control">
+                    {host.modelSourceOverride !== null
+                      ? (
+                        <button
+                          type="button"
+                          className="dshr-link"
+                          disabled={busy !== null}
+                          onClick={() => { void onHostSource(host, null) }}
+                        >
+                          {t('settings.reset')}
+                        </button>
+                      )
+                      : <span className="dshr-reset-slot" aria-hidden="true" />}
+                    <input
+                      id={`dshr-proxy-${host.id}`}
+                      className="dshr-checkbox"
+                      type="checkbox"
+                      checked={host.modelSource === 'proxy'}
+                      disabled={busy !== null}
+                      onChange={event => { void onHostSource(host, event.target.checked) }}
+                    />
+                  </div>
+                </div>
+                <div className="dshr-setting-row">
+                  <label className="dshr-setting-copy" htmlFor={`dshr-copy-${host.id}`}>
+                    <span className="dshr-setting-label">{t('settings.copyModelKey')}</span>
+                    <span className="dshr-setting-description">{t('settings.copyModelKeyHint')}</span>
+                  </label>
+                  <div className="dshr-setting-control">
+                    {host.copyModelKeyOverride !== null
+                      ? (
+                        <button
+                          type="button"
+                          className="dshr-link"
+                          disabled={busy !== null}
+                          onClick={() => { void onHostCopy(host, null) }}
+                        >
+                          {t('settings.reset')}
+                        </button>
+                      )
+                      : <span className="dshr-reset-slot" aria-hidden="true" />}
+                    <input
+                      id={`dshr-copy-${host.id}`}
+                      className="dshr-checkbox"
+                      type="checkbox"
+                      checked={host.copyModelKey}
+                      disabled={busy !== null}
+                      onChange={event => { void onHostCopy(host, event.target.checked) }}
+                    />
+                  </div>
+                </div>
+              </div>
 
               {host.dshUpdate !== null && (
                 <div className="dshr-update" role="status">

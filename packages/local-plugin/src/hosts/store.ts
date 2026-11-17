@@ -43,6 +43,10 @@ export function isHostRecord(value: unknown): value is HostRecord {
     && (record.token === null || (typeof record.token === 'string' && record.token.length >= 16))
     && (record.proxyToken === undefined || record.proxyToken === null
       || (typeof record.proxyToken === 'string' && record.proxyToken.length >= 16))
+    && (record.modelSource === undefined || record.modelSource === null
+      || record.modelSource === 'proxy' || record.modelSource === 'direct')
+    && (record.copyModelKey === undefined || record.copyModelKey === null
+      || typeof record.copyModelKey === 'boolean')
     && typeof record.autoConnect === 'boolean'
     && typeof record.createdAt === 'string'
     && typeof record.updatedAt === 'string'

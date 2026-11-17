@@ -23,7 +23,7 @@ async function panel(surfaces: Record<string, unknown>) {
   return component
 }
 
-async function harness() {
+async function harness(options: { holdCopy?: boolean } = {}) {
   const focus: Array<() => void> = []
   const intervals: Array<() => void> = []
   const component = await panel({
@@ -40,10 +40,49 @@ async function harness() {
   let resolve!: (value: { workspaces: object[] }) => void
   let reject!: (error: Error) => void
   let calls = 0
-  const host = { id: 'fixture-host', label: 'Fixture host', sshTarget: 'example-host', phase: 'connected', dshUpdate: null, retry: null, detail: null, error: null }
+  const host = {
+    id: 'fixture-host',
+    label: 'Fixture host',
+    sshTarget: 'example-host',
+    phase: 'connected',
+    dshUpdate: null,
+    retry: null,
+    detail: null,
+    error: null,
+    modelSource: 'direct',
+    modelSourceOverride: null,
+    copyModelKey: true,
+    copyModelKeyOverride: null,
+  }
+  const modelCalls: unknown[][] = []
+  let releaseCopy: (() => void) | undefined
   const api = {
     createWorkspace: async () => ({}),
-    state: async () => ({ hosts: [{ ...host }], mirroredWorkspaceIds: [], mirroredWorkspaces: [] }),
+    setCredentialProxy: async (value: boolean) => {
+      modelCalls.push(['global-proxy', value])
+      return { credentialProxy: value }
+    },
+    setCopyModelKey: async (value: boolean) => {
+      modelCalls.push(['global-copy', value])
+      if (options.holdCopy === true) {
+        await new Promise<void>(resolve => { releaseCopy = resolve })
+      }
+      return { copyModelKey: value }
+    },
+    setHostModelSource: async (hostId: string, source: 'proxy' | 'direct' | null) => {
+      modelCalls.push(['host-source', hostId, source])
+      return host as never
+    },
+    setHostCopyModelKey: async (hostId: string, value: boolean | null) => {
+      modelCalls.push(['host-copy', hostId, value])
+      return host as never
+    },
+    state: async () => ({
+      hosts: [{ ...host }],
+      mirroredWorkspaceIds: [],
+      mirroredWorkspaces: [],
+      settings: { copyModelKey: true, credentialProxy: false },
+    }),
     workspaces: () => {
       calls++
       // Bound a regression's render loop so a failed test cannot hang the suite.
@@ -64,6 +103,20 @@ async function harness() {
       await click('settings.addWorkspace')
     },
     async poll() { await act(async () => { intervals.forEach(callback => callback()); focus.forEach(callback => callback()) }) },
+    async setChecked(index: number, checked: boolean) {
+      await act(async () => {
+        renderer.root.findAllByType('input')
+          .filter(input => input.props.type === 'checkbox')[index]!
+          .props.onChange({ target: { checked } })
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+    },
+    modelCalls: () => modelCalls,
+    releaseCopy: () => { releaseCopy?.(); releaseCopy = undefined },
+    checkboxStates: () => renderer.root.findAllByType('input')
+      .filter(input => input.props.type === 'checkbox')
+      .map(input => ({ checked: input.props.checked === true, disabled: input.props.disabled === true })),
+    async settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) }) },
     async succeed() { await act(async () => { resolve({ workspaces: [] }) }) },
     async fail() { await act(async () => { reject(new Error('fixture request failed')) }) },
     async dispose() {
@@ -73,6 +126,35 @@ async function harness() {
 }
 
 describe('workspace loading in the real React panel', () => {
+  it('does not disable controls while a model save is in flight', async () => {
+    const test = await harness({ holdCopy: true })
+    try {
+      await test.setChecked(1, false)
+      assert.deepEqual(test.checkboxStates().map(box => box.disabled), [false, false, false, false])
+      test.releaseCopy()
+      await test.settle()
+    } finally {
+      test.releaseCopy()
+      await test.dispose()
+    }
+  })
+
+  it('edits global defaults and per-host model overrides', async () => {
+    const test = await harness()
+    try {
+      await test.setChecked(3, false)
+      await test.setChecked(1, false)
+      await test.setChecked(0, true)
+      await test.setChecked(2, true)
+      assert.deepEqual(test.modelCalls(), [
+        ['host-copy', 'fixture-host', false],
+        ['global-copy', false],
+        ['global-proxy', true],
+        ['host-source', 'fixture-host', 'proxy'],
+      ])
+    } finally { await test.dispose() }
+  })
+
   it('keeps one request in flight across effect rerenders and host polling', async () => {
     const test = await harness()
     try {

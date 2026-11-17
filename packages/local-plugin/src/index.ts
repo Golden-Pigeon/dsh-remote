@@ -9,6 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { join } from 'node:path'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { Config, resolveConfig, type Config as LocalConfig } from './config.ts'
 import { registerHostApi } from './host-api/handler.ts'
@@ -18,6 +19,7 @@ import { installRemoteTerminalController } from './remote/terminal-controller.ts
 import { RemoteTerminals } from './remote/terminal.ts'
 import { registerTerminalApi } from './host-api/terminal.ts'
 import { RemoteHostsService } from './service.ts'
+import { SettingsStore } from './settings.ts'
 import { installRemoteToolGuards, registerRemoteTools } from './tools.ts'
 
 export const name = 'dsh-remote-local'
@@ -33,7 +35,16 @@ export { HOST_API_PATH } from './host-api/contract.ts'
 /** Mount the host registry and its extension points. */
 export async function apply(ctx: Context, config: LocalConfig = {}): Promise<void> {
   const resolved = resolveConfig(config)
+  const settings = new SettingsStore(join(resolved.stateDir, 'settings.json'), {
+    copyModelKey: resolved.copyModelKey,
+    credentialProxy: resolved.credentialProxy,
+  })
+  const stored = settings.load()
   const service = new RemoteHostsService(ctx, resolved, {
+    copyModelKey: stored.copyModelKey,
+    persistCopyModelKey: value => settings.setCopyModelKey(value),
+    credentialProxy: stored.credentialProxy,
+    persistCredentialProxy: value => settings.setCredentialProxy(value),
     resolveModelKey: async () => {
       try {
         const resolvedKey = await ctx.credentials.resolve(credentialRef(resolved.modelCredentialRef))

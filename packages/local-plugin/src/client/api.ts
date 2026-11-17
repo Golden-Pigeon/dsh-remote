@@ -39,6 +39,10 @@ export class RemoteUiError extends Error {
 /** API surface injected into the Settings component. */
 export interface HostsApi {
   readonly state: () => Promise<RemoteHostsState>
+  readonly setCopyModelKey: (value: boolean) => Promise<{ copyModelKey: boolean }>
+  readonly setCredentialProxy: (value: boolean) => Promise<{ credentialProxy: boolean }>
+  readonly setHostModelSource: (hostId: string, source: 'proxy' | 'direct' | null) => Promise<HostView>
+  readonly setHostCopyModelKey: (hostId: string, copyModelKey: boolean | null) => Promise<HostView>
   readonly validateTarget: (sshTarget: string) => Promise<ValidatedTarget>
   readonly addHost: (input: HostApiPayloads['host/add']) => Promise<HostView>
   readonly removeHost: (hostId: string) => Promise<void>
@@ -73,6 +77,10 @@ export interface HostsApi {
 export function createHostsApi(ctx: Context): HostsApi {
   return {
     state: () => call('state', undefined),
+    setCopyModelKey: value => call('settings/copy-model-key', { copyModelKey: value }),
+    setCredentialProxy: value => call('settings/credential-proxy', { credentialProxy: value }),
+    setHostModelSource: (hostId, source) => call('host/model-source', { hostId, source }),
+    setHostCopyModelKey: (hostId, copyModelKey) => call('host/copy-model-key', { hostId, copyModelKey }),
     validateTarget: sshTarget => call('target/validate', { sshTarget }),
     addHost: input => call('host/add', input),
     removeHost: async hostId => { await call('host/remove', { hostId }) },

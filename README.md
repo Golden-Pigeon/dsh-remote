@@ -181,15 +181,21 @@ ordinary client code paths handle rendering, selection, streaming, and the trans
 **Default: direct key on the remote host.** The plugin resolves `DEEPSEEK_API_KEY` from the local DSH
 credential store and writes it into the remote `dsh web` environment, with
 `DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic`. The remote agent calls DeepSeek directly.
+Settings exposes global defaults for **Use local credential proxy** and **Copy model API key to
+remote hosts** (on by default). Each host card can override either choice; the host setting wins over
+the global default. Changes apply on the next connect or reinstall.
 
-**Optional: local proxy.** Set `credentialProxy: true` to keep the key local:
+**Optional: local proxy.** Enable **Use local credential proxy** globally, or on one host, to keep the
+key local:
 
 - remote DSH gets `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key;
 - the SSH tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
-If no local key resolves, the plugin still provisions and connects; configure the remote DSH's own
-credentials. The host card shows **Model credentials: Local proxy / Remote direct / Remote default**.
+In direct mode, if no local key resolves, the plugin still provisions and connects; configure the
+remote DSH's own credentials. In proxy mode a missing local key fails the connect with a clear error;
+choose remote direct or configure the key. The host card shows **Model path: Local proxy / Remote
+direct / Remote default**.
 
 ## Agent tools
 
@@ -233,9 +239,9 @@ remote model requests use it as well, not just the installer.
   Prompts can make the remote DSH use its own tools under the remote sandbox and approval policy.
 - In the default direct mode, the resolved model key is written to the remote systemd/nohup
   environment. Use this only on a trusted remote account; the systemd unit is written with mode 0600.
-  Set `credentialProxy: true` to keep the key local and proxy model traffic through the reverse SSH
-  tunnel. Proxy requests require a per-host token, so unrelated local users on the remote host cannot
-  reuse the tunneled credential endpoint.
+  Enable **Use local credential proxy** globally (or on one host) to keep the key local and proxy
+  model traffic through the reverse SSH tunnel. Proxy requests require a per-host token, so unrelated
+  local users on the remote host cannot reuse the tunneled credential endpoint.
 - Browser requests use DSH Connection's authenticated `/api` Fetch route. Tokens/credentials are stored
   in `0600` files and never returned to the browser.
 - File-tree, preview, directory-picker, and terminal traffic use the remote agent API inside the authenticated SSH tunnel; no additional SSH connection is opened per file or terminal operation.
@@ -329,6 +335,7 @@ into the ordinary Conversation UI, a second follow-up, and a remote tool call/re
 
 - [Wire protocol](docs/protocol.md)
 - [Operations guide](docs/operations.md)
+- [Development](docs/development.md)
 - [Testing](docs/testing.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)

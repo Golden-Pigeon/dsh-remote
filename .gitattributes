@@ -1,0 +1,21 @@
+# Normalize line endings so a build on Windows does not dirty tracked files.
+#
+# `pnpm build` regenerates the tracked `packages/terminal-controller/lib/`
+# entry points; without this rule each Windows build rewrites them with CRLF and
+# they show up as modified in every diff.
+* text=auto eol=lf
+
+# Windows-only helpers must keep CRLF so cmd.exe and PowerShell can run them.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets are never converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.tgz binary
+*.woff binary
+*.woff2 binary

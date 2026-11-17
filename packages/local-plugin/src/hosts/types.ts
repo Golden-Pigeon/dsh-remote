@@ -35,6 +35,10 @@ export interface HostRecord {
   readonly token: string | null
   /** Per-host placeholder accepted by the local credential proxy. Secret. */
   readonly proxyToken?: string | null
+  /** Per-host source; null or absent follows the global setting. */
+  readonly modelSource?: 'proxy' | 'direct' | null
+  /** Per-host copy choice; null or absent follows the global setting. */
+  readonly copyModelKey?: boolean | null
   readonly autoConnect: boolean
   readonly createdAt: string
   readonly updatedAt: string
@@ -90,6 +94,14 @@ export interface HostView {
   readonly createdAt: string
   readonly updatedAt: string
   readonly hasToken: boolean
+  /** Effective model-key source for this host. */
+  readonly modelSource: 'proxy' | 'direct'
+  /** Per-host source override; null means the global default. */
+  readonly modelSourceOverride: 'proxy' | 'direct' | null
+  /** Effective copy-model-key choice for this host. */
+  readonly copyModelKey: boolean
+  /** Per-host copy override; null means the global default. */
+  readonly copyModelKeyOverride: boolean | null
   readonly phase: HostPhase
   readonly localPort: number | null
   readonly localUrl: string | null
@@ -144,8 +156,22 @@ export function idleRuntime(): HostRuntime {
   }
 }
 
+/** Global defaults used to resolve a host's effective model settings. */
+export interface ModelDefaults {
+  readonly credentialProxy: boolean
+  readonly copyModelKey: boolean
+}
+
+const DEFAULT_MODEL_SETTINGS: ModelDefaults = { credentialProxy: false, copyModelKey: true }
+
 /** Project one record + runtime into the browser-safe view. */
-export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
+export function toHostView(
+  record: HostRecord,
+  runtime: HostRuntime,
+  defaults: ModelDefaults = DEFAULT_MODEL_SETTINGS,
+): HostView {
+  const modelSource = record.modelSource ?? (defaults.credentialProxy ? 'proxy' : 'direct')
+  const copyModelKey = record.copyModelKey ?? defaults.copyModelKey
   return {
     id: record.id,
     label: record.label,
@@ -156,6 +182,10 @@ export function toHostView(record: HostRecord, runtime: HostRuntime): HostView {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     hasToken: record.token !== null,
+    modelSource,
+    modelSourceOverride: record.modelSource ?? null,
+    copyModelKey,
+    copyModelKeyOverride: record.copyModelKey ?? null,
     phase: runtime.phase,
     localPort: runtime.localPort,
     localUrl: runtime.localUrl,

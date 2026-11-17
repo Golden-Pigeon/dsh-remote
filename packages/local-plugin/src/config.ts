@@ -43,9 +43,16 @@ export interface Config {
   /** `systemd`, `nohup`, or `none`. */
   readonly remoteStart?: string
   readonly provisionTimeoutMs?: number
-  /** Keep the model key local and proxy it through a reverse SSH tunnel. Default false. */
+  /**
+   * Global default for keeping the model key local and proxying it through a
+   * reverse SSH tunnel. Settings and per-host choices take precedence.
+   */
   readonly credentialProxy?: boolean
-  /** Copy the resolved local model key into the remote service environment. */
+  /**
+   * Global default for copying the resolved local model key into the remote
+   * service environment. A Settings override in settings.json takes precedence;
+   * a per-host choice in hosts.json takes precedence over both.
+   */
   readonly copyModelKey?: boolean
   /** Provider base URL used when the key is copied to the remote host. */
   readonly remoteModelBaseUrl?: string

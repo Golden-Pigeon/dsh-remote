@@ -72,6 +72,10 @@ declare module '@deepseek-ai/cordis' {
 export interface HostsState {
   readonly protocolVersion: number
   readonly hosts: readonly HostView[]
+  readonly settings: {
+    readonly copyModelKey: boolean
+    readonly credentialProxy: boolean
+  }
 }
 
 /** Connected resources for one host. */
@@ -88,6 +92,14 @@ export interface RemoteHostsServiceOptions {
   readonly resolveModelKey?: () => Promise<string | undefined>
   /** Override the hosting DSH version; tests inject it instead of the runtime. */
   readonly localDshVersion?: string
+  /** Effective copy-model-key setting loaded from the plugin settings store. */
+  readonly copyModelKey?: boolean
+  /** Persist a changed copy-model-key setting. */
+  readonly persistCopyModelKey?: (value: boolean) => Promise<void>
+  /** Effective global credential-proxy setting. */
+  readonly credentialProxy?: boolean
+  /** Persist a changed global credential-proxy setting. */
+  readonly persistCredentialProxy?: (value: boolean) => Promise<void>
 }
 
 /** One host registry service. */
@@ -99,6 +111,10 @@ export class RemoteHostsService {
   readonly #provisioner: RemoteProvisioner
   readonly #resolveModelKey: (() => Promise<string | undefined>) | undefined
   readonly #localDshVersion: string | undefined
+  readonly #persistCopyModelKey: ((value: boolean) => Promise<void>) | undefined
+  readonly #persistCredentialProxy: ((value: boolean) => Promise<void>) | undefined
+  #copyModelKey: boolean
+  #credentialProxy: boolean
   #proxy: ModelCredentialProxy | undefined
   #proxyAddress: CredentialProxyAddress | undefined
   #directModel: { readonly baseUrl: string; readonly apiKey: string } | undefined
@@ -125,6 +141,10 @@ export class RemoteHostsService {
     this.#localDshVersion = options.localDshVersion ?? resolveLocalDshVersion()
     this.#provisioner = new RemoteProvisioner(config, this.#localDshVersion)
     this.#resolveModelKey = options.resolveModelKey
+    this.#copyModelKey = options.copyModelKey ?? config.copyModelKey
+    this.#persistCopyModelKey = options.persistCopyModelKey
+    this.#credentialProxy = options.credentialProxy ?? config.credentialProxy
+    this.#persistCredentialProxy = options.persistCredentialProxy
   }
 
   /** Load the registry and auto-connect opted-in hosts. */
@@ -147,7 +167,70 @@ export class RemoteHostsService {
 
   /** Browser/tool snapshot. */
   state(): HostsState {
-    return { protocolVersion: PROTOCOL_VERSION, hosts: this.list() }
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      hosts: this.list(),
+      settings: {
+        copyModelKey: this.#copyModelKey,
+        credentialProxy: this.#credentialProxy,
+      },
+    }
+  }
+
+  /** Global default: copy the local key into the remote environment. */
+  get copyModelKey(): boolean { return this.#copyModelKey }
+
+  /** Global default: use the local credential proxy. */
+  get credentialProxy(): boolean { return this.#credentialProxy }
+
+  /** Persist and apply the next-connect copy-model-key default. */
+  async setCopyModelKey(value: boolean): Promise<void> {
+    if (value === this.#copyModelKey) return
+    await this.#persistCopyModelKey?.(value)
+    this.#copyModelKey = value
+    this.#modelReconciled.clear()
+  }
+
+  /** Persist and apply the next-connect credential-proxy default. */
+  async setCredentialProxy(value: boolean): Promise<void> {
+    if (value === this.#credentialProxy) return
+    await this.#persistCredentialProxy?.(value)
+    this.#credentialProxy = value
+    this.#modelReconciled.clear()
+  }
+
+  /** Resolve a host's source, falling back to the global default. */
+  #sourceFor(record: HostRecord): 'proxy' | 'direct' {
+    return record.modelSource ?? (this.#credentialProxy ? 'proxy' : 'direct')
+  }
+
+  /** Resolve a host's copy choice, falling back to the global default. */
+  #copyFor(record: HostRecord): boolean {
+    return record.copyModelKey ?? this.#copyModelKey
+  }
+
+  /** Persist a per-host source override; null restores the global default. */
+  async setHostModelSource(id: string, source: 'proxy' | 'direct' | null): Promise<HostView> {
+    this.#assertAlive()
+    if (source !== null && source !== 'proxy' && source !== 'direct') {
+      throw new LocalError('request/invalid', 'source must be proxy, direct, or null')
+    }
+    this.#requireRecord(id)
+    await this.#saveRecord(id, { modelSource: source })
+    this.#modelReconciled.delete(id)
+    return this.view(id)
+  }
+
+  /** Persist a per-host copy override; null restores the global default. */
+  async setHostCopyModelKey(id: string, copyModelKey: boolean | null): Promise<HostView> {
+    this.#assertAlive()
+    if (copyModelKey !== null && typeof copyModelKey !== 'boolean') {
+      throw new LocalError('request/invalid', 'copyModelKey must be a boolean or null')
+    }
+    this.#requireRecord(id)
+    await this.#saveRecord(id, { copyModelKey })
+    this.#modelReconciled.delete(id)
+    return this.view(id)
   }
 
   /** All hosts in creation order. */
@@ -160,7 +243,10 @@ export class RemoteHostsService {
   /** One host view. */
   view(id: string): HostView {
     const record = this.#requireRecord(id)
-    return toHostView(record, this.#runtime.get(id) ?? idleRuntime())
+    return toHostView(record, this.#runtime.get(id) ?? idleRuntime(), {
+      credentialProxy: this.#credentialProxy,
+      copyModelKey: this.#copyModelKey,
+    })
   }
 
   /** Parse a destination without touching SSH. */
@@ -293,9 +379,15 @@ export class RemoteHostsService {
     this.#manualDisconnect.delete(id)
     this.#clearReconnect(id)
     await this.#stopTransport(id)
-    const proxy = await this.#ensureModelProxy()
-    const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
-    const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+    let proxy: CredentialProxyAddress | undefined
+    let proxyToken: string | undefined
+    let direct: { readonly baseUrl: string; readonly apiKey: string } | undefined
+    try {
+      ({ proxy, proxyToken, direct } = await this.#modelPathFor(record))
+    } catch (error) {
+      this.#markError(id, error, 'host/connect-failed')
+      throw error
+    }
     this.#setRuntime(id, {
       ...idleRuntime(),
       phase: 'installing',
@@ -313,7 +405,22 @@ export class RemoteHostsService {
       this.#scheduleReconnect(id)
       throw failure
     }
-    return this.connect(id)
+    // The freshly started remote service may still be binding its listener.
+    // Retry briefly here instead of reporting a misleading failure; a normal
+    // reconnect would eventually succeed, but the action should too.
+    const deadline = Date.now() + 60_000
+    let lastError: unknown
+    while (Date.now() < deadline) {
+      try {
+        return await this.connect(id)
+      } catch (error) {
+        lastError = error
+        await new Promise(resolve => setTimeout(resolve, 1_500))
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new LocalError('host/connect-failed', 'remote host did not become ready after reinstalling')
   }
 
   /** Start a manual remote DSH upgrade to the local runtime version. */
@@ -348,9 +455,7 @@ export class RemoteHostsService {
       const record = this.#requireRecord(id)
       const target = parseSshTarget(record.sshTarget)
       await this.#stopTransport(id)
-      const proxy = await this.#ensureModelProxy()
-      const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
-      const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+      const { proxy, proxyToken, direct } = await this.#modelPathFor(record)
       this.#setRuntime(id, {
         ...this.#runtimeFor(id),
         modelProxy: proxy !== undefined,
@@ -706,9 +811,15 @@ export class RemoteHostsService {
     })
 
     const target = parseSshTarget(record.sshTarget)
-    const proxy = await this.#ensureModelProxy()
-    const proxyToken = proxy === undefined ? undefined : await this.#ensureProxyToken(id)
-    const direct = proxy === undefined ? await this.#ensureDirectModel() : undefined
+    let proxy: CredentialProxyAddress | undefined
+    let proxyToken: string | undefined
+    let direct: { readonly baseUrl: string; readonly apiKey: string } | undefined
+    try {
+      ({ proxy, proxyToken, direct } = await this.#modelPathFor(record))
+    } catch (error) {
+      this.#markError(id, error, 'host/connect-failed')
+      throw error
+    }
     this.#setRuntime(id, {
       ...this.#runtimeFor(id),
       modelProxy: proxy !== undefined,
@@ -840,15 +951,34 @@ export class RemoteHostsService {
     const desired = proxy === undefined
       ? direct?.baseUrl
       : `http://127.0.0.1:${this.config.credentialProxyRemotePort}`
-    if (desired === undefined) return false
     const current = health.modelBaseUrl?.replace(/\/+$/u, '') ?? null
-    const expectedKey = proxy === undefined ? direct?.apiKey : proxyToken
-    const matches = current === desired.replace(/\/+$/u, '')
-      && expectedKey !== undefined
-      && health.modelKeyFingerprint === fingerprintKey(expectedKey)
-    if (matches) {
-      this.#modelReconciled.delete(id)
-      return false
+    if (desired === undefined) {
+      // Direct mode with copy off manages no model env. Clear a proxy base URL
+      // or a direct key whose fingerprint proves this plugin copied it; leave
+      // any other remote-account configuration alone.
+      const proxyBase = `http://127.0.0.1:${this.config.credentialProxyRemotePort}`
+      const directBase = this.config.remoteModelBaseUrl.replace(/\/+$/u, '')
+      if (current !== null && (current === proxyBase || current.startsWith(`${proxyBase}/`))) {
+        // Reinstall below with an empty model environment.
+      } else if (current === directBase && health.modelKeyConfigured === true) {
+        const local = await this.#ensureDirectModel()
+        if (local === undefined || health.modelKeyFingerprint !== fingerprintKey(local.apiKey)) {
+          this.#modelReconciled.delete(id)
+          return false
+        }
+      } else {
+        this.#modelReconciled.delete(id)
+        return false
+      }
+    } else {
+      const expectedKey = proxy === undefined ? direct?.apiKey : proxyToken
+      const matches = current === desired.replace(/\/+$/u, '')
+        && expectedKey !== undefined
+        && health.modelKeyFingerprint === fingerprintKey(expectedKey)
+      if (matches) {
+        this.#modelReconciled.delete(id)
+        return false
+      }
     }
     if (this.#modelReconciled.has(id) || !this.config.autoProvision) {
       this.ctx.logger.warn(
@@ -880,8 +1010,28 @@ export class RemoteHostsService {
     return true
   }
 
+  /** Resolve the effective model path for one host. */
+  async #modelPathFor(record: HostRecord): Promise<{
+    proxy?: CredentialProxyAddress
+    proxyToken?: string
+    direct?: { readonly baseUrl: string; readonly apiKey: string }
+  }> {
+    if (this.#sourceFor(record) === 'proxy') {
+      const proxy = await this.#ensureModelProxy()
+      if (proxy === undefined) {
+        throw new LocalError(
+          'agent/unavailable',
+          '本地模型代理不可用：请先在本机配置 DEEPSEEK_API_KEY，或把该主机切到远端直连',
+          { ui: { key: 'error.modelProxyUnavailable' } },
+        )
+      }
+      return { proxy, proxyToken: await this.#ensureProxyToken(record.id) }
+    }
+    const direct = this.#copyFor(record) ? await this.#ensureDirectModel() : undefined
+    return { direct }
+  }
+
   async #ensureDirectModel(): Promise<{ readonly baseUrl: string; readonly apiKey: string } | undefined> {
-    if (this.config.credentialProxy || !this.config.copyModelKey) return undefined
     if (this.#directModelAttempted) return this.#directModel
     this.#directModelAttempted = true
     let key: string | undefined
@@ -935,7 +1085,6 @@ export class RemoteHostsService {
   }
 
   async #ensureModelProxy(): Promise<CredentialProxyAddress | undefined> {
-    if (!this.config.credentialProxy) return undefined
     if (this.#proxyAddress !== undefined) return this.#proxyAddress
     let key: string | undefined
     try {

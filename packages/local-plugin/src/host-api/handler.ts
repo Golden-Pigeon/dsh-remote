@@ -101,6 +101,42 @@ async function dispatch(
         mirroredWorkspaces,
       }
     }
+    case 'settings/copy-model-key': {
+      const body = requireRecord(payload)
+      const copyModelKey = optionalBooleanField(body, 'copyModelKey')
+      if (copyModelKey === undefined) {
+        throw new LocalError('request/invalid', 'copyModelKey must be a boolean')
+      }
+      await service.setCopyModelKey(copyModelKey)
+      return { copyModelKey: service.copyModelKey }
+    }
+    case 'settings/credential-proxy': {
+      const body = requireRecord(payload)
+      const credentialProxy = optionalBooleanField(body, 'credentialProxy')
+      if (credentialProxy === undefined) {
+        throw new LocalError('request/invalid', 'credentialProxy must be a boolean')
+      }
+      await service.setCredentialProxy(credentialProxy)
+      return { credentialProxy: service.credentialProxy }
+    }
+    case 'host/model-source': {
+      const body = requireRecord(payload)
+      const hostId = requireStringField(body, 'hostId')
+      const source = body.source
+      if (source !== null && source !== 'proxy' && source !== 'direct') {
+        throw new LocalError('request/invalid', 'source must be proxy, direct, or null')
+      }
+      return service.setHostModelSource(hostId, source)
+    }
+    case 'host/copy-model-key': {
+      const body = requireRecord(payload)
+      const hostId = requireStringField(body, 'hostId')
+      const copyModelKey = body.copyModelKey
+      if (copyModelKey !== null && typeof copyModelKey !== 'boolean') {
+        throw new LocalError('request/invalid', 'copyModelKey must be a boolean or null')
+      }
+      return service.setHostCopyModelKey(hostId, copyModelKey)
+    }
     case 'target/validate':
       return service.validateTarget(requireStringField(payload, 'sshTarget'))
     case 'host/add': {

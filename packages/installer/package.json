@@ -8,16 +8,17 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "bin": {
-    "dsh-remote-install": "lib/cli.js"
+    "dsh-remote-install": "bin/dsh-remote-install.js"
   },
   "files": [
-    "lib"
+    "lib",
+    "bin"
   ],
   "devDependencies": {
     "@dsh-remote/protocol": "workspace:*"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && DSH_REMOTE_CLI=1 DSH_REMOTE_HOST_ENTRY=src/bin.ts DSH_REMOTE_HOST_OUT=lib/cli.js node ../../scripts/build-host.mjs && node ../../scripts/build-host.mjs",
+    "build": "tsc -p tsconfig.build.json && node ../../scripts/build-host.mjs --entry src/bin.ts --out lib/cli.js --cli && node ../../scripts/build-host.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --import tsx --test test/*.test.ts"
   }
