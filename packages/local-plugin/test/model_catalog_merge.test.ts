@@ -55,27 +55,24 @@ describe('remote model catalog merge', () => {
   })
 
   it('keeps one group per remote provider, carrying every model', () => {
-    const groups = remoteGroups(catalog(), 'native1')
+    const groups = remoteGroups(catalog())
     assert.equal(groups.length, 1)
     const group = groups[0]!
     assert.equal(group.id, 'remote:deepseek-official')
     assert.deepEqual(group.models.map(model => model.id), ['deepseek-flash', 'deepseek-v4-pro'])
   })
 
-  it('qualifies the group name with a remote marker and its host', () => {
+  it('qualifies the group name with a remote marker', () => {
     // A local provider and a remote one are commonly named after the same
-    // vendor. The selector renders `name` verbatim, so the host has to be part
-    // of it or the two sections are indistinguishable — and it has to say the
-    // models are remote, since a bare host name reads as another local section.
-    const group = remoteGroups(catalog(), 'native1')[0]!
-    assert.equal(group.name, 'Remote · DeepSeek (native1)', 'the name must mark it remote and name the host')
-
-    const other = remoteGroups(catalog(), 'native3')[0]!
-    assert.notEqual(group.name, other.name, 'two hosts must not produce the same label')
+    // vendor, and the selector renders `name` verbatim, so the marker is what
+    // keeps the two sections distinguishable.
+    const group = remoteGroups(catalog())[0]!
+    assert.equal(group.name, 'Remote · DeepSeek', 'the name must mark the section remote')
+    assert.ok(!group.name.includes('('), 'the host suffix is deliberately omitted')
   })
 
   it('preserves reasoning metadata for the selector', () => {
-    const group = remoteGroups(catalog(), 'native1')[0]!
+    const group = remoteGroups(catalog())[0]!
     const flash = group.models.find(model => model.id === 'deepseek-flash')!
     assert.equal(flash.reasoning?.defaultEffort, 'high')
     assert.deepEqual(flash.reasoning?.efforts.map(effort => effort.id), ['low', 'high'])
@@ -90,7 +87,7 @@ describe('remote model catalog merge', () => {
       routableProviders: [],
       groups: [],
       failures: [],
-    }, 'native1'), [])
+    }), [])
   })
 
   it('skips a remote group that advertises no models', () => {
@@ -99,7 +96,7 @@ describe('remote model catalog merge', () => {
       routableProviders: [],
       groups: [{ id: 'empty-provider', name: 'Empty', models: [] }],
       failures: [],
-    }, 'native1')
+    })
     assert.deepEqual(groups, [], 'an empty provider group would render as a blank section')
   })
 })

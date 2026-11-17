@@ -22,10 +22,10 @@
   reads that directory, so the rows appear for the native composer seat and for
   a skin that draws its own menu; a model the remote alone serves
   (`deepseek-v4-pro`, for example) can be chosen directly instead of falling
-  back to the remote default. Each contributed section is labelled with its
-  host (`DeepSeek (native1)`), because a remote provider is usually named after
-  the same vendor as a local one and two unlabelled sections give no way to tell
-  which list a mirrored Session can actually run. Picking one installs the
+  back to the remote default. The contributed section is labelled `Remote ·
+  DeepSeek`, because a remote provider is usually named after the same vendor as
+  a local one and two unlabelled sections give no way to tell which list a
+  mirrored Session can actually run. Picking one installs the
   selection on the mirror
   over the existing bridge, and a Session that is not a mirror keeps exactly the
   Host's own list.

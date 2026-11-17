@@ -99,25 +99,21 @@ export function remoteProviderId(providerId: string): string {
  * receives has to be the id its own catalog reports. The local face of that id
  * is namespaced instead, and {@link decodeRemoteProvider} recovers the pair.
  *
- * The group name carries the host, because the selector renders `name` verbatim
- * and a remote provider is usually named after the same vendor as a local one —
- * two unlabelled "DeepSeek" sections give no way to tell which one bills the
- * remote host or which one a mirrored Session can actually run. The name is
- * qualified with a remote marker rather than the host alone: `DeepSeek (native1)`
- * still reads as a local section that happens to be labelled, while a model runs
- * on the remote Host and is subject to its credentials and catalog.
+ * The group name is qualified because the selector renders `name` verbatim and a
+ * remote provider is usually named after the same vendor as a local one — two
+ * unlabelled "DeepSeek" sections give no way to tell which list a mirrored
+ * Session can actually run.
  * @param catalog - the catalog the remote reported.
- * @param hostLabel - display name of the mirrored host, used to qualify names.
  * @returns groups ready to append to a directory's `groups`.
  */
-export function remoteGroups(catalog: ModelCatalogResult, hostLabel: string): ProviderGroup[] {
+export function remoteGroups(catalog: ModelCatalogResult): ProviderGroup[] {
   const groups: ProviderGroup[] = []
   for (const group of catalog.groups) {
     const models = group.models.map(toSelectorModel)
     if (models.length === 0) continue
     groups.push({
       id: remoteProviderId(group.id),
-      name: remoteGroupName(group.name, hostLabel),
+      name: remoteGroupName(group.name),
       models,
     })
   }
@@ -132,12 +128,15 @@ export function remoteGroups(catalog: ModelCatalogResult, hostLabel: string): Pr
  * a fixed marker rather than a translated word: the provider name came from the
  * remote's own catalog and is not localized here either, and mixing a translated
  * marker with an untranslated name reads worse than a plain one.
+ *
+ * The host name is deliberately omitted: it lengthens every row and the mirror a
+ * Session belongs to is already the Session's own context, so the marker alone
+ * carries the information a pick depends on.
  * @param groupName - provider name as the remote catalog reported it.
- * @param hostLabel - display name of the mirrored host.
  * @returns the label to show for that remote provider.
  */
-export function remoteGroupName(groupName: string, hostLabel: string): string {
-  return `Remote · ${groupName} (${hostLabel})`
+export function remoteGroupName(groupName: string): string {
+  return `Remote · ${groupName}`
 }
 
 /**
@@ -227,7 +226,7 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         } catch {
           return
         }
-        const groups = remoteGroups(catalog, target.hostLabel)
+        const groups = remoteGroups(catalog)
         const signature = JSON.stringify(groups)
         const remembered = remoteCurrent.get(directory) ?? null
         const signatures = `${signature}|${JSON.stringify(remembered)}`
