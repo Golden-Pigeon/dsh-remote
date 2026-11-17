@@ -54,11 +54,14 @@ export function agentVersion(): string | undefined {
  * Only a preview: `install` names the real upload after the running process.
  * When the version cannot be read the name drops it rather than inventing one.
  */
-function plannedTarballName(): string {
-  const version = agentVersion()
+export function tarballNameForVersion(version: string | undefined): string {
   return version === undefined
     ? `${REMOTE_TMP_DIR}/dsh-remote-agent.tgz`
     : `${REMOTE_TMP_DIR}/dsh-remote-agent-${version}.tgz`
+}
+
+export function plannedTarballName(): string {
+  return tarballNameForVersion(agentVersion())
 }
 
 function sshOptions(options: InstallerOptions): SshOptions {
@@ -109,6 +112,7 @@ export async function commandInstall(options: InstallerOptions): Promise<string>
     binary: options.scpBinary,
     strictHostKeyChecking: options.strictHostKeyChecking,
     verbose: options.verbose,
+    timeoutMs: Math.max(options.timeoutMs, 120_000),
   })
   const script = fromOptions(options, remoteTarball)
   if (options.verbose) process.stderr.write(script)

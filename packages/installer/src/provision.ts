@@ -66,6 +66,9 @@ export interface ProvisionRemoteResult {
 /** Upload the agent and run the bootstrap script. */
 export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Promise<ProvisionRemoteResult> {
   const target = parseTarget(options.target)
+  if (options.port !== undefined && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65_535)) {
+    throw new RangeError(`port must be an integer between 0 and 65535 (got ${String(options.port)})`)
+  }
   await access(options.agentTarballPath)
   const remoteTarball = `/tmp/dsh-remote-agent-${Date.now()}-${process.pid}.tgz`
   const timeoutMs = Math.max(options.timeoutMs ?? 600_000, 600_000)
@@ -75,6 +78,9 @@ export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Pro
     binary: options.scpBinary,
     strictHostKeyChecking: options.strictHostKeyChecking,
     verbose: options.verbose ?? false,
+    // provisionTimeoutMs bounds the bootstrap script, not the upload; keeping
+    // the upload's own 120s bound avoids a 600s hang on a dead connection.
+    timeoutMs: 120_000,
   })
   options.onProgress?.('dsh-remote: agent package uploaded')
   const script = renderBootstrapScript({

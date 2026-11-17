@@ -230,7 +230,7 @@ export class RemoteProvisioner {
   }
 }
 
-const PROVISION_PROGRESS: readonly (readonly [string, HostDetail])[] = [
+export const PROVISION_PROGRESS: readonly (readonly [string, HostDetail])[] = [
   ['uploading agent package', 'uploadingAgent'],
   ['agent package uploaded', 'uploaded'],
   ['preparing remote install', 'preparing'],
@@ -242,6 +242,10 @@ const PROVISION_PROGRESS: readonly (readonly [string, HostDetail])[] = [
   ['upgrading @deepseek-ai/dsh', 'dshUpdating'],
   ['installing @deepseek-ai/dsh@', 'dshInstalling'],
   ['adding plugin to profile', 'agentInstalling'],
+  // The npm path prints this after the plugin is added but before the web
+  // runtime is ready; without its own entry it would match the final
+  // `installed` needle and jump the card to the last stage too early.
+  ['installed agent from npm', 'agentInstalling'],
   ['restarting systemd user unit', 'webStarting'],
   ['starting dsh web under nohup', 'webStarting'],
   ['starting dsh web', 'webStarting'],
@@ -340,7 +344,7 @@ export function agentPackageSpecFor(version: string | undefined): string | undef
   return `@goldenpigeon/dsh-remote-agent@${version}`
 }
 
-function progressForLine(line: string): HostDetail | undefined {
+export function progressForLine(line: string): HostDetail | undefined {
   const normalized = line.toLowerCase()
   for (const [needle, message] of PROVISION_PROGRESS) {
     if (normalized.includes(needle)) return message

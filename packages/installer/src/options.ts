@@ -4,7 +4,8 @@
  * @module @dsh-remote/installer/options
  */
 
-import { dirname, sep } from 'node:path'
+import { existsSync } from 'node:fs'
+import { posix, win32 } from 'node:path'
 
 /** Supported subcommands. */
 export type Command = 'install' | 'plan' | 'doctor' | 'discover' | 'tunnel' | 'pack' | 'help'
@@ -191,11 +192,43 @@ export function parseArgs(argv: readonly string[]): InstallerOptions {
  * An explicit `--scp` always wins. Otherwise a bare `ssh` keeps the bare `scp`
  * on PATH, and a path such as `/opt/bin/ssh` is paired with its sibling so a
  * custom OpenSSH build uploads with the matching scp instead of the system one.
+ *
+ * The sibling keeps the ssh extension (`ssh.exe` → `scp.exe`) and is used only
+ * when it exists. A custom build that ships ssh alone falls back to the `scp`
+ * on PATH, which is what the installer used before this pairing existed.
+ *
+ * @param sshBinary - SSH executable chosen by `--ssh` or the plugin config.
+ * @param explicit - `--scp` value, when the caller supplied one.
+ * @param exists - Filesystem probe, injectable for tests.
  */
-export function resolveScpBinary(sshBinary: string, explicit: string | undefined): string {
-  if (explicit !== undefined && explicit.trim() !== '') return explicit.trim()
-  if (!sshBinary.includes('/') && !sshBinary.includes('\\')) return 'scp'
-  return `${dirname(sshBinary)}${sep}scp`
+export function resolveScpBinary(
+  sshBinary: string,
+  explicit: string | undefined,
+  exists: (path: string) => boolean = existsSync,
+): string {
+  const chosen = explicit?.trim()
+  if (chosen !== undefined && chosen !== '') return chosen
+  const ssh = sshBinary.trim()
+  if (!ssh.includes('/') && !ssh.includes('\\')) return 'scp'
+  // A POSIX path may legitimately contain a backslash; only a drive letter or a
+  // UNC prefix proves this is a Windows path when the host itself is POSIX.
+  const windows = process.platform === 'win32'
+    || /^[A-Za-z]:[\\/]/u.test(ssh)
+    || ssh.startsWith('\\\\')
+  const path = windows ? win32 : posix
+  const dir = path.dirname(ssh)
+  const extension = path.extname(ssh)
+  // Windows accepts an extensionless path (CreateProcess appends .exe), so the
+  // sibling may be either spelling.
+  const names = windows && extension === '' ? ['scp.exe', 'scp'] : [`scp${extension}`]
+  for (const name of names) {
+    // Concatenate instead of path.join: join normalizes `a/../scp` to `scp`,
+    // which exists() would resolve against the cwd while spawn() would search
+    // PATH.
+    const sibling = dir === '.' ? `.${path.sep}${name}` : `${dir}${path.sep}${name}`
+    if (exists(sibling)) return sibling
+  }
+  return 'scp'
 }
 
 function parseInteger(raw: string, flag: string, min: number, max: number): number {
@@ -242,7 +275,7 @@ Options:
   --no-start               Same as --start none
   --agent-tarball          Use an existing dsh-remote-agent .tgz
   --ssh                    SSH binary (default: ssh)
-  --scp                    scp binary (default: scp beside --ssh)
+  --scp                    scp binary (default: scp beside --ssh, else scp on PATH)
   --strict-host-key-checking  yes | no | ask | accept-new (default: accept-new)
   --timeout-ms             SSH command timeout (default: 30000)
   --json                   Machine-readable output where supported

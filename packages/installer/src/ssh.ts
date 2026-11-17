@@ -98,10 +98,11 @@ export interface SshOptions {
 
 /** Options shared by every upload. */
 export interface ScpOptions {
-  /** scp binary; defaults to the sibling of {@link SshOptions.binary}. */
+  /** scp executable to run; the caller pairs it with {@link SshOptions.binary}. */
   readonly binary: string
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
   readonly verbose: boolean
+  /** Upload timeout in milliseconds; also bounds scp's connect phase. */
   readonly timeoutMs?: number
 }
 
@@ -127,6 +128,12 @@ export function sshArgs(target: ParsedTarget, options: SshOptions): string[] {
 /** Build the common scp argv. */
 export function scpArgs(target: ParsedTarget, options: ScpOptions, local: string, remote: string): string[] {
   return [
+    // BatchMode keeps the upload from blocking on a password prompt; sshArgs
+    // already refuses interactive auth for the install itself.
+    '-o', 'BatchMode=yes',
+    ...options.timeoutMs === undefined
+      ? []
+      : ['-o', `ConnectTimeout=${Math.max(1, Math.ceil(options.timeoutMs / 1_000))}`],
     '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,
     ...target.port === null ? [] : ['-P', String(target.port)],
     local,
@@ -145,29 +152,70 @@ export function uploadFile(
     const child = spawn(options.binary, scpArgs(target, options, local, remote), {
       stdio: ['ignore', 'ignore', 'pipe'],
       windowsHide: true,
+      // POSIX: put scp in its own process group so a timeout can take its
+      // ssh child down with it. Windows has no equivalent group; the direct
+      // kill below is the best available there.
+      detached: process.platform !== 'win32',
     })
     const stderr: Buffer[] = []
+    let stderrBytes = 0
+    let settled = false
+    let timer: NodeJS.Timeout | undefined
+    const stderrTail = (): string => Buffer.concat(stderr).toString('utf8').trim().split(/\r?\n/u).pop() ?? ''
+    const finish = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      if (timer !== undefined) clearTimeout(timer)
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    const killTree = (): void => {
+      if (process.platform !== 'win32' && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, 'SIGKILL')
+          return
+        } catch {
+          // The group is already gone; fall back to the direct child.
+        }
+      }
+      child.kill('SIGKILL')
+    }
     child.stderr.on('data', (chunk: Buffer) => {
       stderr.push(chunk)
+      stderrBytes += chunk.length
+      // Keep only the tail; a verbose scp can stream a lot of progress.
+      while (stderrBytes > 64 * 1024 && stderr.length > 0) {
+        const first = stderr[0]!
+        const excess = stderrBytes - 64 * 1024
+        if (first.length <= excess) {
+          stderr.shift()
+          stderrBytes -= first.length
+          continue
+        }
+        // One chunk larger than the cap must still keep its tail, which is
+        // where the actual error line lives.
+        stderr[0] = first.subarray(excess)
+        stderrBytes -= excess
+        break
+      }
       if (options.verbose) process.stderr.write(chunk)
     })
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      reject(new Error(`scp timed out after ${String(options.timeoutMs ?? 120_000)}ms`))
+    timer = setTimeout(() => {
+      killTree()
+      const tail = stderrTail()
+      finish(new Error(`scp timed out after ${String(options.timeoutMs ?? 120_000)}ms${tail === '' ? '' : `: ${tail}`}`))
     }, options.timeoutMs ?? 120_000)
     timer.unref?.()
-    child.once('error', error => {
-      clearTimeout(timer)
-      reject(error)
-    })
-    child.once('exit', code => {
-      clearTimeout(timer)
+    child.once('error', error => finish(error))
+    // `close` (rather than `exit`) waits until stderr has been drained, so the
+    // reported cause is complete.
+    child.once('close', code => {
       if (code === 0) {
-        resolve()
+        finish()
         return
       }
-      const detail = Buffer.concat(stderr).toString('utf8').trim().split(/\r?\n/u).pop() ?? ''
-      reject(new Error(`scp failed with ${String(code ?? 1)}${detail === '' ? '' : `: ${detail}`}`))
+      const tail = stderrTail()
+      finish(new Error(`scp failed with ${String(code ?? 1)}${tail === '' ? '' : `: ${tail}`}`))
     })
   })
 }
@@ -243,6 +291,7 @@ export function runRemoteScript(
     let settled = false
     const timer = setTimeout(() => {
       if (settled) return
+      settled = true
       child.kill('SIGKILL')
       reject(new Error(`remote bootstrap timed out after ${options.timeoutMs}ms`))
     }, options.timeoutMs)
@@ -276,7 +325,9 @@ export function runRemoteScript(
       clearTimeout(timer)
       reject(error)
     })
-    child.once('exit', (code, signal) => {
+    // `close` waits until stdout/stderr are drained; `exit` can fire before the
+    // final stderr line that explains the failure.
+    child.once('close', (code, signal) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
