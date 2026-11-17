@@ -182,6 +182,31 @@ export function withRemoteGroups(state: DirectoryState, groups: readonly Provide
 }
 
 /**
+ * Whether two group lists would render the same sections.
+ *
+ * Compared by value, not identity: `withRemoteGroups` always builds a fresh
+ * array, so an identity check would report a change on every pass and the store
+ * subscription would re-enter the merge forever.
+ * @param left - one group list.
+ * @param right - the other.
+ * @returns whether they offer the same sections.
+ */
+function sameGroups(left: readonly ProviderGroup[], right: readonly ProviderGroup[]): boolean {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index]
+    const b = right[index]
+    if (a === undefined || b === undefined) return false
+    if (a.id !== b.id || a.name !== b.name || a.models.length !== b.models.length) return false
+    for (let model = 0; model < a.models.length; model += 1) {
+      if (a.models[model]?.id !== b.models[model]?.id) return false
+    }
+  }
+  return true
+}
+
+/**
  * Install the catalog merge for every mirrored Session.
  *
  * Wraps the root resolver once: each `directoryFor` call is memoized by the
@@ -196,8 +221,6 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
     if (resolver === undefined || typeof resolver.directoryFor !== 'function') return
     const original = resolver.directoryFor.bind(resolver)
     const wrapped = new WeakMap<object, Directory>()
-    /** Last applied contribution per Session, so refreshes stay idempotent. */
-    const applied = new WeakMap<object, string>()
     /**
      * Host that contributed a Session's rows, which a pick must be sent to.
      *
@@ -234,11 +257,7 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
           return
         }
         const groups = remoteGroups(catalog)
-        const signature = JSON.stringify(groups)
         const remembered = remoteCurrent.get(id) ?? null
-        const signatures = `${signature}|${JSON.stringify(remembered)}`
-        if (applied.get(directory) === signatures) return
-        applied.set(directory, signatures)
         // Remember which host this Session's rows came from, so a pick can be
         // installed through the right mirror.
         hostOf.set(id, target.hostId)
@@ -247,7 +266,12 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         const withChoice = remembered === null || remembered === next.current
           ? next
           : { ...next, current: remembered }
-        if (withChoice.groups === current.groups && withChoice.current === current.current) return
+        // Compare against what the store holds *now*, not against what this
+        // function produced last time. The Host rewrites the snapshot whenever a
+        // local model is picked, dropping the remote groups; a cached "already
+        // applied" flag would then skip the re-application and the remote section
+        // would stay missing for the rest of the Session.
+        if (sameGroups(withChoice.groups, current.groups) && withChoice.current === current.current) return
         directory.store.set(withChoice)
       })()
     }

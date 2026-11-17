@@ -184,13 +184,24 @@ describe('installed merge commit path', () => {
       subscribe(fn: () => void) { listener = fn; return () => { listener = undefined } },
     }
     const committed: { provider: string; model: string }[] = []
+    /** Local providers the Host would publish on its own. */
+    const localGroups = [{ id: 'deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] }]
     const directory = {
       store,
       async select(selection: { provider: string; model: string }) {
         committed.push(selection)
+        // The Host rebuilds the snapshot from its own catalog on a local pick,
+        // which is exactly what drops the contributed remote groups.
+        store.set({
+          ...store.getSnapshot(),
+          current: selection,
+          groups: localGroups,
+        })
         return { ok: true }
       },
     }
+    /** Seed the snapshot as the Host would after its first catalog load. */
+    store.set({ ...store.getSnapshot(), groups: localGroups })
     const resolver = { directoryFor: () => directory as never }
     const ctx = {
       inject(_keys: string[], callback: (scope: unknown) => void) {
@@ -251,5 +262,31 @@ describe('installed merge commit path', () => {
     assert.deepEqual(h.committed, [{ provider: 'deepseek-official', model: 'deepseek-flash' }],
       'a local pick keeps using the Host selectModel')
     assert.equal(h.sent.length, 0, 'a local pick must not go through the mirror bridge')
+  })
+
+  it('keeps offering the remote group after a local pick replaces the snapshot', async () => {
+    // Reproduction: pick a remote model, then pick a local one. The Host rebuilds
+    // the snapshot from its own catalog on the local pick, so the contributed
+    // remote group disappears — and a merge that trusts a cached "already
+    // applied" flag never puts it back, leaving the user unable to switch back.
+    const h = harness()
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+
+    const wrapped = h.resolver.directoryFor() as unknown as {
+      select: (selection: { provider: string; model: string }) => Promise<{ ok: boolean }>
+    }
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+    const hasRemote = (): boolean =>
+      h.store.getSnapshot().groups.some(group => group.id.startsWith('remote:'))
+    assert.equal(hasRemote(), true, 'step 1: the remote group is offered')
+
+    await wrapped.select({ provider: 'remote:deepseek-official', model: 'deepseek-v4-pro' })
+    assert.equal(hasRemote(), true, 'step 1: picking a remote model keeps the group')
+
+    await wrapped.select({ provider: 'deepseek-official', model: 'deepseek-flash' })
+    // The subscription re-runs the merge asynchronously.
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+    assert.equal(hasRemote(), true,
+      'step 2: after a local pick the remote group must still be offered')
   })
 })
