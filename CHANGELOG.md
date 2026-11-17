@@ -22,12 +22,13 @@
   reads that directory, so the rows appear for the native composer seat and for
   a skin that draws its own menu; a model the remote alone serves
   (`deepseek-v4-pro`, for example) can be chosen directly instead of falling
-  back to the remote default. The contributed section is labelled `Remote ·
-  DeepSeek`, because a remote provider is usually named after the same vendor as
-  a local one and two unlabelled sections give no way to tell which list a
-  mirrored Session can actually run. Picking one installs the
-  selection on the mirror
-  over the existing bridge, and a Session that is not a mirror keeps exactly the
+  back to the remote default. A mirrored Session lists only what the remote can
+  run — a local provider there is a choice that cannot be honoured, because the
+  prompt is executed on the remote Host — and it starts on the remote catalog's
+  own default instead of this machine's. The contributed section is labelled
+  `Remote · DeepSeek`, because a remote provider is usually named after the same
+  vendor as a local one. Picking one installs the selection on the mirror over
+  the existing bridge, and a Session that is not a mirror keeps exactly the
   Host's own list.
 
 - Add an "Open remote Web UI" action to each connected host in Settings, so the

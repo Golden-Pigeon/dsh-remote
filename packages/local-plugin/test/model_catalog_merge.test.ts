@@ -126,6 +126,25 @@ describe('directory snapshot merge', () => {
     assert.equal(merged.status, 'ready', 'unrelated fields must survive')
   })
 
+  it('withholds the local groups when only the remote list is usable', () => {
+    // A mirrored Session sends its prompt to the remote Host, so a local provider
+    // in the list is a choice that cannot run.
+    const merged = withRemoteGroups(state(), [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] },
+    ], true)
+    assert.deepEqual(merged.groups.map(group => group.id), ['remote:deepseek-official'])
+  })
+
+  it('keeps the local groups when nothing is withheld', () => {
+    const merged = withRemoteGroups(state(), [
+      { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] },
+    ], false)
+    assert.deepEqual(merged.groups.map(group => group.id), [
+      'local-provider',
+      'remote:deepseek-official',
+    ])
+  })
+
   it('replaces the previous remote contribution instead of duplicating it', () => {
     const first = withRemoteGroups(state(), [
       { id: 'remote:deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-flash', name: 'Flash' }] },
@@ -288,5 +307,48 @@ describe('installed merge commit path', () => {
     await new Promise(resolve => { setTimeout(resolve, 50) })
     assert.equal(hasRemote(), true,
       'step 2: after a local pick the remote group must still be offered')
+  })
+
+  it('lists only the remote groups for a mirrored Session', async () => {
+    const h = harness()
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+    h.resolver.directoryFor()
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    const ids = h.store.getSnapshot().groups.map(group => group.id)
+    assert.deepEqual(ids, ['remote:deepseek-official'],
+      'a mirrored Session must not offer providers the remote cannot route')
+  })
+
+  it('defaults a mirrored Session to the remote catalog default', async () => {
+    // The Host's own default is a local provider, so a mirrored Session would
+    // advertise a model it cannot run until the user picks one.
+    const h = harness()
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+    h.resolver.directoryFor()
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    assert.deepEqual(h.store.getSnapshot().current, {
+      provider: 'remote:deepseek-official',
+      model: 'deepseek-flash',
+    }, 'the trigger must start on a model the remote catalog offers')
+  })
+
+  it('replaces an unroutable stored selection with the remote default', async () => {
+    const h = harness()
+    // The Host projects its own default: a local provider the remote cannot run.
+    h.store.set({
+      ...h.store.getSnapshot(),
+      current: { provider: 'tt-switch-local', model: 'deepseek-v4.1-flash' },
+      groups: [{ id: 'tt-switch-local', name: 'TT', models: [{ id: 'deepseek-v4.1-flash', name: 'F' }] }],
+    })
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+    h.resolver.directoryFor()
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    assert.deepEqual(h.store.getSnapshot().current, {
+      provider: 'remote:deepseek-official',
+      model: 'deepseek-flash',
+    }, 'a selection the remote cannot route must not survive the merge')
   })
 })

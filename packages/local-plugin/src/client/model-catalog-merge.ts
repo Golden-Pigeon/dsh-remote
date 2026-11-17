@@ -169,16 +169,70 @@ function toSelectorModel(model: RemoteModel): SelectorModel {
 }
 
 /**
- * Append the remote groups to one directory snapshot, replacing any previous
- * contribution from the same host so a refresh cannot duplicate rows.
+ * Build the snapshot a mirrored Session should offer.
+ *
+ * With `remoteOnly`, the Host's own providers are withheld so the menu lists
+ * exactly what the remote can run: a mirrored Session sends its prompt to the
+ * remote Host, and picking a local model there only costs a rejected round trip
+ * or a silent fallback to the remote default. Without it the remote groups are
+ * simply appended, which is what an ordinary Session and a host with no catalog
+ * still need.
+ *
+ * A recorded selection whose provider is no longer offered is kept in `current`:
+ * the selector matches `current` against `groups` to label its trigger, and
+ * dropping it would blank the label. It renders as the session's last choice
+ * until the user picks a listed model.
  * @param state - the directory snapshot to extend.
  * @param groups - remote groups to contribute.
- * @returns the extended snapshot.
+ * @param remoteOnly - whether to withhold the Host's own providers.
+ * @returns the snapshot to publish.
  */
-export function withRemoteGroups(state: DirectoryState, groups: readonly ProviderGroup[]): DirectoryState {
+export function withRemoteGroups(
+  state: DirectoryState,
+  groups: readonly ProviderGroup[],
+  remoteOnly = false,
+): DirectoryState {
   const local = state.groups.filter(group => !isRemoteProvider(group.id))
-  if (groups.length === 0) return { ...state, groups: local }
-  return { ...state, groups: [...local, ...groups] }
+  const base = remoteOnly ? [] : local
+  if (groups.length === 0) return { ...state, groups: base }
+  return { ...state, groups: [...base, ...groups] }
+}
+
+/**
+ * Keep a selection only when the offered groups can still resolve it.
+ *
+ * A mirrored Session's stored selection usually names a local provider, which a
+ * remote-only list no longer offers; keeping it would leave the trigger matching
+ * nothing and rendering as if no model were chosen.
+ * @param current - the selection the directory currently holds.
+ * @param groups - the groups about to be offered.
+ * @returns the selection when it is still listable, otherwise null.
+ */
+function pickStillOffered(
+  current: DirectoryState['current'],
+  groups: readonly ProviderGroup[],
+): DirectoryState['current'] {
+  if (current === null) return null
+  const offered = groups.some(group =>
+    group.id === current.provider && group.models.some(model => model.id === current.model))
+  return offered ? current : null
+}
+
+/**
+ * The remote's own default selection, expressed as a local listable id.
+ * @param groups - the contributed groups.
+ * @param catalog - the catalog they came from.
+ * @returns the default selection, or null when it is not among the groups.
+ */
+function remoteDefault(
+  groups: readonly ProviderGroup[],
+  catalog: ModelCatalogResult,
+): DirectoryState['current'] {
+  const provider = remoteProviderId(catalog.default.provider)
+  const group = groups.find(item => item.id === provider)
+  if (group === undefined) return null
+  if (!group.models.some(model => model.id === catalog.default.model)) return null
+  return { provider, model: catalog.default.model }
 }
 
 /**
@@ -262,10 +316,21 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         // installed through the right mirror.
         hostOf.set(id, target.hostId)
         const current = directory.store.getSnapshot()
-        const next = withRemoteGroups(current, groups)
-        const withChoice = remembered === null || remembered === next.current
+        // Withhold the Host's providers only when the remote actually offers
+        // something: a host whose catalog is empty or unreachable must not leave
+        // the menu with nothing to pick.
+        const next = withRemoteGroups(current, groups, groups.length > 0)
+        // The Session's stored selection comes from the Host's own projection, so
+        // a mirrored Session starts out pointing at a local provider — one the
+        // remote cannot route. Prefer, in order: the model the user picked here,
+        // then a selection the remote catalog still offers, then the remote's own
+        // default. Without this the trigger advertises a model that cannot run.
+        const intended = remembered
+          ?? pickStillOffered(next.current, groups)
+          ?? remoteDefault(groups, catalog)
+        const withChoice = intended === null || intended === next.current
           ? next
-          : { ...next, current: remembered }
+          : { ...next, current: intended }
         // Compare against what the store holds *now*, not against what this
         // function produced last time. The Host rewrites the snapshot whenever a
         // local model is picked, dropping the remote groups; a cached "already
