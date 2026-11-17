@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   decodeRemoteProvider,
+  installModelCatalogMerge,
   isRemoteProvider,
   remoteGroups,
   remoteProviderId,
@@ -159,5 +160,96 @@ describe('directory snapshot merge', () => {
       provider: 'remote:deepseek-official',
       model: 'deepseek-v4-pro',
     })
+  })
+})
+
+describe('installed merge commit path', () => {
+  /**
+   * Minimal fake of `ctx.modelDirectories`, enough to exercise the wrapper: a
+   * resolver whose directory exposes the store and select the wrapper needs.
+   * Returns the *wrapped* resolver so the commit path is what gets called.
+   */
+  function harness() {
+    let listener: (() => void) | undefined
+    const store = {
+      state: {
+        current: null as { provider: string; model: string } | null,
+        groups: [] as readonly { id: string; name: string; models: { id: string; name: string }[] }[],
+        failures: [],
+        error: null,
+        status: 'ready',
+      },
+      getSnapshot() { return this.state },
+      set(next: typeof store.state) { this.state = next; listener?.() },
+      subscribe(fn: () => void) { listener = fn; return () => { listener = undefined } },
+    }
+    const committed: { provider: string; model: string }[] = []
+    const directory = {
+      store,
+      async select(selection: { provider: string; model: string }) {
+        committed.push(selection)
+        return { ok: true }
+      },
+    }
+    const resolver = { directoryFor: () => directory as never }
+    const ctx = {
+      inject(_keys: string[], callback: (scope: unknown) => void) {
+        callback({ modelDirectories: resolver })
+      },
+    }
+    const sent: { provider: string; model: string }[] = []
+    const api = {
+      sessionMirror: async () => ({ hostId: 'h1', hostLabel: 'native1', remoteSessionId: 'r1' }),
+      modelCatalog: async () => catalog(),
+      setSessionModel: async (input: { provider: string; model: string }) => {
+        sent.push({ provider: input.provider, model: input.model })
+        return { accepted: true as const }
+      },
+    }
+    return { ctx, api, store, committed, sent, resolver }
+  }
+
+  it('forwards a remote pick to the mirror bridge and records it locally', async () => {
+    const h = harness()
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+
+    // `directoryFor` installs the wrapper and starts the merge; the merge itself
+    // resolves the mirror asynchronously before it publishes.
+    const wrapped = h.resolver.directoryFor() as unknown as {
+      select: (selection: { provider: string; model: string }) => Promise<{ ok: boolean }>
+    }
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    const groups = h.store.getSnapshot().groups
+    assert.ok(groups.some(group => group.id === 'remote:deepseek-official'),
+      'the merge must publish the remote group before a pick can be addressed')
+
+    const result = await wrapped.select({ provider: 'remote:deepseek-official', model: 'deepseek-v4-pro' })
+
+    assert.equal(result.ok, true, 'picking a remote row must be accepted')
+    assert.deepEqual(h.sent, [{ provider: 'deepseek-official', model: 'deepseek-v4-pro' }],
+      'the remote must receive the provider id its own catalog reported')
+    assert.deepEqual(h.store.getSnapshot().current, {
+      provider: 'remote:deepseek-official',
+      model: 'deepseek-v4-pro',
+    }, 'the directory must record the pick so the trigger can render it')
+    assert.equal(h.committed.length, 0,
+      'a remote pick must not reach the Host selectModel, which cannot resolve it')
+  })
+
+  it('leaves a local pick on the Host path', async () => {
+    const h = harness()
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+
+    const wrapped = h.resolver.directoryFor() as unknown as {
+      select: (selection: { provider: string; model: string }) => Promise<{ ok: boolean }>
+    }
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    await wrapped.select({ provider: 'deepseek-official', model: 'deepseek-flash' })
+
+    assert.deepEqual(h.committed, [{ provider: 'deepseek-official', model: 'deepseek-flash' }],
+      'a local pick keeps using the Host selectModel')
+    assert.equal(h.sent.length, 0, 'a local pick must not go through the mirror bridge')
   })
 })

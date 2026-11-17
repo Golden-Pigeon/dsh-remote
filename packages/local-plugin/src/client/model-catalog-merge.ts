@@ -198,17 +198,24 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
     const wrapped = new WeakMap<object, Directory>()
     /** Last applied contribution per Session, so refreshes stay idempotent. */
     const applied = new WeakMap<object, string>()
-    /** Host that contributed a Session's rows, which a pick must be sent to. */
-    const hostOf = new WeakMap<object, string>()
     /**
-     * The remote pick made for a directory.
+     * Host that contributed a Session's rows, which a pick must be sent to.
+     *
+     * Keyed by the Session id, not by the directory object: `merge()` runs
+     * against the wrapper while `select()` closes over the original, so an
+     * object key set on one side is never visible from the other.
+     */
+    const hostOf = new Map<string, string>()
+    /**
+     * The remote pick made for a Session.
      *
      * A Host refresh rebuilds `current` from the local projection, which knows
      * nothing about a remote provider, so the pick would be dropped from the
      * trigger. Re-applying it here keeps the label stable across refreshes; the
      * remote is the authority for what actually runs, and this only mirrors it.
+     * Keyed by Session id so the commit path and the merge path agree.
      */
-    const remoteCurrent = new WeakMap<object, DirectoryState['current']>()
+    const remoteCurrent = new Map<string, DirectoryState['current']>()
 
     const merge = (sessionId: string, directory: Directory): void => {
       const id = String(sessionId)
@@ -228,13 +235,13 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         }
         const groups = remoteGroups(catalog)
         const signature = JSON.stringify(groups)
-        const remembered = remoteCurrent.get(directory) ?? null
+        const remembered = remoteCurrent.get(id) ?? null
         const signatures = `${signature}|${JSON.stringify(remembered)}`
         if (applied.get(directory) === signatures) return
         applied.set(directory, signatures)
         // Remember which host this Session's rows came from, so a pick can be
         // installed through the right mirror.
-        hostOf.set(directory, target.hostId)
+        hostOf.set(id, target.hostId)
         const current = directory.store.getSnapshot()
         const next = withRemoteGroups(current, groups)
         const withChoice = remembered === null || remembered === next.current
@@ -247,6 +254,9 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
 
     resolver.directoryFor = (sessionId: string): Directory => {
       const directory = original(sessionId)
+      // The commit path and the merge must key their bookkeeping identically;
+      // `merge` normalizes to a string, so this does too.
+      const id = String(sessionId)
       const cached = wrapped.get(directory)
       if (cached !== undefined) {
         merge(sessionId, cached)
@@ -259,13 +269,13 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         store: directory.store,
         select: async selection => {
           if (!isRemoteProvider(selection.provider)) return select(selection)
-          if (hostOf.get(directory) === undefined) {
+          if (hostOf.get(id) === undefined) {
             // Until the catalog contributed rows there is nothing to address; a
             // pick here would install a selection the remote cannot route.
             return { ok: false }
           }
           await api.setSessionModel({
-            localSessionId: sessionId,
+            localSessionId: id,
             // The remote resolves `provider/model` against its own catalog, so it
             // must receive the id its catalog reported, not the local alias.
             provider: decodeRemoteProvider(selection.provider),
@@ -281,7 +291,7 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
             model: selection.model,
             ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
           }
-          remoteCurrent.set(directory, decided)
+          remoteCurrent.set(id, decided)
           const snapshot = directory.store.getSnapshot()
           directory.store.set({ ...snapshot, current: decided })
           // Report success so the selector commits its own pending state; the
