@@ -14,6 +14,8 @@ export interface Config {
   readonly stateDir?: string
   /** SSH executable. */
   readonly sshBinary?: string
+  /** scp binary for uploads; empty pairs it with `sshBinary`. */
+  readonly scpBinary?: string
   /** Remote discovery document path; empty derives from `remoteDshHome`. */
   readonly remoteStateFile?: string
   readonly probeTimeoutMs?: number
@@ -64,6 +66,7 @@ export interface Config {
 export const Config: z<Config> = z.object({
   stateDir: z.string().default(''),
   sshBinary: z.string().default('ssh'),
+  scpBinary: z.string().default(''),
   remoteStateFile: z.string().default(''),
   probeTimeoutMs: z.number().min(1_000).max(120_000).default(10_000),
   connectTimeoutMs: z.number().min(1_000).max(120_000).default(15_000),
@@ -100,6 +103,8 @@ export type RemoteStartMode = 'systemd' | 'nohup' | 'none'
 export interface ResolvedConfig {
   readonly stateDir: string
   readonly sshBinary: string
+  /** scp binary for uploads; empty means "pair with sshBinary". */
+  readonly scpBinary: string
   readonly remoteStateFile: string
   readonly probeTimeoutMs: number
   readonly connectTimeoutMs: number
@@ -168,6 +173,7 @@ export function resolveConfig(config: Config = {}, env: NodeJS.ProcessEnv = proc
   return {
     stateDir: resolveLocalPath(config.stateDir ?? '', resolveDshHome(env)),
     sshBinary: (config.sshBinary ?? 'ssh').trim() || 'ssh',
+    scpBinary: (config.scpBinary ?? '').trim(),
     remoteStateFile: configuredStateFile === ''
       ? joinRemotePath(remoteDshHome, 'remote-agent/agent.json')
       : configuredStateFile,
