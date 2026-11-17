@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.22
+
+- Show only Agent presets the remote host declares when starting a new remote
+  Session. The remote agent serves a new `GET /presets` route; a mirrored
+  blank starts on a preset the host declares, an unknown preset is dropped
+  before the remote Session is created, and the new-session menu lists the
+  presets both deployments declare. Hosts without the route keep the previous
+  behavior
+  ([#38](https://github.com/Golden-Pigeon/dsh-remote/pull/38)).
+- Ship remote agent `0.2.13`.
+
 ## 0.8.21
 
 - Provision new remote hosts with the local DSH runtime version by default.
