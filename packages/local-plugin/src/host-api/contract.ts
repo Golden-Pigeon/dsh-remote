@@ -28,6 +28,9 @@ export const HOST_API_PATH = '/api/dsh-remote'
 export type HostApiEndpoint =
   | 'state'
   | 'settings/copy-model-key'
+  | 'settings/credential-proxy'
+  | 'host/model-source'
+  | 'host/copy-model-key'
   | 'target/validate'
   | 'host/add'
   | 'host/remove'
@@ -149,6 +152,9 @@ export type HostApiResult<T> =
 export interface HostApiPayloads {
   state: undefined
   'settings/copy-model-key': { copyModelKey: boolean }
+  'settings/credential-proxy': { credentialProxy: boolean }
+  'host/model-source': { hostId: string; source: 'proxy' | 'direct' | null }
+  'host/copy-model-key': { hostId: string; copyModelKey: boolean | null }
   'target/validate': { sshTarget: string }
   'host/add': {
     sshTarget: string
@@ -196,6 +202,9 @@ export interface HostApiPayloads {
 export interface HostApiValues {
   state: RemoteHostsState
   'settings/copy-model-key': { copyModelKey: boolean }
+  'settings/credential-proxy': { credentialProxy: boolean }
+  'host/model-source': HostView
+  'host/copy-model-key': HostView
   'target/validate': ValidatedTarget
   'host/add': HostView
   'host/remove': { removed: true }

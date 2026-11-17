@@ -37,11 +37,14 @@ export async function apply(ctx: Context, config: LocalConfig = {}): Promise<voi
   const resolved = resolveConfig(config)
   const settings = new SettingsStore(join(resolved.stateDir, 'settings.json'), {
     copyModelKey: resolved.copyModelKey,
+    credentialProxy: resolved.credentialProxy,
   })
   const stored = settings.load()
   const service = new RemoteHostsService(ctx, resolved, {
     copyModelKey: stored.copyModelKey,
     persistCopyModelKey: value => settings.setCopyModelKey(value),
+    credentialProxy: stored.credentialProxy,
+    persistCredentialProxy: value => settings.setCredentialProxy(value),
     resolveModelKey: async () => {
       try {
         const resolvedKey = await ctx.credentials.resolve(credentialRef(resolved.modelCredentialRef))

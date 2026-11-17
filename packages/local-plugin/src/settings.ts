@@ -1,10 +1,10 @@
 /**
  * Plugin-owned user settings.
  *
- * The installed plugin is a bundle: its default `copyModelKey` lives in the
- * bundle patch, not in a profile row the settings UI can edit. This store keeps
- * the user's explicit choice in the plugin state directory and uses the config
- * value only as the default. It contains no secrets.
+ * The installed plugin is a bundle: its default `copyModelKey` and
+ * `credentialProxy` live in the bundle patch, not in a profile row the settings
+ * UI can edit. This store keeps the user's explicit choices in the plugin state
+ * directory and uses the config values only as defaults. It contains no secrets.
  *
  * @module dsh-remote-local/settings
  */
@@ -17,6 +17,8 @@ import { dirname } from 'node:path'
 export interface EffectiveSettings {
   /** Copy the locally resolved model key into the remote service env. */
   readonly copyModelKey: boolean
+  /** Use the local credential proxy instead of a direct remote key. */
+  readonly credentialProxy: boolean
 }
 
 /** Persistent override of the bundle's settings defaults. */
@@ -40,11 +42,17 @@ export class SettingsStore {
    */
   load(): EffectiveSettings {
     try {
-      const parsed = JSON.parse(readFileSync(this.#path, 'utf8')) as { copyModelKey?: unknown }
+      const parsed = JSON.parse(readFileSync(this.#path, 'utf8')) as {
+        copyModelKey?: unknown
+        credentialProxy?: unknown
+      }
       return {
         copyModelKey: typeof parsed.copyModelKey === 'boolean'
           ? parsed.copyModelKey
           : this.#defaults.copyModelKey,
+        credentialProxy: typeof parsed.credentialProxy === 'boolean'
+          ? parsed.credentialProxy
+          : this.#defaults.credentialProxy,
       }
     } catch {
       // Missing, unreadable, or malformed: the bundle default is the safe value.
@@ -54,9 +62,18 @@ export class SettingsStore {
 
   /** Persist one setting atomically. */
   async setCopyModelKey(copyModelKey: boolean): Promise<void> {
+    await this.#write({ ...(await this.load()), copyModelKey })
+  }
+
+  /** Persist the global proxy mode atomically. */
+  async setCredentialProxy(credentialProxy: boolean): Promise<void> {
+    await this.#write({ ...(await this.load()), credentialProxy })
+  }
+
+  async #write(settings: EffectiveSettings): Promise<void> {
     await mkdir(dirname(this.#path), { recursive: true })
     const temporary = `${this.#path}.tmp`
-    await writeFile(temporary, `${JSON.stringify({ copyModelKey }, null, 2)}\n`, { mode: 0o600 })
+    await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 })
     await rename(temporary, this.#path)
   }
 }

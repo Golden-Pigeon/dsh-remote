@@ -46,8 +46,8 @@ describe('installer options', () => {
     // the default and the Settings opt-out rather than claim it never copies.
     assert.doesNotMatch(HELP, /never copies model API keys/u)
     assert.doesNotMatch(HELP, /future local credential proxy/u)
-    assert.match(HELP, /Copy model API key to remote hosts/u)
-    assert.match(HELP, /copy off/u)
+    assert.match(HELP, /Copy model API key to\s+remote\s+hosts/u)
+    assert.match(HELP, /no copy/u)
     assert.match(HELP, /proxy/u)
     assert.match(HELP, /DEEPSEEK_API_KEY/u)
     assert.match(HELP, /127\.0\.0\.1/u)

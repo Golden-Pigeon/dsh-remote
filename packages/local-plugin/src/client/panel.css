@@ -97,7 +97,8 @@
   opacity: 0.72;
 }
 
-.dshr-field input {
+.dshr-field input,
+.dshr-field select {
   width: 100%;
   box-sizing: border-box;
   padding: 7px 9px;
@@ -109,9 +110,124 @@
   outline: none;
 }
 
-.dshr-field input:focus {
+.dshr-field input:focus,
+.dshr-field select:focus {
   border-color: var(--dshr-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--dshr-accent) 22%, transparent);
+}
+
+.dshr-setting-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dshr-setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--dshr-border);
+}
+
+.dshr-setting-list > .dshr-setting-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.dshr-setting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.dshr-setting-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dshr-setting-description {
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.65;
+}
+
+.dshr-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+}
+
+.dshr-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--dshr-accent);
+  cursor: pointer;
+}
+
+.dshr-checkbox:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dshr-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dshr-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dshr-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dshr-model-settings {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dshr-border);
+}
+
+.dshr-model-settings .dshr-setting-control {
+  min-width: 60px;
+}
+
+.dshr-reset-slot {
+  display: inline-block;
+  width: 34px;
+  flex: none;
+}
+
+.dshr-model-settings .dshr-link {
+  width: 34px;
+  text-align: right;
+}
+
+.dshr-model-settings-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dshr-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--dshr-border);
+  border-radius: 999px;
+  background: var(--dshr-soft);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.8;
 }
 
 .dshr-check {

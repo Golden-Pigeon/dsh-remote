@@ -3,8 +3,9 @@
  *
  * The installer's contract with the remote machine is one POSIX bash script
  * on stdin. Rendering is pure and unit-tested; execution lives in
- * `commands.ts`. The script intentionally prints no token and never copies
- * model API keys.
+ * `commands.ts`. The script intentionally prints no token. When the local
+ * plugin passes a model key, the script writes it only into the remote service
+ * environment and never logs it.
  *
  * @module @dsh-remote/installer/bootstrap
  */

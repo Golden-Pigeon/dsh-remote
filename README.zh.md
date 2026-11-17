@@ -128,17 +128,17 @@ Settings 页面只负责主机和工作区管理，会话本身不是弹窗。
 DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
-远端 agent 直接调用 DeepSeek。
+远端 agent 直接调用 DeepSeek。直连模式下如果本地没有解析到 key，插件仍会安装并连接，远端可以使用自己的凭据；代理模式下缺少本地 key 会直接报错，需要切到远端直连或先配置 key。
 
-设置页提供 **将模型 API Key 复制到远端主机** 开关（默认开启）。关闭后 key 留在本地，远端需要自行配置凭据；修改在下次连接或重装时生效。
+设置页提供两个全局默认：**使用本地模型代理** 和 **将模型 API Key 复制到远端主机**（默认开启）。每台主机可以单独覆盖；主机设置优先于全局默认。修改在下次连接或重装时生效。
 
-**可选：本地代理。** 设置 `credentialProxy: true` 可以把 key 留在本地：
+**可选：本地代理。** 全局启用 **使用本地模型代理**，或只给某台主机启用，可以把 key 留在本地：
 
 - 远端 DSH 获得 `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` 和一个占位 key；
 - SSH 隧道增加 `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`；
 - 本地代理校验每个主机独立的 proxy token，注入真实 key，再转发到 `credentialProxyUpstream`。
 
-如果本地没有可解析的 key，插件仍会安装并连接；此时需要配置远端 DSH 自己的凭据。主机卡片会显示 **Model credentials: Local proxy / Remote direct / Remote default**。
+如果本地没有可解析的 key，插件仍会安装并连接；此时需要配置远端 DSH 自己的凭据。主机卡片会显示 **Model path: Local proxy / Remote direct / Remote default**。
 
 ## Agent 工具
 
@@ -173,7 +173,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 - SSH 是传输层；隧道只绑定 `127.0.0.1`。
 - 主机 key 默认 TOFU（`accept-new`）；严格校验时使用 `yes` 并准备 `known_hosts`。
 - 远端 agent 只监听 loopback，并使用 bearer token。它的写能力限制在 workspace/session 创建、prompt 和 cancel。prompt 可以让远端 DSH 在远端 sandbox 和审批策略下使用它自己的工具。
-- 默认直连模式下，模型 key 会写入远端 systemd/nohup 环境。只应在可信远端账号上使用；systemd unit 以 `0600` 写入。设置 `credentialProxy: true` 可把 key 留在本地，并通过反向 SSH 隧道代理模型请求。代理请求需要每个主机独立的 token，远端无关本地用户不能复用该凭据端点。
+- 默认直连模式下，模型 key 会写入远端 systemd/nohup 环境。只应在可信远端账号上使用；systemd unit 以 `0600` 写入。在设置页启用 **使用本地模型代理**（全局或单独给某台主机）可把 key 留在本地，并通过反向 SSH 隧道代理模型请求。代理请求需要每个主机独立的 token，远端无关本地用户不能复用该凭据端点。
 - 浏览器请求走 DSH Connection 的已认证 `/api` Fetch 路由。token/凭据保存在 `0600` 文件中，永远不会返回浏览器。
 - 文件树、预览、终端流量都在已认证的 SSH 隧道内。
 - 只连接可信远端账号；远端 DSH 拥有该账号的权限。

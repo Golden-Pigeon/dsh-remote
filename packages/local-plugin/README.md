@@ -104,7 +104,8 @@ See [`cordis.patch.yml`](cordis.patch.yml) and
 ## Security
 
 The token stays local and is never returned to the browser. The browser uses DSH's authenticated
-`/api` route. By default the model key is written to the remote service environment; turn off the
-Settings toggle **Copy model API key to remote hosts** to keep it local (the remote then needs its
-own credentials), or set `credentialProxy: true` to keep it local and inject it through the
-reverse-tunnel proxy. See the [root README](../../README.md#security).
+`/api` route. Settings has global defaults for **Use local credential proxy** and **Copy model API
+key to remote hosts**. Each host can override either choice; the host setting wins. Turn copying off
+to keep the key local (the remote then needs its own credentials), or enable the local proxy to keep
+it local and inject it through the reverse-tunnel proxy. See the
+[root README](../../README.md#security).
