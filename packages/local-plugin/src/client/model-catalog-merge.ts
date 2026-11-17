@@ -297,29 +297,35 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
     const merge = (sessionId: string, directory: Directory): void => {
       const id = String(sessionId)
       void (async () => {
-        let target: MirrorTarget
+        let target: MirrorTarget | null
         try {
           target = await api.sessionMirror(id)
         } catch {
+          // The mirror lookup itself failed; the Session's own list is unknown,
+          // so leave the snapshot alone rather than emptying it on a transient
+          // error.
           return
         }
         if (target === null) return
-        let catalog: ModelCatalogResult
+        let catalog: ModelCatalogResult | null
         try {
           catalog = await api.modelCatalog(target.hostId)
         } catch {
-          return
+          // A mirrored Session never falls back to the Host's providers: a local
+          // model cannot run there, so offering one would hide the failure behind
+          // a choice that silently degrades. An empty list states the problem.
+          catalog = null
         }
-        const groups = remoteGroups(catalog)
+        const groups = catalog === null ? [] : remoteGroups(catalog)
         const remembered = remoteCurrent.get(id) ?? null
         // Remember which host this Session's rows came from, so a pick can be
         // installed through the right mirror.
         hostOf.set(id, target.hostId)
         const current = directory.store.getSnapshot()
-        // Withhold the Host's providers only when the remote actually offers
-        // something: a host whose catalog is empty or unreachable must not leave
-        // the menu with nothing to pick.
-        const next = withRemoteGroups(current, groups, groups.length > 0)
+        // A mirrored Session lists exactly what the remote can run. Empty is a
+        // truthful answer when the host is unreachable or advertises nothing;
+        // the Host's providers are never substituted in.
+        const next = withRemoteGroups(current, groups, true)
         // The Session's stored selection comes from the Host's own projection, so
         // a mirrored Session starts out pointing at a local provider — one the
         // remote cannot route. Prefer, in order: the model the user picked here,
@@ -327,7 +333,7 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
         // default. Without this the trigger advertises a model that cannot run.
         const intended = remembered
           ?? pickStillOffered(next.current, groups)
-          ?? remoteDefault(groups, catalog)
+          ?? (catalog === null ? null : remoteDefault(groups, catalog))
         const withChoice = intended === null || intended === next.current
           ? next
           : { ...next, current: intended }
@@ -357,7 +363,13 @@ export function installModelCatalogMerge(ctx: Context, api: HostsApi): void {
       const proxy: Directory = {
         store: directory.store,
         select: async selection => {
-          if (!isRemoteProvider(selection.provider)) return select(selection)
+          if (!isRemoteProvider(selection.provider)) {
+            // A mirrored Session has no local route: the prompt runs on the
+            // remote Host. Refuse rather than hand the Host a provider it cannot
+            // resolve, which would only surface later as a failed send.
+            if (hostOf.has(id)) return { ok: false }
+            return select(selection)
+          }
           if (hostOf.get(id) === undefined) {
             // Until the catalog contributed rows there is nothing to address; a
             // pick here would install a selection the remote cannot route.

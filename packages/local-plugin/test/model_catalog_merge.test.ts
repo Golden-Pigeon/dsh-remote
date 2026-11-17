@@ -187,8 +187,9 @@ describe('installed merge commit path', () => {
    * Minimal fake of `ctx.modelDirectories`, enough to exercise the wrapper: a
    * resolver whose directory exposes the store and select the wrapper needs.
    * Returns the *wrapped* resolver so the commit path is what gets called.
+   * @param options - `catalogFails` simulates an unreachable remote catalog.
    */
-  function harness() {
+  function harness(options: { catalogFails?: boolean } = {}) {
     let listener: (() => void) | undefined
     const store = {
       state: {
@@ -230,7 +231,10 @@ describe('installed merge commit path', () => {
     const sent: { provider: string; model: string }[] = []
     const api = {
       sessionMirror: async () => ({ hostId: 'h1', hostLabel: 'native1', remoteSessionId: 'r1' }),
-      modelCatalog: async () => catalog(),
+      modelCatalog: async () => {
+        if (options.catalogFails === true) throw new Error('host unreachable')
+        return catalog()
+      },
       setSessionModel: async (input: { provider: string; model: string }) => {
         sent.push({ provider: input.provider, model: input.model })
         return { accepted: true as const }
@@ -265,22 +269,6 @@ describe('installed merge commit path', () => {
     }, 'the directory must record the pick so the trigger can render it')
     assert.equal(h.committed.length, 0,
       'a remote pick must not reach the Host selectModel, which cannot resolve it')
-  })
-
-  it('leaves a local pick on the Host path', async () => {
-    const h = harness()
-    installModelCatalogMerge(h.ctx as never, h.api as never)
-
-    const wrapped = h.resolver.directoryFor() as unknown as {
-      select: (selection: { provider: string; model: string }) => Promise<{ ok: boolean }>
-    }
-    await new Promise(resolve => { setTimeout(resolve, 50) })
-
-    await wrapped.select({ provider: 'deepseek-official', model: 'deepseek-flash' })
-
-    assert.deepEqual(h.committed, [{ provider: 'deepseek-official', model: 'deepseek-flash' }],
-      'a local pick keeps using the Host selectModel')
-    assert.equal(h.sent.length, 0, 'a local pick must not go through the mirror bridge')
   })
 
   it('keeps offering the remote group after a local pick replaces the snapshot', async () => {
@@ -350,5 +338,36 @@ describe('installed merge commit path', () => {
       provider: 'remote:deepseek-official',
       model: 'deepseek-flash',
     }, 'a selection the remote cannot route must not survive the merge')
+  })
+
+  it('stays empty instead of falling back to the Host list', async () => {
+    // Falling back would hide the failure behind models the remote cannot run:
+    // the menu would look healthy and every pick would silently degrade.
+    const h = harness({ catalogFails: true })
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+    h.resolver.directoryFor()
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    assert.deepEqual(h.store.getSnapshot().groups, [],
+      'an unreachable remote must leave the list empty, not borrow the Host providers')
+    assert.equal(h.store.getSnapshot().current, null,
+      'no routable selection can be advertised while the remote is unreachable')
+  })
+
+  it('refuses a local pick in a mirrored Session', async () => {
+    // The prompt runs on the remote Host, so a local provider is not a real
+    // option; accepting it would only move the failure to send time.
+    const h = harness()
+    installModelCatalogMerge(h.ctx as never, h.api as never)
+    const wrapped = h.resolver.directoryFor() as unknown as {
+      select: (selection: { provider: string; model: string }) => Promise<{ ok: boolean }>
+    }
+    await new Promise(resolve => { setTimeout(resolve, 50) })
+
+    const result = await wrapped.select({ provider: 'tt-switch-local', model: 'deepseek-v4.1-flash' })
+
+    assert.equal(result.ok, false, 'a local pick must not be accepted for a mirror')
+    assert.equal(h.committed.length, 0, 'it must not reach the Host selectModel either')
+    assert.equal(h.sent.length, 0, 'and it must not be forwarded to the remote')
   })
 })

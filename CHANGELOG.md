@@ -27,7 +27,11 @@
   prompt is executed on the remote Host — and it starts on the remote catalog's
   own default instead of this machine's. The contributed section is labelled
   `Remote · DeepSeek`, because a remote provider is usually named after the same
-  vendor as a local one. Picking one installs the selection on the mirror over
+  vendor as a local one. When the remote catalog is unreachable or advertises
+  nothing, the list stays empty rather than borrowing this machine's providers:
+  a local model cannot run there, so offering one would hide the failure behind
+  a choice that silently degrades, and a local pick is refused instead.
+  Picking a remote one installs the selection on the mirror over
   the existing bridge, and a Session that is not a mirror keeps exactly the
   Host's own list.
 
