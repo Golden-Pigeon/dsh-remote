@@ -72,6 +72,10 @@ declare module '@deepseek-ai/cordis' {
 export interface HostsState {
   readonly protocolVersion: number
   readonly hosts: readonly HostView[]
+  readonly settings: {
+    readonly copyModelKey: boolean
+    readonly credentialProxy: boolean
+  }
 }
 
 /** Connected resources for one host. */
@@ -88,6 +92,10 @@ export interface RemoteHostsServiceOptions {
   readonly resolveModelKey?: () => Promise<string | undefined>
   /** Override the hosting DSH version; tests inject it instead of the runtime. */
   readonly localDshVersion?: string
+  /** Effective copy-model-key setting loaded from the plugin settings store. */
+  readonly copyModelKey?: boolean
+  /** Persist a changed copy-model-key setting. */
+  readonly persistCopyModelKey?: (value: boolean) => Promise<void>
 }
 
 /** One host registry service. */
@@ -99,6 +107,8 @@ export class RemoteHostsService {
   readonly #provisioner: RemoteProvisioner
   readonly #resolveModelKey: (() => Promise<string | undefined>) | undefined
   readonly #localDshVersion: string | undefined
+  readonly #persistCopyModelKey: ((value: boolean) => Promise<void>) | undefined
+  #copyModelKey: boolean
   #proxy: ModelCredentialProxy | undefined
   #proxyAddress: CredentialProxyAddress | undefined
   #directModel: { readonly baseUrl: string; readonly apiKey: string } | undefined
@@ -125,6 +135,8 @@ export class RemoteHostsService {
     this.#localDshVersion = options.localDshVersion ?? resolveLocalDshVersion()
     this.#provisioner = new RemoteProvisioner(config, this.#localDshVersion)
     this.#resolveModelKey = options.resolveModelKey
+    this.#copyModelKey = options.copyModelKey ?? config.copyModelKey
+    this.#persistCopyModelKey = options.persistCopyModelKey
   }
 
   /** Load the registry and auto-connect opted-in hosts. */
@@ -147,7 +159,27 @@ export class RemoteHostsService {
 
   /** Browser/tool snapshot. */
   state(): HostsState {
-    return { protocolVersion: PROTOCOL_VERSION, hosts: this.list() }
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      hosts: this.list(),
+      settings: {
+        copyModelKey: this.#copyModelKey,
+        credentialProxy: this.config.credentialProxy,
+      },
+    }
+  }
+
+  /** Whether the local key is copied into the remote environment on connect. */
+  get copyModelKey(): boolean { return this.#copyModelKey }
+
+  /** Whether the profile uses the local credential proxy instead. */
+  get credentialProxy(): boolean { return this.config.credentialProxy }
+
+  /** Persist and apply the next-connect copy-model-key choice. */
+  async setCopyModelKey(value: boolean): Promise<void> {
+    if (value === this.#copyModelKey) return
+    await this.#persistCopyModelKey?.(value)
+    this.#copyModelKey = value
   }
 
   /** All hosts in creation order. */
@@ -881,7 +913,7 @@ export class RemoteHostsService {
   }
 
   async #ensureDirectModel(): Promise<{ readonly baseUrl: string; readonly apiKey: string } | undefined> {
-    if (this.config.credentialProxy || !this.config.copyModelKey) return undefined
+    if (this.config.credentialProxy || !this.#copyModelKey) return undefined
     if (this.#directModelAttempted) return this.#directModel
     this.#directModelAttempted = true
     let key: string | undefined

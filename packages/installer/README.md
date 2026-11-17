@@ -27,7 +27,9 @@ modes:
 `DEEPSEEK_API_KEY` from the local credential store and provisioning writes it into the remote
 `dsh web` environment (`Environment="DEEPSEEK_API_KEY=…"` in the systemd user unit, or the `nohup`
 environment). The remote host then calls the provider directly, so **the key is present on the
-remote host**. Use this on a remote account you trust.
+remote host**. Use this on a remote account you trust. Settings exposes this as **Copy model API
+key to remote hosts** (on by default); turn it off to keep the key local and configure credentials
+on the remote instead.
 
 **Proxy.** `credentialProxy: true` / `copyModelKey: false`. The key never leaves the local machine.
 The remote host is started with `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` and a placeholder key,
@@ -35,6 +37,7 @@ and the tunnel adds a reverse forward
 `-R 127.0.0.1:47821:127.0.0.1:<local proxy port>`. The local proxy injects the real key and
 forwards to `credentialProxyUpstream`.
 
-When running the CLI by hand, no model flags exist: the remote host keeps whatever credentials it
-already has, so configure them there first. See
+When running the CLI by hand, no model flags exist: a manual CLI install does not configure model
+credentials. The plugin copies or omits the key according to the Settings toggle when it connects
+or reinstalls a host. See
 [`docs/operations.md`](../../docs/operations.md) for the full comparison and troubleshooting.

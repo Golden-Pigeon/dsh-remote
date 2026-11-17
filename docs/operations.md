@@ -99,7 +99,9 @@ Default direct mode:
 - the remote DSH calls DeepSeek directly; the key is present on the remote host.
 
 Use direct mode on a trusted remote account. It is the default (`credentialProxy: false`,
-`copyModelKey: true`).
+`copyModelKey: true`). Settings exposes this as **Copy model API key to remote hosts** (on by
+default); turning it off keeps the key local and requires remote credentials. The change applies on
+the next connect or reinstall.
 
 Optional proxy mode:
 
@@ -107,8 +109,9 @@ Optional proxy mode:
 - the tunnel adds `-R 127.0.0.1:47821:127.0.0.1:<local-proxy-port>`;
 - the local proxy injects the real key and forwards to `credentialProxyUpstream`.
 
-Set `credentialProxy: true` to use it. If no local key resolves, configure remote credentials or copy
-a key into the remote environment manually.
+Set `credentialProxy: true` to use it. Proxy mode takes precedence over the copy-model-key
+setting, so the key is not copied to the remote while the proxy is enabled. If no local key
+resolves, configure remote credentials or copy a key into the remote environment manually.
 
 ## Native mirror rules
 

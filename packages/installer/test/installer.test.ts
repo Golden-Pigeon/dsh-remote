@@ -41,14 +41,16 @@ describe('installer options', () => {
     assert.throws(() => parseArgs([...baseArgs, '--nope']), UsageError)
   })
 
-  it('documents the security model in help', () => {
-    // Direct mode does write the key to the remote host, so help must not
-    // claim the key is never copied; it has to name both modes instead.
-    assert.doesNotMatch(HELP, /never copies model API keys/)
-    assert.match(HELP, /direct \(default\)/)
-    assert.match(HELP, /proxy/)
-    assert.match(HELP, /DEEPSEEK_API_KEY/)
-    assert.match(HELP, /127\.0\.0\.1/)
+  it('documents the copy-model-key setting in help', () => {
+    // Direct mode does write the key to the remote host, so help must describe
+    // the default and the Settings opt-out rather than claim it never copies.
+    assert.doesNotMatch(HELP, /never copies model API keys/u)
+    assert.doesNotMatch(HELP, /future local credential proxy/u)
+    assert.match(HELP, /Copy model API key to remote hosts/u)
+    assert.match(HELP, /copy off/u)
+    assert.match(HELP, /proxy/u)
+    assert.match(HELP, /DEEPSEEK_API_KEY/u)
+    assert.match(HELP, /127\.0\.0\.1/u)
   })
 })
 

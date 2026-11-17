@@ -39,6 +39,7 @@ export class RemoteUiError extends Error {
 /** API surface injected into the Settings component. */
 export interface HostsApi {
   readonly state: () => Promise<RemoteHostsState>
+  readonly setCopyModelKey: (value: boolean) => Promise<{ copyModelKey: boolean }>
   readonly validateTarget: (sshTarget: string) => Promise<ValidatedTarget>
   readonly addHost: (input: HostApiPayloads['host/add']) => Promise<HostView>
   readonly removeHost: (hostId: string) => Promise<void>
@@ -73,6 +74,7 @@ export interface HostsApi {
 export function createHostsApi(ctx: Context): HostsApi {
   return {
     state: () => call('state', undefined),
+    setCopyModelKey: value => call('settings/copy-model-key', { copyModelKey: value }),
     validateTarget: sshTarget => call('target/validate', { sshTarget }),
     addHost: input => call('host/add', input),
     removeHost: async hostId => { await call('host/remove', { hostId }) },

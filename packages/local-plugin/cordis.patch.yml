@@ -39,6 +39,7 @@
         remoteInstallNoProxy: 127.0.0.1,localhost
 
         # Default: copy the locally resolved key into the remote service env.
+        # Settings stores a user override in settings.json (default true).
         credentialProxy: false
         copyModelKey: true
         remoteModelBaseUrl: https://api.deepseek.com/anthropic

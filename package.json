@@ -12,6 +12,7 @@
     "pretypecheck": "node scripts/check-workspace-libs.mjs",
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "pnpm -r --workspace-concurrency=1 test",
+    "test:scripts": "node --test scripts/package-manager.test.mjs",
     "verify": "pnpm build && pnpm test",
     "clean": "node scripts/clean.mjs",
     "release:plugin": "node scripts/release-plugin.mjs",

@@ -79,12 +79,15 @@ On Windows, the `npm` and `pnpm` names on `PATH` are `.cmd` shims. `child_proces
 without a shell (`spawn('npm')` gives `ENOENT`, `spawn('npm.cmd')` gives `EINVAL`), and
 `shell: true` would pass arguments through `cmd.exe` unescaped.
 
-Build tooling therefore resolves a real entry point next to the running Node installation instead:
+Build scripts launched by pnpm use `npm_execpath`: pnpm sets it to its JS entry point, so the
+script runs `node <pnpm entry>` and never spawns a shell shim. When
+`scripts/package-agent.mjs` is run directly, it falls back to `npm pack`.
 
 - npm → `node <node dir>/node_modules/npm/bin/npm-cli.js`
-- pnpm → `<node dir>/node_modules/pnpm/pnpm.exe` on Windows,
-  `node <node dir>/node_modules/pnpm/bin/pnpm.cjs` elsewhere
+- pnpm → the `npm_execpath` entry when pnpm launches the script; a bare `pnpm` only on POSIX when
+  running a developer tool directly.
 
-That logic lives in `scripts/package-manager.mjs` for the build scripts (plain JavaScript) and in
-`packages/installer/src/npm.ts` for the installer. Both fall back to the bare command name when no
-entry point is found, so POSIX systems behave exactly as before.
+On Windows a missing npm entry point is a hard error, not a `.cmd` fallback. The resolver lives in
+`scripts/package-manager.mjs` (with `scripts/package-manager.test.mjs`) and in
+`packages/installer/src/npm.ts` for the installer. The Windows CI job builds and typechecks the
+workspace and requires a clean tree afterwards.

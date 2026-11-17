@@ -29,10 +29,13 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
+      - name: Toolchain unit tests
+        run: pnpm test:scripts
       - name: Build
         run: pnpm -r build
       - name: Typecheck
-        run: pnpm -r typecheck
+        # Root typecheck runs the pretypecheck stale-build guard; -r does not.
+        run: pnpm typecheck
       - name: Test
         run: pnpm -r test
       - name: Secret scan
@@ -47,3 +50,29 @@ jobs:
           name: dsh-remote-local-plugin-${{ matrix.dsh }}
           path: packages/local-plugin/dsh-remote-local-plugin-*.tgz
           if-no-files-found: error
+
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Toolchain unit tests
+        run: pnpm test:scripts
+      - name: Build
+        run: pnpm -r build
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Keep the tree clean
+        shell: bash
+        run: test -z "$(git status --porcelain)"

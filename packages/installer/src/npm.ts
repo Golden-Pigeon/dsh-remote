@@ -1,14 +1,10 @@
 /**
- * Locating a usable package-manager executable.
+ * Locating a usable npm executable.
  *
- * On Windows the `npm`/`pnpm` names on PATH are `.cmd` shims that
- * `child_process` cannot spawn without a shell, and `shell: true` would pass
- * arguments through `cmd.exe` unescaped. Both npm and pnpm ship a real entry
- * point next to the running Node installation, so prefer that:
- *
- * - npm  → `node <node dir>/node_modules/npm/bin/npm-cli.js`
- * - pnpm → `<node dir>/node_modules/pnpm/pnpm.exe` on Windows,
- *          `node <node dir>/node_modules/pnpm/bin/pnpm.cjs` elsewhere
+ * On Windows the `npm` name on PATH is a `.cmd` shim that
+ * `child_process` cannot spawn without a shell. npm installed next to Node
+ * has a real `node_modules/npm/bin/npm-cli.js`; use it and never spawn the
+ * shim.
  *
  * @module @dsh-remote/installer/npm
  */
@@ -29,28 +25,16 @@ export type NpmInvocation = ToolInvocation
 export function npmInvocation(
   execPath: string = process.execPath,
   exists: (path: string) => boolean = existsSync,
-): ToolInvocation {
-  // <node dir>/node_modules/npm/bin/npm-cli.js — the standard layout of both the
-  // official installers and most version managers.
-  const cli = join(dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
-  if (exists(cli)) return { command: execPath, prefixArgs: [cli] }
-  return { command: 'npm', prefixArgs: [] }
-}
-
-/** How to run pnpm from this process. */
-export function pnpmInvocation(
-  execPath: string = process.execPath,
-  exists: (path: string) => boolean = existsSync,
   platform: NodeJS.Platform = process.platform,
 ): ToolInvocation {
-  const root = join(dirname(execPath), 'node_modules', 'pnpm')
-  // The standalone pnpm package ships a native binary on Windows and a JS
-  // entry point on POSIX; neither needs a shell.
-  const native = join(root, 'pnpm.exe')
-  if (platform === 'win32' && exists(native)) return { command: native, prefixArgs: [] }
-  const cjs = join(root, 'bin', 'pnpm.cjs')
-  if (exists(cjs)) return { command: execPath, prefixArgs: [cjs] }
-  return { command: 'pnpm', prefixArgs: [] }
+  // <node dir>/node_modules/npm/bin/npm-cli.js — the standard layout of the
+  // official Windows installer and nvm-windows.
+  const cli = join(dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  if (exists(cli)) return { command: execPath, prefixArgs: [cli] }
+  // POSIX npm is an executable symlink on PATH. On Windows a bare npm is a
+  // .cmd shim, which child_process cannot spawn, so fail with a readable cause.
+  if (platform === 'win32') {
+    throw new Error('npm entry point not found next to Node; use a standard Node.js installation')
+  }
+  return { command: 'npm', prefixArgs: [] }
 }
-
-

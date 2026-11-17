@@ -113,6 +113,13 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     }
   }
 
+  async function onCopyModelKey(value: boolean): Promise<void> {
+    await run('copy-model-key', async () => {
+      await api.setCopyModelKey(value)
+      setNotice(t('settings.copyModelKeySaved'))
+    })
+  }
+
   async function onAdd(): Promise<void> {
     const sshTarget = form.sshTarget.trim()
     if (sshTarget === '') {
@@ -259,6 +266,23 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       {error !== null && <p className="dshr-banner dshr-banner-error" role="alert">{error}</p>}
       {pollError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{pollError}</p>}
       {notice !== null && <p className="dshr-banner dshr-banner-info" role="status">{notice}</p>}
+
+      {state !== null && state.settings !== undefined && (
+        <section className="dshr-card">
+          <h3>{t('settings.modelKey')}</h3>
+          <label className="dshr-toggle">
+            <input
+              type="checkbox"
+              checked={state.settings.copyModelKey}
+              disabled={busy !== null || state.settings.credentialProxy}
+              onChange={event => { void onCopyModelKey(event.target.checked) }}
+            />
+            <span>{t('settings.copyModelKey')}</span>
+          </label>
+          <p className="dshr-hint">{t('settings.copyModelKeyHint')}</p>
+          {state.settings.credentialProxy && <p className="dshr-hint">{t('settings.copyModelKeyProxy')}</p>}
+        </section>
+      )}
 
       <section className="dshr-card">
         <h3>{t('settings.addHost')}</h3>

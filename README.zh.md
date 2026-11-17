@@ -130,6 +130,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
 
 远端 agent 直接调用 DeepSeek。
 
+设置页提供 **将模型 API Key 复制到远端主机** 开关（默认开启）。关闭后 key 留在本地，远端需要自行配置凭据；修改在下次连接或重装时生效。
+
 **可选：本地代理。** 设置 `credentialProxy: true` 可以把 key 留在本地：
 
 - 远端 DSH 获得 `DEEPSEEK_BASE_URL=http://127.0.0.1:47821` 和一个占位 key；

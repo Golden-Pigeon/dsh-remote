@@ -101,6 +101,15 @@ async function dispatch(
         mirroredWorkspaces,
       }
     }
+    case 'settings/copy-model-key': {
+      const body = requireRecord(payload)
+      const copyModelKey = optionalBooleanField(body, 'copyModelKey')
+      if (copyModelKey === undefined) {
+        throw new LocalError('request/invalid', 'copyModelKey must be a boolean')
+      }
+      await service.setCopyModelKey(copyModelKey)
+      return { copyModelKey: service.copyModelKey }
+    }
     case 'target/validate':
       return service.validateTarget(requireStringField(payload, 'sshTarget'))
     case 'host/add': {

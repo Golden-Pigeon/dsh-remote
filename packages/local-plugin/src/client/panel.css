@@ -57,6 +57,17 @@
   font-weight: 650;
 }
 
+.dshr-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+}
+
+.dshr-toggle input {
+  margin-top: 2px;
+}
+
 .dshr-section-title {
   display: flex;
   align-items: baseline;

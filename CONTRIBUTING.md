@@ -14,7 +14,7 @@ tested support matrix.
 ```sh
 pnpm install --frozen-lockfile
 pnpm -r build
-pnpm -r typecheck
+pnpm typecheck
 pnpm -r test
 ```
 
@@ -64,7 +64,7 @@ an issue will be closed without review.
 
 - Keep changes focused and include tests where behavior changes. CI runs the build, typecheck, and test suite against both supported DSH versions.
 - Reference the corresponding issue in the pull request description.
-- Run `pnpm -r typecheck`, `pnpm -r test`, and `pnpm -r build` before opening a PR.
+- Run `pnpm typecheck`, `pnpm -r test`, and `pnpm -r build` before opening a PR.
 - Do not rewrite published tags or history.
 - Describe security-sensitive changes explicitly, especially anything touching credentials, remote
   installation, approvals, tunnels, or terminal execution.

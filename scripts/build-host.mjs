@@ -36,6 +36,9 @@ function parseFlags(argv) {
 }
 
 const flags = parseFlags(process.argv.slice(2))
+for (const name of ['entry', 'out']) {
+  if (flags.get(name) === true) throw new Error(`--${name} requires a value`)
+}
 const packageDir = process.cwd()
 const manifest = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8'))
 const entry = flags.get('entry') ?? process.env.DSH_REMOTE_HOST_ENTRY ?? 'src/index.ts'

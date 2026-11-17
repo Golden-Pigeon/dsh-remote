@@ -8,10 +8,11 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "bin": {
-    "dsh-remote-install": "lib/cli.js"
+    "dsh-remote-install": "bin/dsh-remote-install.js"
   },
   "files": [
-    "lib"
+    "lib",
+    "bin"
   ],
   "devDependencies": {
     "@dsh-remote/protocol": "workspace:*"

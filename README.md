@@ -181,6 +181,9 @@ ordinary client code paths handle rendering, selection, streaming, and the trans
 **Default: direct key on the remote host.** The plugin resolves `DEEPSEEK_API_KEY` from the local DSH
 credential store and writes it into the remote `dsh web` environment, with
 `DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic`. The remote agent calls DeepSeek directly.
+Settings exposes this as **Copy model API key to remote hosts** (on by default). Turn it off to keep
+the key local; the remote DSH then needs its own credentials. The change applies on the next connect
+or reinstall.
 
 **Optional: local proxy.** Set `credentialProxy: true` to keep the key local:
 

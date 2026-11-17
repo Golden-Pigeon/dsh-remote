@@ -45,7 +45,10 @@ export interface Config {
   readonly provisionTimeoutMs?: number
   /** Keep the model key local and proxy it through a reverse SSH tunnel. Default false. */
   readonly credentialProxy?: boolean
-  /** Copy the resolved local model key into the remote service environment. */
+  /**
+   * Copy the resolved local model key into the remote service environment.
+   * Default true; a Settings override in settings.json takes precedence.
+   */
   readonly copyModelKey?: boolean
   /** Provider base URL used when the key is copied to the remote host. */
   readonly remoteModelBaseUrl?: string
