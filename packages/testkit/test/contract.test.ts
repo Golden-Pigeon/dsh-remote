@@ -36,6 +36,16 @@ describe('remote agent wire contract', () => {
     assert.equal(health.workspaceCount, 2)
   })
 
+  it('lists the advertised agent presets', async () => {
+    const presets = await client().listPresets()
+    assert.deepEqual(presets.map(preset => [preset.id, preset.isDefault]), [
+      ['standard', true],
+      ['ptc', false],
+      ['minimal', false],
+      ['cordis', false],
+    ])
+  })
+
   it('lists workspaces and filters sessions by workspace', async () => {
     const workspaces = await client().listWorkspaces()
     assert.equal(workspaces.length, 2)

@@ -193,6 +193,25 @@ export interface ListSessionsResult {
   readonly sessions: readonly RemoteSessionSummary[]
 }
 
+/** One Agent preset the remote deployment supplies. */
+export interface RemoteAgentPreset {
+  /** Stable identity; also what a new remote Session forwards. */
+  readonly id: string
+  /** Display name the preset published. */
+  readonly name?: string
+  /** One sentence on what the preset is for. */
+  readonly description?: string
+  /** True for the deployment's effective default preset. */
+  readonly isDefault: boolean
+  /** Why the preset cannot compose a Session; absent when it can. */
+  readonly broken?: string
+}
+
+/** Result of `preset.list`. */
+export interface ListPresetsResult {
+  readonly presets: readonly RemoteAgentPreset[]
+}
+
 /**
  * A relative URL that authenticates a browser against the remote DSH Web UI.
  * The local plugin rewrites its port to the tunnel's local port.

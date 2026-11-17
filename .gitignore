@@ -15,3 +15,6 @@ coverage/
 test-results/
 playwright-report/
 .playwright/
+
+# CodeGraph local index (per-machine cache, tool artifact)
+.codegraph/

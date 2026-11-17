@@ -31,6 +31,7 @@ import {
 } from './routes.ts'
 import { parseSseStream } from './sse.ts'
 import { isRemoteAssistantFrame } from './types.ts'
+import { isListPresetsResult } from './validation.ts'
 import type {
   AcceptedResult,
   ApprovalOutcome,
@@ -40,8 +41,10 @@ import type {
   CreateSessionResult,
   CreateWorkspaceRequest,
   HostInfo,
+  ListPresetsResult,
   ListSessionsResult,
   ListWorkspacesResult,
+  RemoteAgentPreset,
   RemoteSessionEvent,
   RemoteSessionSummary,
   PromptSessionRequest,
@@ -196,6 +199,12 @@ export class RemoteAgentClient {
   snapshotSession(sessionId: string, options: SessionSnapshotOptions = {}): Promise<SessionSnapshot> {
     const suffix = options.limit === undefined ? '' : `?limit=${encodeURIComponent(String(options.limit))}`
     return this.#request(`${sessionPath(sessionId)}${suffix}`, isSessionSnapshot)
+  }
+
+  /** List the Agent presets the remote deployment supplies. */
+  async listPresets(): Promise<readonly RemoteAgentPreset[]> {
+    const result: ListPresetsResult = await this.#request(AGENT_ROUTES.presets, isListPresetsResult)
+    return result.presets
   }
 
   /** Register a remote workspace over the agent API. */

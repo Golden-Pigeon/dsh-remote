@@ -66,6 +66,7 @@ describe('route table', () => {
   it('matches fixed routes', () => {
     assert.deepEqual(matchAgentRoute(AGENT_ROUTES.health), { kind: 'health' })
     assert.deepEqual(matchAgentRoute(AGENT_ROUTES.workspaces), { kind: 'workspaces' })
+    assert.deepEqual(matchAgentRoute(AGENT_ROUTES.presets), { kind: 'presets' })
   })
 
   it('decodes session and workspace ids', () => {
@@ -191,6 +192,20 @@ describe('RemoteAgentClient', () => {
         })
         return
       }
+      if (url.pathname === AGENT_ROUTES.presets) {
+        json(res, 200, {
+          ok: true,
+          protocolVersion: PROTOCOL_VERSION,
+          serverTime: new Date().toISOString(),
+          data: {
+            presets: [
+              { id: 'standard', name: 'Standard mode', isDefault: true },
+              { id: 'ptc', name: 'PTC mode', isDefault: false, broken: 'missing plugin' },
+            ],
+          },
+        })
+        return
+      }
       if (url.pathname === sessionArchivePath('s1')) {
         archivedPath = url.pathname
         json(res, 200, {
@@ -242,6 +257,13 @@ describe('RemoteAgentClient', () => {
     assert.equal(health.workspaceCount, 1)
     const workspaces = await client.listWorkspaces()
     assert.equal(workspaces[0]?.workspaceId, 'w1')
+  })
+
+  it('lists the deployment agent presets', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    const presets = await client.listPresets()
+    assert.deepEqual(presets.map(preset => [preset.id, preset.isDefault]), [['standard', true], ['ptc', false]])
+    assert.equal(presets[1]?.broken, 'missing plugin')
   })
 
   it('archives a remote session through the agent route', async () => {

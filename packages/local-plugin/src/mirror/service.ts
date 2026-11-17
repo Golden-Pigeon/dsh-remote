@@ -25,6 +25,7 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { Workspace, WorkspaceId, WorkspaceDomainState } from '@deepseek-ai/dsh-workspace'
 import type {
   ApprovalOutcome,
+  RemoteAgentPreset,
   RemoteApprovalRequest,
   RemoteAssistantFrame,
   RemoteSessionEvent,
@@ -95,6 +96,17 @@ interface MirrorState {
 interface PendingUser {
   readonly message: unknown
   localSeq: number
+}
+
+/** Structural view of the optional Agent-preset registry on the local host. */
+interface LocalPresetRegistry {
+  readonly defaultId?: string
+  list?(): Promise<readonly {
+    readonly id: string
+    readonly name?: string
+    readonly description?: string
+    readonly broken?: string
+  }[]>
 }
 
 interface MirrorRuntime {
@@ -1038,7 +1050,9 @@ export class RemoteMirrorService {
     if (record === undefined || record.localWorkspaceId === undefined || record.remoteWorkspaceId === null) {
       throw new Error('mirrored workspace is not available')
     }
-    const requestedPreset = request.agentPreset
+    // A remote Session can only compose a preset its host supplies; the blank
+    // records that choice so the native chip opens on what the Session runs.
+    const requestedPreset = await this.#blankPreset(hostId, request.agentPreset)
     for (const pending of this.#pendingBlanks.values()) {
       if (pending.hostId !== hostId || pending.localWorkspaceId !== record.localWorkspaceId) continue
       if (pending.materializing !== undefined || pending.delegate !== undefined || pending.remoteSessionId !== undefined) continue
@@ -1064,11 +1078,10 @@ export class RemoteMirrorService {
     if (workspace === undefined) throw new Error('mirrored workspace is not attached')
     await mkdir(record.anchor, { recursive: true })
     const localId = `session-${randomUUID()}`
-    const preset = requestedPreset ?? this.#defaultAgentPreset()
     const session = this.#sessions.create(localId as SessionId, {
       meta: {
         cwd: record.anchor,
-        ...preset === undefined ? {} : { agentPreset: preset },
+        ...requestedPreset === undefined ? {} : { agentPreset: requestedPreset },
       },
     })
     await this.#attach(workspace, session.id)
@@ -1154,7 +1167,7 @@ export class RemoteMirrorService {
     const workspace = this.#workspaceRegistry.get(target.localWorkspaceId as WorkspaceId)
     if (workspace === undefined) throw new Error('mirrored workspace is not attached')
     if (promotion.remoteSessionId === undefined) {
-      const preset = this.#agentPresetFor(agent.session)
+      const preset = await this.#forwardablePreset(target.hostId, this.#agentPresetFor(agent.session))
       const created = await this.#hosts.createSession(target.hostId, {
         workspaceId: target.remoteWorkspaceId,
         ...preset === undefined ? {} : { agentPreset: preset },
@@ -1217,8 +1230,8 @@ export class RemoteMirrorService {
   async #materializeBlankOnce(pending: PendingBlankSession): Promise<RemoteMirrorAgent> {
     const host = this.#hosts.list().find(item => item.id === pending.hostId && item.phase === 'connected')
     if (host === undefined) throw new Error('remote host is not connected')
-    const requestedPreset = this.#agentPresetFor(pending.session)
     if (pending.remoteSessionId === undefined) {
+      const requestedPreset = await this.#forwardablePreset(pending.hostId, this.#agentPresetFor(pending.session))
       const created = await this.#hosts.createSession(pending.hostId, {
         workspaceId: pending.remoteWorkspaceId,
         ...requestedPreset === undefined ? {} : { agentPreset: requestedPreset },
@@ -1284,9 +1297,119 @@ export class RemoteMirrorService {
     return typeof header.agentPreset === 'string' && header.agentPreset !== '' ? header.agentPreset : undefined
   }
 
+  /**
+   * The preset roster the remote deployment of one Session supplies.
+   *
+   * A local Session, or a remote roster that cannot be read, answers
+   * `scoped: false` so the caller keeps the deployment's own roster.
+   */
+  async remotePresetsForSession(
+    sessionId: string | undefined,
+  ): Promise<{ scoped: boolean; remote: readonly RemoteAgentPreset[] }> {
+    if (sessionId === undefined) return { scoped: false, remote: [] }
+    const hostId = this.#presetScopeHost(sessionId)
+    if (hostId === undefined) return { scoped: false, remote: [] }
+    const remote = await this.#remotePresets(hostId)
+    // An unreadable or transiently empty roster must not blank the selector.
+    if (remote === undefined || remote.length === 0) return { scoped: false, remote: [] }
+    return { scoped: true, remote }
+  }
+
+  /** The remote host that owns one Session's preset choice, when it is a mirror. */
+  #presetScopeHost(sessionId: string): string | undefined {
+    for (const pending of this.#pendingBlanks.values()) {
+      if (pending.localSessionId === sessionId) return pending.hostId
+    }
+    for (const runtime of this.#runtimes.values()) {
+      if (runtime.record.localSessionId === sessionId) return runtime.record.hostId
+    }
+    const session = this.#sessions.get(sessionId as SessionId)
+    if (session === undefined) return undefined
+    return this.#mirroredWorkspaceFor(session)?.hostId
+  }
+
+  /** The local deployment's declared presets, for identities only. */
+  async #localPresetRows(): Promise<readonly { readonly id: string }[] | undefined> {
+    const presets = this.#ctx.get('agentPresets') as LocalPresetRegistry | undefined
+    if (presets?.list === undefined) return undefined
+    return await presets.list()
+  }
+
+  /** The remote deployment's roster, or undefined when it cannot be read. */
+  async #remotePresets(hostId: string): Promise<readonly RemoteAgentPreset[] | undefined> {
+    const listPresets = this.#hosts.listPresets
+    if (typeof listPresets !== 'function') return undefined
+    try {
+      return await listPresets.call(this.#hosts, hostId)
+    } catch (error) {
+      this.#ctx.logger.debug('dsh-remote-local: could not read remote agent presets: %s', String(error))
+      return undefined
+    }
+  }
+
+  /**
+   * The preset a mirrored blank starts on.
+   *
+   * The requested preset is kept when the remote host supplies it. Otherwise the
+   * remote default — or any other preset both deployments declare — stands in,
+   * so the native chip always opens on a choice the Session can actually run. An
+   * unreadable remote roster keeps the previous behaviour and falls back to the
+   * deployment default.
+   */
+  async #blankPreset(hostId: string, requested: string | undefined): Promise<string | undefined> {
+    const remote = await this.#remotePresets(hostId)
+    if (remote === undefined || remote.length === 0) return requested ?? this.#defaultAgentPreset()
+    const available = new Set(remote.map(row => row.id))
+    if (requested !== undefined) {
+      if (available.has(requested)) return requested
+      this.#ctx.logger.warn(
+        'dsh-remote-local: remote host %s does not supply agent preset %s; using a supplied preset',
+        hostId,
+        requested,
+      )
+    }
+    const local = await this.#localPresetRows()
+    if (local === undefined) return this.#defaultAgentPreset()
+    const declared = new Set(local.map(row => row.id))
+    const remoteDefault = remote.find(row => row.isDefault)?.id
+    if (remoteDefault !== undefined && declared.has(remoteDefault)) return remoteDefault
+    // The blank must always name a preset: the native chip renders no menu at
+    // all while its Session records none.
+    return remote.map(row => row.id).find(id => declared.has(id)) ?? this.#defaultAgentPreset()
+  }
+
+  /** The deployment's own default preset; only used when the remote roster is unreadable. */
   #defaultAgentPreset(): string | undefined {
     const presets = this.#ctx.get('agentPresets') as { defaultId?: string } | undefined
     return presets?.defaultId
+  }
+
+  /**
+   * Keep a requested preset only when the remote host supplies it.
+   *
+   * The local deployment's roster differs from the remote one, and forwarding a
+   * preset the remote cannot compose fails the whole Session creation. An
+   * unreadable remote roster keeps the previous behaviour so an older agent
+   * still receives the preset it may support.
+   */
+  async #forwardablePreset(hostId: string, preset: string | undefined): Promise<string | undefined> {
+    if (preset === undefined) return undefined
+    const remote = await this.#remotePresets(hostId)
+    if (remote === undefined) return preset
+    if (remote.length === 0) {
+      this.#ctx.logger.warn(
+        'dsh-remote-local: remote host %s reported no agent presets; leaving the choice to the remote default',
+        hostId,
+      )
+      return undefined
+    }
+    if (remote.some(row => row.id === preset)) return preset
+    this.#ctx.logger.warn(
+      'dsh-remote-local: remote host %s does not supply agent preset %s; the remote default applies',
+      hostId,
+      preset,
+    )
+    return undefined
   }
 
   /** Log a lazy materialization failure without turning the blank Session into a local run. */

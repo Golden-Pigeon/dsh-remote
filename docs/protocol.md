@@ -115,6 +115,7 @@ tunnel exits, not on authentication or protocol errors.
 | `GET` | `/host` | `HostInfo` (alias) |
 | `GET` | `/workspaces` | `{ workspaces: RemoteWorkspace[] }` |
 | `GET` | `/sessions` | `{ sessions: RemoteSessionSummary[] }` |
+| `GET` | `/presets` | `{ presets: RemoteAgentPreset[] }` |
 | `GET` | `/workspaces/:workspaceId/sessions` | `{ sessions }` filtered to the workspace |
 | `GET` | `/sessions/:sessionId?limit=N` | `SessionSnapshot` |
 | `GET` | `/sessions/:sessionId/events?cursor=N` | `text/event-stream` |
@@ -149,6 +150,13 @@ for the native file tree/preview, and owns PTY terminals. File reads are read-on
 the only path that executes a shell, and it is gated by the same bearer token. File and terminal
 traffic from the local UI travels over the existing SSH tunnel; no per-operation SSH connection is
 opened by the local plugin.
+
+`GET /presets` exposes the Agent presets the remote deployment declares, so a mirrored Session is
+created with a preset that host can actually compose. The new-session chip lists only the presets
+both deployments declare, and a preset the remote does not declare is replaced by a declared one
+(the remote default when available) before the creation request is sent. An agent without this
+route keeps the previous behaviour: the local plugin reads no roster and forwards the requested
+preset unchanged.
 
 ## Approvals
 

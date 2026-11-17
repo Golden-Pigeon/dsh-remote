@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
+import type { RemoteAgentPreset } from '@dsh-remote/protocol'
 
 import type { ResolvedConfig } from '../src/config.ts'
 import { RemoteMirrorService } from '../src/mirror/service.ts'
@@ -89,6 +90,7 @@ export function harness() {
   let failPrompt = false
   let failEnter = false
   let createdPreset: string | undefined
+  let remotePresets: readonly RemoteAgentPreset[] | undefined
   const attached: string[] = []
   const archived: string[] = []
   const remoteArchived: string[] = []
@@ -179,6 +181,10 @@ export function harness() {
       const preset = createdPreset ?? request.agentPreset
       return { sessionId: id, ...preset === undefined ? {} : { agentPreset: preset } }
     },
+    async listPresets(_host: string) {
+      if (remotePresets === undefined) throw new Error('remote preset roster unavailable')
+      return remotePresets
+    },
     async archiveSession(_host: string, sessionId: string) { remoteArchived.push(sessionId) },
     async promptSession(_host: string, sessionId: string, text: string, _mode?: unknown, selection?: { provider: string; model: string }) {
       if (failPrompt) throw new Error('remote prompt failed')
@@ -216,6 +222,7 @@ export function harness() {
     setFailEnter(value: boolean) { failEnter = value },
     setHostPhase(value: 'connected' | 'disconnected') { host.phase = value },
     setCreatedPreset(value: string | undefined) { createdPreset = value },
+    setRemotePresets(rows: readonly RemoteAgentPreset[] | undefined) { remotePresets = rows },
     setSnapshot(id: string, snapshot: Snapshot) { snapshots.set(id, snapshot) },
     async state(): Promise<{ sessions: Record<string, { remoteSessionId: string; localSessionId: string; parentSessionId?: string }> }> {
       return JSON.parse(await readFile(join(stateDir, 'mirrors.json'), 'utf8'))

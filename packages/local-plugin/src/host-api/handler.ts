@@ -180,6 +180,11 @@ async function dispatch(
         optionalStringField(body, 'workspaceId'),
       )
     }
+    case 'host/presets': {
+      if (mirrors === undefined) throw new LocalError('agent/unavailable', 'remote mirror service is unavailable')
+      const body = payload === undefined ? {} : requireRecord(payload)
+      return mirrors.remotePresetsForSession(optionalStringField(body, 'sessionId'))
+    }
     case 'host/session': {
       const body = requireRecord(payload)
       return service.snapshot(
