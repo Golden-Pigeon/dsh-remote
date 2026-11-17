@@ -16,6 +16,7 @@ export const AGENT_ROUTES = {
   host: `${AGENT_API_PREFIX}/host`,
   workspaces: `${AGENT_API_PREFIX}/workspaces`,
   sessions: `${AGENT_API_PREFIX}/sessions`,
+  presets: `${AGENT_API_PREFIX}/presets`,
   webUrl: `${AGENT_API_PREFIX}/web-url`,
   approvalEvents: `${AGENT_API_PREFIX}/approvals/events`,
   approvalAnswer: `${AGENT_API_PREFIX}/approvals/answer`,
@@ -34,6 +35,7 @@ export type AgentRoute =
   | { readonly kind: 'host' }
   | { readonly kind: 'workspaces' }
   | { readonly kind: 'sessions' }
+  | { readonly kind: 'presets' }
   | { readonly kind: 'session'; readonly sessionId: string }
   | { readonly kind: 'session-events'; readonly sessionId: string }
   | { readonly kind: 'session-assistant-events'; readonly sessionId: string }
@@ -161,6 +163,8 @@ export function matchAgentRoute(pathname: string): AgentRoute | undefined {
       return { kind: 'workspaces' }
     case AGENT_ROUTES.sessions:
       return { kind: 'sessions' }
+    case AGENT_ROUTES.presets:
+      return { kind: 'presets' }
     case AGENT_ROUTES.webUrl:
       return { kind: 'web-url' }
     case AGENT_ROUTES.approvalEvents:

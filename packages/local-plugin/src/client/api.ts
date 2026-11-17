@@ -7,7 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { AcceptedResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
-import type { HostCreateSessionResult, MirrorFileResult } from '../host-api/contract.ts'
+import type { HostCreateSessionResult, MirrorFileResult, PresetScopeResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -54,6 +54,7 @@ export interface HostsApi {
   readonly createLocalWorkspace: (input: { path: string; title?: string }) => Promise<{ workspaceId: string }>
   readonly createWorkspace: (hostId: string, input: { path: string; title?: string }) => Promise<RemoteWorkspace>
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
+  readonly presetScope: (input: { sessionId?: string }) => Promise<PresetScopeResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
@@ -86,6 +87,9 @@ export function createHostsApi(ctx: Context): HostsApi {
     listLocalDirectories: path => call('local/directory/list', { ...path === undefined ? {} : { path } }),
     createLocalWorkspace: input => call('local/workspace/create', input),
     createWorkspace: (hostId, input) => call('host/workspace/create', { hostId, ...input }),
+    presetScope: input => call('host/presets', {
+      ...input.sessionId === undefined ? {} : { sessionId: input.sessionId },
+    }),
     sessions: (hostId, workspaceId) => call('host/sessions', {
       hostId,
       ...workspaceId === undefined ? {} : { workspaceId },

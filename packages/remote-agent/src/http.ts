@@ -212,6 +212,9 @@ export async function handleAgentRequest(
       case 'sessions':
         sendJson(res, await service.listSessions())
         return
+      case 'presets':
+        sendJson(res, await service.listPresets())
+        return
       case 'workspace-sessions':
         sendJson(res, await service.listSessions(route.workspaceId))
         return

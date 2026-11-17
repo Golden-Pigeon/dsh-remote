@@ -25,6 +25,14 @@ describe('agent HTTP file and terminal surface', () => {
       archiveCalls.push({ sessionId, stopActivity })
       return { accepted: true }
     },
+    async listPresets() {
+      return {
+        presets: [
+          { id: 'standard', name: 'Standard mode', isDefault: true },
+          { id: 'ptc', name: 'PTC mode', isDefault: false },
+        ],
+      }
+    },
   } as unknown as RemoteAgentService
 
   before(async () => {
@@ -67,6 +75,12 @@ describe('agent HTTP file and terminal surface', () => {
     const client = new RemoteAgentClient({ baseUrl, token })
     await client.archiveSession('s1')
     assert.deepEqual(archiveCalls, [{ sessionId: 's1', stopActivity: true }])
+  })
+
+  it('serves the deployment agent-preset roster', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    const presets = await client.listPresets()
+    assert.deepEqual(presets.map(preset => [preset.id, preset.isDefault]), [['standard', true], ['ptc', false]])
   })
 
   it('rejects GET on the archive route', async () => {

@@ -15,6 +15,7 @@ import type {
   CreateSessionResult,
   HostInfo,
   PromptDeliveryMode,
+  RemoteAgentPreset,
   RemoteSessionSummary,
   RemoteWorkspace,
   SessionSnapshot,
@@ -41,6 +42,7 @@ export type HostApiEndpoint =
   | 'local/directory/list'
   | 'local/workspace/create'
   | 'host/sessions'
+  | 'host/presets'
   | 'host/session'
   | 'host/session/create'
   | 'host/session/blank'
@@ -98,6 +100,17 @@ export interface HostCreateSessionResult extends CreateSessionResult {
   readonly localSessionId?: string
 }
 
+/**
+ * The agent-preset roster one Session's remote host supplies.
+ *
+ * `scoped` is false when the Session is not a remote one (or the remote roster
+ * is unavailable): callers then keep the deployment's own roster.
+ */
+export interface PresetScopeResult {
+  readonly scoped: boolean
+  readonly remote: readonly RemoteAgentPreset[]
+}
+
 export interface MirrorFileResult {
   readonly mirrored: boolean
   readonly value?: unknown
@@ -151,6 +164,7 @@ export interface HostApiPayloads {
   'local/directory/list': { path?: string }
   'local/workspace/create': { path: string; title?: string }
   'host/sessions': { hostId: string; workspaceId?: string }
+  'host/presets': { sessionId?: string }
   'host/session': { hostId: string; sessionId: string; limit?: number }
   'host/session/create': { hostId: string; workspaceId?: string; cwd?: string; agentPreset?: string }
   'host/session/blank': { hostId: string; localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }
@@ -190,6 +204,7 @@ export interface HostApiValues {
   'local/directory/list': { path: string; parent: string; entries: readonly { name: string; path: string }[]; truncated: boolean }
   'local/workspace/create': { workspaceId: string }
   'host/sessions': SessionsResult
+  'host/presets': PresetScopeResult
   'host/session': SessionSnapshot
   'host/session/create': HostCreateSessionResult
   'host/session/open/claim': { localSessionId?: string; sourceSessionId?: string }

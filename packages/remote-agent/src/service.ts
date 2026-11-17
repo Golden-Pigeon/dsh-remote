@@ -28,6 +28,7 @@ import {
   type CreateSessionResult,
   type CreateWorkspaceRequest,
   type HostInfo,
+  type ListPresetsResult,
   type ListSessionsResult,
   type PromptSessionRequest,
   type SelectModelRequest,
@@ -74,6 +75,17 @@ const COLD_SCAN_LIMIT = 100_000
 interface PendingApproval {
   readonly request: RemoteApprovalRequest
   resolve(outcome: ApprovalOutcome): void
+}
+
+/** Structural view of the optional Agent-preset registry on this profile. */
+interface AgentPresetRegistryView {
+  readonly defaultId?: string
+  list?(): Promise<readonly {
+    readonly id: string
+    readonly name?: string
+    readonly description?: string
+    readonly broken?: string
+  }[]>
 }
 
 /** Service returned by the plugin and consumed by the HTTP adapter. */
@@ -186,6 +198,23 @@ export class RemoteAgentService {
       workspaces: projectWorkspaces(workspaces.map(workspace => {
         const projected = toWorkspaceLike(workspace)
         return { ...projected, sessionIds: projected.sessionIds.filter(id => !archived.has(id)) }
+      })),
+    }
+  }
+
+  /** Project the Agent presets this deployment supplies. */
+  async listPresets(): Promise<ListPresetsResult> {
+    const presets = this.ctx.get('agentPresets') as AgentPresetRegistryView | undefined
+    if (presets?.list === undefined) return { presets: [] }
+    const rows = await presets.list()
+    const defaultId = presets.defaultId
+    return {
+      presets: rows.map(row => ({
+        id: row.id,
+        ...row.name === undefined ? {} : { name: row.name },
+        ...row.description === undefined ? {} : { description: row.description },
+        isDefault: row.id === defaultId,
+        ...row.broken === undefined ? {} : { broken: row.broken },
       })),
     }
   }

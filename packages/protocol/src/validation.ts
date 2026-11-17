@@ -16,6 +16,7 @@ import type {
   ApiSuccess,
   CreateSessionResult,
   HostInfo,
+  ListPresetsResult,
   ListSessionsResult,
   ListWorkspacesResult,
   RemoteApprovalFrame,
@@ -171,6 +172,21 @@ export function isListWorkspacesResult(value: unknown): value is ListWorkspacesR
 /** Guard for `session.list`. */
 export function isListSessionsResult(value: unknown): value is ListSessionsResult {
   return isRecord(value) && Array.isArray(value.sessions) && value.sessions.every(isRemoteSession)
+}
+
+/** Guard for one `preset.list` row. */
+function isRemoteAgentPreset(value: unknown): boolean {
+  return isRecord(value)
+    && isString(value.id)
+    && typeof value.isDefault === 'boolean'
+    && (value.name === undefined || isString(value.name))
+    && (value.description === undefined || isString(value.description))
+    && (value.broken === undefined || isString(value.broken))
+}
+
+/** Guard for `preset.list`. */
+export function isListPresetsResult(value: unknown): value is ListPresetsResult {
+  return isRecord(value) && Array.isArray(value.presets) && value.presets.every(isRemoteAgentPreset)
 }
 
 /** Guard for `session.snapshot`. */

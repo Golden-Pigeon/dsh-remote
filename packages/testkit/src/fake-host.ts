@@ -27,6 +27,7 @@ import {
   type ApiSuccess,
   type ApprovalOutcome,
   type HostInfo,
+  type RemoteAgentPreset,
   type RemoteApprovalRequest,
   type RemoteSessionEvent,
   type RemoteTerminalFrame,
@@ -47,7 +48,17 @@ export interface FakeHostOptions {
   /** Keep SSE open and emit heartbeats; zero ends after replay. */
   readonly holdStreamMs?: number
   readonly heartbeatMs?: number
+  /** Agent presets the fake deployment advertises; defaults to the built-in roster. */
+  readonly presets?: readonly RemoteAgentPreset[]
 }
+
+/** Stock roster: the presets a fresh DSH web profile supplies. */
+const DEFAULT_PRESETS: readonly RemoteAgentPreset[] = [
+  { id: 'standard', name: 'Standard mode', isDefault: true },
+  { id: 'ptc', name: 'PTC mode', isDefault: false },
+  { id: 'minimal', name: 'Minimal mode', isDefault: false },
+  { id: 'cordis', name: 'Creator mode', isDefault: false },
+]
 
 /** One observed request, for assertions. */
 export interface FakeRequest {
@@ -66,6 +77,8 @@ export class FakeRemoteHost {
   readonly token: string
   readonly hostId: string
   readonly requests: FakeRequest[] = []
+  /** Agent presets this fake deployment advertises. */
+  presets: readonly RemoteAgentPreset[]
   readonly createRequests: Array<{ workspaceId?: string; cwd?: string; agentPreset?: string }> = []
   readonly promptRequests: Array<{ sessionId: string; text: string; provider?: string; model?: string; reasoningEffort?: string; content?: unknown }> = []
   /** Approval answers accepted by this fake host, for end-to-end assertions. */
@@ -104,6 +117,7 @@ export class FakeRemoteHost {
     this.#fixtures = options.fixtures ?? createFixtures(this.hostId)
     this.#holdStreamMs = options.holdStreamMs ?? 0
     this.#heartbeatMs = options.heartbeatMs ?? 1_000
+    this.presets = options.presets ?? DEFAULT_PRESETS
     for (const session of this.#fixtures.sessions) this.#sessions.set(session.sessionId, session)
   }
 
@@ -393,6 +407,9 @@ export class FakeRemoteHost {
           sendJson(res, { sessions })
           return
         }
+        case 'presets':
+          sendJson(res, { presets: this.presets })
+          return
         case 'workspace-sessions': {
           if (!this.#fixtures.workspaces.some(workspace => workspace.workspaceId === route.workspaceId)) {
             throw new RemoteProtocolError({ code: 'workspace/not-found', message: 'unknown workspace' })

@@ -13,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { createHostsApi } from './api.ts'
+import { installRemotePresetScope } from './preset-scope.ts'
 import { RemoteDevelopmentPanel } from './RemoteDevelopmentPanel.tsx'
 import { installNativeWorkspaceRouting } from './routing.ts'
 import { installRemoteFiles } from './remote-files.ts'
@@ -29,15 +30,15 @@ export function apply(ctx: Context): void {
   const locale = (ctx as unknown as { locale: LocaleFace }).locale
   ctx.effect(() => locale.register(NS, { zh, en }), 'dsh-remote: locale dictionaries')
   const t = locale.bind(NS)
+  const currentSessionId = (): string | undefined => {
+    const key = ctx.uiSession.adapter.current.getSnapshot().key
+    return key === undefined ? undefined : String(key)
+  }
   ctx.effect(() => {
     const schedule = globalThis.setTimeout
     if (typeof schedule !== 'function') return () => {}
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    const currentSessionId = (): string | undefined => {
-      const key = ctx.uiSession.adapter.current.getSnapshot().key
-      return key === undefined ? undefined : String(key)
-    }
     const poll = async (): Promise<void> => {
       if (!active) return
       try {
@@ -64,6 +65,9 @@ export function apply(ctx: Context): void {
       if (timer !== undefined) clearTimeout(timer)
     }
   }, 'dsh-remote: reveal promoted draft')
+  ctx.inject(['remote.agentPresets'], child => {
+    installRemotePresetScope(child, api, currentSessionId)
+  })
   installNativeWorkspaceRouting(ctx, api, t)
   installWorkspaceAddMenu(ctx, api, t)
   ctx.effect(() => installWorkspaceDeleteCopy(api), 'dsh-remote: mirrored workspace delete copy')

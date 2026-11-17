@@ -27,6 +27,7 @@ import {
   type ListSessionsResult,
   type ListWorkspacesResult,
   type PromptDeliveryMode,
+  type RemoteAgentPreset,
   type RemoteWorkspace,
   type SessionSnapshot,
   type SessionStreamFrame,
@@ -52,6 +53,9 @@ import { restartRemoteAgent } from './remote/restart.ts'
 import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
 import { Tunnel } from './ssh/tunnel.ts'
 import { dshUpdateFor, resolveLocalDshVersion } from './version.ts'
+
+/** How long a remote Agent-preset roster stays usable before a re-read. */
+const PRESET_CACHE_TTL_MS = 60_000
 
 function fingerprintKey(value: string): string {
   return createHash('sha256').update(value).digest('hex')
@@ -104,6 +108,7 @@ export class RemoteHostsService {
   readonly #runtime = new Map<string, HostRuntime>()
   readonly #tunnels = new Map<string, Tunnel>()
   readonly #clients = new Map<string, RemoteAgentClient>()
+  readonly #presets = new Map<string, { at: number; rows: readonly RemoteAgentPreset[] }>()
   readonly #connectPromises = new Map<string, Promise<HostView>>()
   readonly #healthTimers = new Map<string, NodeJS.Timeout>()
   readonly #reconnectTimers = new Map<string, NodeJS.Timeout>()
@@ -519,6 +524,22 @@ export class RemoteHostsService {
       yield* client.followAssistantFrames(sessionId, signal)
     } catch (error) {
       if (signal.aborted) return
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
+  /** Read the Agent presets one remote deployment supplies. */
+  async listPresets(id: string): Promise<readonly RemoteAgentPreset[]> {
+    const cached = this.#presets.get(id)
+    if (cached !== undefined && Date.now() - cached.at < PRESET_CACHE_TTL_MS) return cached.rows
+    const client = this.#requireClient(id)
+    try {
+      const rows = await client.listPresets()
+      // Never cache an empty roster: it can be a startup window, and a cached
+      // empty list would keep the new-session selector empty for a minute.
+      if (rows.length > 0) this.#presets.set(id, { at: Date.now(), rows })
+      return rows
+    } catch (error) {
       throw this.#remoteFailure(id, error)
     }
   }
@@ -1051,6 +1072,7 @@ export class RemoteHostsService {
     const tunnel = this.#tunnels.get(id)
     this.#tunnels.delete(id)
     this.#clients.delete(id)
+    this.#presets.delete(id)
     await tunnel?.stop()
   }
 
