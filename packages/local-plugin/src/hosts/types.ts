@@ -29,6 +29,8 @@ export interface HostRecord {
   readonly sshTarget: string
   /** Explicit SSH port, or null when the destination uses SSH config/default 22. */
   readonly sshPort: number | null
+  /** Extra ssh argv options parsed from a user-entered ssh command. */
+  readonly sshArgs?: readonly string[] | null
   /** Cached remote agent port discovered over SSH. */
   readonly remoteAgentPort: number | null
   /** Bearer token issued by the remote agent. Secret. */

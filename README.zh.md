@@ -43,19 +43,21 @@
 | 插件页一键安装 | 可用 |
 | 基于 SSH 的远端自动安装 | 可用 |
 | 主机注册、发现、SSH 隧道、健康检查、重连 | 可用 |
+| `~/.ssh/config` 别名提示与完整 `ssh` 命令输入 | 可用 |
 | 远端工作区出现在本地工作区列表 | 可用 |
 | 远端 Session 出现在普通侧边栏 | 可用 |
 | 远端 Session 在普通 Conversation UI 中打开 | 可用 |
 | UI 跟随 DSH 语言（中文 / 英文） | 可用 |
 | Prompt、停止、转录、工具卡片、usage | 可用 |
 | 默认远端直连 key，或可选的本地 key proxy | 可用 |
+| 镜像会话仅显示远端可用模型 | 可用（agent 支持） |
 | 远端文件树和文件预览 | 可用（经 SSH 隧道的 agent API） |
 | 每个 Session 的远端终端 | 可用（本地 Session 用本地 PTY；远端 Session 用经 SSH 隧道的远端 agent PTY） |
 | 主机/工作区/Session 的 Agent 工具 | 可用 |
 | 审批提示接入本地 UI | 可用 |
 | Relay/NAT、云沙箱、多租户 | 尚未实现 |
 
-> 文件/终端操作要求新版 agent API。远端 agent 过旧时，操作会提示 Reinstall，而不会再额外建立 SSH 连接。
+> 文件、终端和模型目录操作都要求新版 agent API。远端 agent 过旧时，相关操作会明确提示更新/重新安装，而不会再额外建立 SSH 连接或静默替换成本地模型。
 
 ## 安装
 
@@ -99,11 +101,11 @@ pnpm -r build
 
 ## 使用
 
-1. 在 **Settings → Remote development** 输入 SSH 目标（例如 `my-host`），点击 **Save and connect**。
+1. 在 **Settings → Remote development** 输入 SSH 配置别名（`my-host`）、`user@host[:port]`，或完整 `ssh` 命令（如 `ssh -p 2222 -i ~/.ssh/key my-host`），点击 **Save and connect**。输入时会提示 `~/.ssh/config` 中的具体别名；通配符和 `Match` 规则仍交给真正的 `ssh` 客户端处理。
 2. 首次连接时，插件会发现或安装远端 agent，启动远端 `dsh web`，建立 loopback 隧道，并把解析到的模型 key 写入远端环境。主机卡片会显示 **Installing → Connected** 和 **Model credentials: Remote direct**。
 3. 在侧边栏 **Workspaces** 标题栏点击 **+**。新建工作区弹窗可以选择 **This computer** 或已连接的 **Remote device**，再点 **Add** 选择源目录。本机目录使用系统原生目录选择器；远端目录使用只读 SSH 浏览器。
 4. 创建流程会创建远端 Session、在本地建立镜像，并在**普通 Conversation UI** 中打开。工作区行的 **New session** 使用同一个远端目录。
-5. 在普通输入框中输入。远端 DSH 执行本轮任务，本地转录实时更新；工具调用、usage、停止和多轮 follow-up 都与本地 Session 一致。
+5. 在普通输入框中输入。远端 DSH 执行本轮任务，本地转录实时更新；工具调用、usage、停止和多轮 follow-up 都与本地 Session 一致。镜像会话的模型菜单只列出远端主机实际提供的模型，不会把本地模型混入该列表。
 6. **Workspace files** 和 **New terminal** 面板跟随当前 Session：本地 Session 使用本机，远端镜像 Session 使用远端工作区。
 
 Settings 页面只负责主机和工作区管理，会话本身不是弹窗。

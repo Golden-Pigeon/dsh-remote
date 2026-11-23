@@ -6,8 +6,8 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { AcceptedResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
-import type { HostCreateSessionResult, MirrorFileResult, PresetScopeResult } from '../host-api/contract.ts'
+import type { AcceptedResult, ModelCatalogResult, PromptDeliveryMode, RemoteWorkspace, SessionSnapshot } from '@dsh-remote/protocol'
+import type { HostCreateSessionResult, MirrorFileResult, MirrorTarget, PresetScopeResult } from '../host-api/contract.ts'
 import {
   HOST_API_PATH,
   type HostApiPayloads,
@@ -39,6 +39,7 @@ export class RemoteUiError extends Error {
 /** API surface injected into the Settings component. */
 export interface HostsApi {
   readonly state: () => Promise<RemoteHostsState>
+  readonly sshHosts: () => Promise<{ hosts: string[]; error: string | null }>
   readonly setCopyModelKey: (value: boolean) => Promise<{ copyModelKey: boolean }>
   readonly setCredentialProxy: (value: boolean) => Promise<{ credentialProxy: boolean }>
   readonly setHostModelSource: (hostId: string, source: 'proxy' | 'direct' | null) => Promise<HostView>
@@ -60,6 +61,14 @@ export interface HostsApi {
   readonly sessions: (hostId: string, workspaceId?: string) => Promise<SessionsResult>
   readonly presetScope: (input: { sessionId?: string }) => Promise<PresetScopeResult>
   readonly webUrl: (hostId: string) => Promise<WebUrlResult>
+  readonly modelCatalog: (hostId: string) => Promise<ModelCatalogResult>
+  readonly sessionMirror: (localSessionId: string) => Promise<MirrorTarget | null>
+  readonly setSessionModel: (input: {
+    localSessionId: string
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }) => Promise<{ accepted: true }>
   readonly snapshot: (hostId: string, sessionId: string, limit?: number) => Promise<SessionSnapshot>
   readonly createSession: (hostId: string, input: { workspaceId?: string; cwd?: string; agentPreset?: string }) => Promise<HostCreateSessionResult>
   readonly startBlankSession: (hostId: string, input: { localWorkspaceId?: string; workspaceId?: string; agentPreset?: string }) => Promise<{ localSessionId: string }>
@@ -73,10 +82,23 @@ export interface HostsApi {
   readonly cancel: (hostId: string, sessionId: string) => Promise<AcceptedResult>
 }
 
+/** Last successful host snapshot, shared by every Settings mount. */
+let cachedState: RemoteHostsState | null = null
+
+/** Snapshot from the last successful state call, if one has completed. */
+export function cachedHostsState(): RemoteHostsState | null {
+  return cachedState
+}
+
 /** Build the API closure once per plugin mount. */
 export function createHostsApi(ctx: Context): HostsApi {
-  return {
-    state: () => call('state', undefined),
+  const api: HostsApi = {
+    state: async () => {
+      const next = await call('state', undefined)
+      cachedState = next
+      return next
+    },
+    sshHosts: () => call('ssh/hosts', undefined),
     setCopyModelKey: value => call('settings/copy-model-key', { copyModelKey: value }),
     setCredentialProxy: value => call('settings/credential-proxy', { credentialProxy: value }),
     setHostModelSource: (hostId, source) => call('host/model-source', { hostId, source }),
@@ -103,6 +125,9 @@ export function createHostsApi(ctx: Context): HostsApi {
       ...workspaceId === undefined ? {} : { workspaceId },
     }),
     webUrl: hostId => call('host/web-url', { hostId }),
+    modelCatalog: hostId => call('host/model-catalog', { hostId }),
+    sessionMirror: localSessionId => call('host/session/mirror', { localSessionId }),
+    setSessionModel: input => call('host/session/model', input),
     snapshot: (hostId, sessionId, limit) => call('host/session', {
       hostId,
       sessionId,
@@ -136,6 +161,10 @@ export function createHostsApi(ctx: Context): HostsApi {
     }),
     cancel: (hostId, sessionId) => call('host/session/cancel', { hostId, sessionId }),
   }
+  // Warm the route before Settings opens so its first card can paint from the
+  // cached snapshot instead of waiting for the first round trip.
+  void api.state().catch(() => {})
+  return api
 }
 
 async function call<K extends keyof HostApiPayloads & string>(

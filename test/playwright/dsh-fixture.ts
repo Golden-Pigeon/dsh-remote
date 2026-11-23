@@ -20,6 +20,8 @@ export interface E2EHostOptions {
   readonly prepareHome?: (home: string) => void
   /** Plugin tarball or registry spec to install; defaults to the freshly built tarball. */
   readonly pluginSpec?: string
+  /** Isolate HOME and install a deterministic SSH config for suggestion tests. */
+  readonly isolateSshConfig?: boolean
 }
 
 export interface E2EHost {
@@ -67,6 +69,15 @@ function waitForUrl(child: ChildProcess): Promise<string> {
 /** Start an isolated DSH web host wired to a fake remote agent through a fake ssh binary. */
 export async function startE2EHost(options: E2EHostOptions = {}): Promise<E2EHost> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-remote-playwright-'))
+  if (options.isolateSshConfig === true) {
+    mkdirSync(join(home, '.ssh'), { recursive: true })
+    writeFileSync(join(home, '.ssh', 'config'), [
+      'Host fixture-alias',
+      '  HostName 127.0.0.1',
+      '  User fixture',
+      '',
+    ].join('\n'))
+  }
   options.prepareHome?.(home)
   const token = 'playwright-token-0123456789'
   const started = await startFakeHost({ hostId: 'playwright-host', token })
@@ -130,7 +141,14 @@ export async function startE2EHost(options: E2EHostOptions = {}): Promise<E2EHos
   const startHost = (): ChildProcess => {
     const spawned = spawn(APP, ['--profile', 'web', '--host', '127.0.0.1', '--port', '0', '--no-open'], {
       cwd: home,
-      env: { ...process.env, DSH_HOME: home, DSH_REMOTE_FAKE_STATE: stateFile, DSH_REMOTE_FAKE_LOG: fakeSshLog, DEEPSEEK_API_KEY: 'playwright-test-key' },
+      env: {
+        ...process.env,
+        DSH_HOME: home,
+        ...(options.isolateSshConfig === true ? { HOME: home } : {}),
+        DSH_REMOTE_FAKE_STATE: stateFile,
+        DSH_REMOTE_FAKE_LOG: fakeSshLog,
+        DEEPSEEK_API_KEY: 'playwright-test-key',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     spawned.stdout?.pipe(logStream)

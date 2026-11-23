@@ -8,12 +8,12 @@
  * @module dsh-remote-local/client/panel
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { RemoteSessionSummary, RemoteWorkspace } from '@dsh-remote/protocol'
 import type { HostView } from '../hosts/types.ts'
 import type { HostDetail } from '../messages.ts'
 import type { RemoteHostsState } from '../host-api/contract.ts'
-import type { HostsApi } from './api.ts'
+import { cachedHostsState, type HostsApi } from './api.ts'
 import { formatUiText, localizedError } from './errors.ts'
 import type { CopyKey, Translate } from './locale.ts'
 import panelCss from './panel.css'
@@ -36,14 +36,20 @@ const POLL_MS = 2_500
 
 /** Render the remote-development settings page. */
 export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
-  const [state, setState] = useState<RemoteHostsState | null>(null)
+  const [state, setState] = useState<RemoteHostsState | null>(() => cachedHostsState())
   const [error, setError] = useState<string | null>(null)
   const [pollError, setPollError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [sshHosts, setSshHosts] = useState<string[]>([])
+  const [sshSuggestOpen, setSshSuggestOpen] = useState(false)
+  const [sshActiveIndex, setSshActiveIndex] = useState(-1)
+  const sshInputRef = useRef<HTMLInputElement>(null)
+  const loadingSshHosts = useRef(false)
   const savingModel = useRef(false)
   const [expandedHost, setExpandedHost] = useState<string | null>(null)
+  const [openHostCards, setOpenHostCards] = useState<Set<string>>(() => new Set())
   const [workspaces, setWorkspaces] = useState<Record<string, RemoteWorkspace[] | undefined>>({})
   const loadingWorkspaces = useRef(new Map<string, Promise<void>>())
   const [openWorkspace, setOpenWorkspace] = useState<Record<string, boolean>>({})
@@ -53,6 +59,10 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     sshTarget: '',
     label: '',
   })
+  const sshQuery = form.sshTarget.trim().toLowerCase()
+  const sshSuggestions = sshQuery === ''
+    ? sshHosts
+    : sshHosts.filter(host => host.toLowerCase().includes(sshQuery))
 
   useInjectedStyle(panelCss)
 
@@ -90,6 +100,10 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
   }, [api, t])
 
   useEffect(() => {
+    void loadSshHosts()
+  }, [api])
+
+  useEffect(() => {
     const host = hosts.find(item => item.id === expandedHost)
     if (host?.phase === 'connected' && workspaces[host.id] === undefined) {
       void loadWorkspaces(host.id, false)
@@ -98,6 +112,58 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
 
   async function refresh(): Promise<void> {
     setState(await api.state())
+  }
+
+  async function loadSshHosts(): Promise<void> {
+    if (loadingSshHosts.current) return
+    loadingSshHosts.current = true
+    try {
+      const result = await api.sshHosts()
+      setSshHosts(result.hosts)
+    } catch {
+      // Manual targets remain available when the local config cannot be read.
+    } finally {
+      loadingSshHosts.current = false
+    }
+  }
+
+  function chooseSshHost(alias: string): void {
+    setForm(current => ({ ...current, sshTarget: alias }))
+    setSshSuggestOpen(false)
+    setSshActiveIndex(-1)
+    sshInputRef.current?.focus()
+  }
+
+  function onSshKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Escape') {
+      // While suggestions are visible, Escape belongs to this field and must
+      // not bubble to the Settings modal's close shortcut.
+      if (sshSuggestOpen && sshSuggestions.length > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      setSshSuggestOpen(false)
+      setSshActiveIndex(-1)
+      return
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (sshSuggestions.length === 0) return
+      event.preventDefault()
+      setSshSuggestOpen(true)
+      setSshActiveIndex(current => {
+        if (current < 0) return event.key === 'ArrowDown' ? 0 : sshSuggestions.length - 1
+        const delta = event.key === 'ArrowDown' ? 1 : -1
+        return Math.max(0, Math.min(sshSuggestions.length - 1, current + delta))
+      })
+      return
+    }
+    if (event.key === 'Enter' && sshSuggestOpen && sshActiveIndex >= 0) {
+      const alias = sshSuggestions[sshActiveIndex]
+      if (alias !== undefined) {
+        event.preventDefault()
+        chooseSshHost(alias)
+      }
+    }
   }
 
   async function run(key: string, task: () => Promise<void>): Promise<void> {
@@ -236,8 +302,19 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         autoConnect: true,
       })
       setForm({ sshTarget: '', label: '' })
+      setSshSuggestOpen(false)
+      setSshActiveIndex(-1)
       setExpandedHost(host.id)
       setNotice(t('settings.hostSaved'))
+    })
+  }
+
+  function toggleHostCard(hostId: string): void {
+    setOpenHostCards(current => {
+      const next = new Set(current)
+      if (next.has(hostId)) next.delete(hostId)
+      else next.add(hostId)
+      return next
     })
   }
 
@@ -341,6 +418,12 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
     await run(`remove:${host.id}`, async () => {
       await api.removeHost(host.id)
       if (expandedHost === host.id) setExpandedHost(null)
+      setOpenHostCards(current => {
+        if (!current.has(host.id)) return current
+        const next = new Set(current)
+        next.delete(host.id)
+        return next
+      })
     })
   }
 
@@ -369,9 +452,8 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
       {pollError !== null && <p className="dshr-banner dshr-banner-error" role="alert">{pollError}</p>}
       {notice !== null && <p className="dshr-banner dshr-banner-info" role="status">{notice}</p>}
 
-      {state !== null && state.settings !== undefined && (
-        <section className="dshr-card">
-          <h3>{t('settings.modelKey')}</h3>
+      <section className="dshr-card" aria-busy={state?.settings === undefined}>
+        <h3>{t('settings.modelKey')}</h3>
           <div className="dshr-setting-list">
             <div className="dshr-setting-row">
               <label className="dshr-setting-copy" htmlFor="dshr-global-proxy">
@@ -383,8 +465,8 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                   id="dshr-global-proxy"
                   className="dshr-checkbox"
                   type="checkbox"
-                  checked={state.settings.credentialProxy}
-                  disabled={busy !== null}
+                  checked={state?.settings?.credentialProxy ?? false}
+                  disabled={busy !== null || state?.settings === undefined}
                   onChange={event => { void onGlobalProxy(event.target.checked) }}
                 />
               </div>
@@ -399,16 +481,16 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                   id="dshr-global-copy"
                   className="dshr-checkbox"
                   type="checkbox"
-                  checked={state.settings.copyModelKey}
-                  disabled={busy !== null}
+                  checked={state?.settings?.copyModelKey ?? false}
+                  disabled={busy !== null || state?.settings === undefined}
                   onChange={event => { void onCopyModelKey(event.target.checked) }}
                 />
               </div>
             </div>
           </div>
           <p className="dshr-hint">{t('settings.modelDefaultsHint')}</p>
+          {state?.settings === undefined && <p className="dshr-hint">{t('settings.loading')}</p>}
         </section>
-      )}
 
       <section className="dshr-card">
         <h3>{t('settings.addHost')}</h3>
@@ -419,16 +501,70 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
             void onAdd()
           }}
         >
-          <label className="dshr-field dshr-field-wide">
-            <span>{t('settings.sshTarget')}</span>
-            <input
-              value={form.sshTarget}
-              onChange={event => setForm(current => ({ ...current, sshTarget: event.target.value }))}
-              placeholder={t('settings.sshPlaceholder')}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
+          <div className="dshr-field dshr-field-wide">
+            <span id="dshr-ssh-target-label">{t('settings.sshTarget')}</span>
+            <div className="dshr-ssh-control">
+              <input
+                ref={sshInputRef}
+                id="dshr-ssh-target-input"
+                value={form.sshTarget}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={sshSuggestOpen && sshSuggestions.length > 0}
+                aria-controls="dshr-ssh-suggestions"
+                aria-labelledby="dshr-ssh-target-label"
+                aria-activedescendant={sshSuggestOpen && sshActiveIndex >= 0 ? 'dshr-ssh-option-' + sshActiveIndex : undefined}
+                onChange={event => {
+                  setForm(current => ({ ...current, sshTarget: event.target.value }))
+                  setSshSuggestOpen(true)
+                  setSshActiveIndex(-1)
+                }}
+                onFocus={() => {
+                  setSshSuggestOpen(true)
+                  void loadSshHosts()
+                }}
+                onClick={() => {
+                  setSshSuggestOpen(true)
+                  void loadSshHosts()
+                }}
+                onBlur={() => {
+                  setSshSuggestOpen(false)
+                  setSshActiveIndex(-1)
+                }}
+                onKeyDown={onSshKeyDown}
+                placeholder={t('settings.sshPlaceholder')}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {sshSuggestOpen && sshSuggestions.length > 0 && (
+                <div
+                  className="dshr-ssh-suggest"
+                  id="dshr-ssh-suggestions"
+                  role="listbox"
+                  aria-label={t('settings.sshTarget')}
+                >
+                  {sshSuggestions.map((alias, index) => (
+                    <div
+                      key={alias}
+                      id={'dshr-ssh-option-' + index}
+                      className="dshr-ssh-option"
+                      role="option"
+                      aria-selected={index === sshActiveIndex}
+                      data-active={index === sshActiveIndex ? 'true' : 'false'}
+                      onMouseDown={event => {
+                        event.preventDefault()
+                        chooseSshHost(alias)
+                      }}
+                      onMouseEnter={() => setSshActiveIndex(index)}
+                    >
+                      {alias}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span className="dshr-hint">{t('settings.sshTargetHint')}</span>
+          </div>
           <label className="dshr-field">
             <span>{t('settings.label')}</span>
             <input
@@ -455,24 +591,46 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
         <div className="dshr-hosts">
           {hosts.map(host => (
             <article key={host.id} className="dshr-host">
-              <header className="dshr-host-head">
-                <div className="dshr-host-title">
-                  <strong>{host.label}</strong>
-                  <code>{host.sshTarget}</code>
+              <div
+                className="dshr-host-summary"
+                role="button"
+                tabIndex={0}
+                aria-expanded={openHostCards.has(host.id)}
+                aria-controls={'dshr-host-body-' + host.id}
+                onClick={() => toggleHostCard(host.id)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    toggleHostCard(host.id)
+                  }
+                }}
+              >
+                <div className="dshr-host-head">
+                  <div className="dshr-host-title">
+                    <strong>{host.label}</strong>
+                    <code>{host.sshTarget}</code>
+                  </div>
+                  <span className={`dshr-phase dshr-phase-${host.phase}`}>{phaseLabel(t, host.phase)}</span>
+                  <span
+                    className="dshr-host-chevron"
+                    data-open={openHostCards.has(host.id) ? 'true' : 'false'}
+                    aria-hidden="true"
+                  />
                 </div>
-                <span className={`dshr-phase dshr-phase-${host.phase}`}>{phaseLabel(t, host.phase)}</span>
-              </header>
+                <dl className="dshr-meta">
+                  <div><dt>{t('settings.remotePort')}</dt><dd>{host.remoteAgentPort ?? '—'}</dd></div>
+                  <div><dt>{t('settings.localTunnel')}</dt><dd>{host.localPort ?? '—'}</dd></div>
+                  <div><dt>{t('settings.workspaces')}</dt><dd>{host.workspaceCount ?? '—'}</dd></div>
+                  <div><dt>{t('settings.agent')}</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
+                  <div><dt>{t('settings.dshVersion')}</dt><dd>{host.hostInfo?.dshVersion ?? '—'}</dd></div>
+                  <div><dt>{t('settings.token')}</dt><dd>{host.hasToken ? t('settings.saved') : t('settings.unsaved')}</dd></div>
+                  <div><dt>{t('settings.modelProxy')}</dt><dd>{host.modelProxy ? t('settings.localProxy') : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}</dd></div>
+                </dl>
+                <div className="dshr-host-divider" aria-hidden="true" />
+              </div>
 
-              <dl className="dshr-meta">
-                <div><dt>{t('settings.remotePort')}</dt><dd>{host.remoteAgentPort ?? '—'}</dd></div>
-                <div><dt>{t('settings.localTunnel')}</dt><dd>{host.localPort ?? '—'}</dd></div>
-                <div><dt>{t('settings.workspaces')}</dt><dd>{host.workspaceCount ?? '—'}</dd></div>
-                <div><dt>{t('settings.agent')}</dt><dd>{host.hostInfo?.agentVersion ?? '—'}</dd></div>
-                <div><dt>{t('settings.dshVersion')}</dt><dd>{host.hostInfo?.dshVersion ?? '—'}</dd></div>
-                <div><dt>{t('settings.token')}</dt><dd>{host.hasToken ? t('settings.saved') : t('settings.unsaved')}</dd></div>
-                <div><dt>{t('settings.modelProxy')}</dt><dd>{host.modelProxy ? t('settings.localProxy') : host.modelDirect ? t('settings.direct') : t('settings.remoteDefault')}</dd></div>
-              </dl>
-
+              {openHostCards.has(host.id) && (
+                <div className="dshr-host-body" id={'dshr-host-body-' + host.id}>
               <div className="dshr-model-settings">
                 <div className="dshr-model-settings-title">
                   <span>{t('settings.modelKey')}</span>
@@ -537,6 +695,8 @@ export function RemoteDevelopmentPanel({ api, t }: PanelProps) {
                   </div>
                 </div>
               </div>
+                </div>
+              )}
 
               {host.dshUpdate !== null && (
                 <div className="dshr-update" role="status">

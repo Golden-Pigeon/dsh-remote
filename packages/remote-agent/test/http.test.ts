@@ -33,6 +33,18 @@ describe('agent HTTP file and terminal surface', () => {
         ],
       }
     },
+    async modelCatalog() {
+      return {
+        default: { provider: 'deepseek-official', model: 'deepseek-chat' },
+        routableProviders: ['deepseek-official'],
+        groups: [{
+          id: 'deepseek-official',
+          name: 'DeepSeek',
+          models: [{ id: 'deepseek-chat', name: 'DeepSeek Chat' }],
+        }],
+        failures: [],
+      }
+    },
   } as unknown as RemoteAgentService
 
   before(async () => {
@@ -75,6 +87,13 @@ describe('agent HTTP file and terminal surface', () => {
     const client = new RemoteAgentClient({ baseUrl, token })
     await client.archiveSession('s1')
     assert.deepEqual(archiveCalls, [{ sessionId: 's1', stopActivity: true }])
+  })
+
+  it('serves the remote model catalog', async () => {
+    const client = new RemoteAgentClient({ baseUrl, token })
+    const catalog = await client.modelCatalog()
+    assert.deepEqual(catalog.routableProviders, ['deepseek-official'])
+    assert.equal(catalog.groups[0]?.models[0]?.id, 'deepseek-chat')
   })
 
   it('serves the deployment agent-preset roster', async () => {

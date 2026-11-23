@@ -44,6 +44,7 @@ import type {
   ListPresetsResult,
   ListSessionsResult,
   ListWorkspacesResult,
+  ModelCatalogResult,
   RemoteAgentPreset,
   RemoteSessionEvent,
   RemoteSessionSummary,
@@ -79,6 +80,7 @@ import {
   isHostInfoValue,
   isListSessionsResult,
   isListWorkspacesResult,
+  isModelCatalogResult,
   isRemoteWorkspace,
   isSessionSnapshot,
   isSessionStreamFrame,
@@ -296,6 +298,11 @@ export class RemoteAgentClient {
   /** Fetch a browser-authenticated path for the remote Web UI. */
   webUrl(): Promise<WebUrlResult> {
     return this.#request(AGENT_ROUTES.webUrl, isWebUrlResult)
+  }
+
+  /** Read the model catalog this remote host can actually route to. */
+  modelCatalog(): Promise<ModelCatalogResult> {
+    return this.#request(AGENT_ROUTES.modelCatalog, isModelCatalogResult)
   }
 
   /**
@@ -593,7 +600,7 @@ function isDetails(value: unknown): value is Record<string, unknown> {
 const KNOWN_CODES = new Set([
   'protocol/version-mismatch', 'auth/missing', 'auth/invalid', 'auth/forbidden',
   'request/invalid', 'request/too-large', 'route/not-found', 'workspace/not-found',
-  'session/not-found', 'session/not-live', 'agent/not-ready',
+  'session/not-found', 'session/not-live', 'session/model-unavailable', 'agent/not-ready',
   'workspace-file/not-found', 'workspace-file/not-regular-file', 'workspace-file/not-text',
   'directory/unreadable', 'terminal/unavailable', 'terminal/error', 'internal',
 ])

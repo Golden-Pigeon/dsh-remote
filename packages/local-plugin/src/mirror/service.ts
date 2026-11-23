@@ -1426,6 +1426,39 @@ export class RemoteMirrorService {
     }
   }
 
+  /** Resolve a local Session id to its remote host and remote Session. */
+  mirrorFor(localSessionId: string): { hostId: string; remoteSessionId: string } | undefined {
+    const record = Object.values(this.#state.sessions)
+      .find(entry => entry.localSessionId === localSessionId)
+    if (record !== undefined) {
+      return { hostId: record.hostId, remoteSessionId: record.remoteSessionId }
+    }
+    const pending = this.#pendingBlanks.get(localSessionId)
+    if (pending === undefined) return undefined
+    return { hostId: pending.hostId, remoteSessionId: pending.remoteSessionId ?? '' }
+  }
+
+  /** Install a remote-catalog selection through the existing mirror bridge. */
+  setSelection(localSessionId: string, selection: MirrorModelSelection): void {
+    const runtime = this.#runtimes.get(localSessionId)
+    if (runtime !== undefined) {
+      if (this.#detached(runtime)) throw new Error('remote mirror is no longer active')
+      runtime.session.append('model/selection', {
+        provider: selection.provider,
+        model: selection.model,
+        ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as never },
+      })
+      return
+    }
+    const pending = this.#pendingBlanks.get(localSessionId)
+    if (pending === undefined) throw new Error('this Session is not a remote mirror')
+    pending.session.append('model/selection', {
+      provider: selection.provider,
+      model: selection.model,
+      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort as never },
+    })
+  }
+
   /** Initial model selection used by a blank Agent before the mirror exists. */
   selectionForBlank(session: Session): MirrorModelSelection | undefined {
     const projections = this.#ctx.get('sessionProjections') as unknown as {

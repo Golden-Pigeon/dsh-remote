@@ -27,6 +27,7 @@ import {
   type ApiSuccess,
   type ApprovalOutcome,
   type HostInfo,
+  type ModelCatalogResult,
   type RemoteAgentPreset,
   type RemoteApprovalRequest,
   type RemoteSessionEvent,
@@ -50,6 +51,21 @@ export interface FakeHostOptions {
   readonly heartbeatMs?: number
   /** Agent presets the fake deployment advertises; defaults to the built-in roster. */
   readonly presets?: readonly RemoteAgentPreset[]
+}
+
+/** Model catalog advertised by the fake remote host. */
+const DEFAULT_MODEL_CATALOG: ModelCatalogResult = {
+  default: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+  routableProviders: ['deepseek-official'],
+  groups: [{
+    id: 'deepseek-official',
+    name: 'DeepSeek',
+    models: [
+      { id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+    ],
+  }],
+  failures: [],
 }
 
 /** Stock roster: the presets a fresh DSH web profile supplies. */
@@ -385,6 +401,9 @@ export class FakeRemoteHost {
         case 'health':
         case 'host':
           sendJson(res, { ...this.#fixtures.hostInfo, hostId })
+          return
+        case 'model-catalog':
+          sendJson(res, DEFAULT_MODEL_CATALOG)
           return
         case 'workspaces':
           sendJson(res, { workspaces: this.#fixtures.workspaces })

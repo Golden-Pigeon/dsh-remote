@@ -106,6 +106,7 @@ export function createFixtures(hostId = 'fake-host'): Fixtures {
     'session.follow',
     'web.url',
     'directory.list',
+    'llm.catalog',
     'file.watch',
     'terminal',
     'approval.follow',

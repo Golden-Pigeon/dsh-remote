@@ -13,6 +13,7 @@ import type { UiText } from '../messages.ts'
 import type {
   AcceptedResult,
   CreateSessionResult,
+  ModelCatalogResult,
   HostInfo,
   PromptDeliveryMode,
   RemoteAgentPreset,
@@ -27,6 +28,7 @@ export const HOST_API_PATH = '/api/dsh-remote'
 /** Endpoint names. */
 export type HostApiEndpoint =
   | 'state'
+  | 'ssh/hosts'
   | 'settings/copy-model-key'
   | 'settings/credential-proxy'
   | 'host/model-source'
@@ -54,6 +56,9 @@ export type HostApiEndpoint =
   | 'host/session/prompt'
   | 'host/session/cancel'
   | 'host/web-url'
+  | 'host/model-catalog'
+  | 'host/session/mirror'
+  | 'host/session/model'
   | 'host/files/list'
   | 'host/files/read'
   | 'host/files/stat'
@@ -124,6 +129,13 @@ export interface MirrorFileResult {
   readonly value?: unknown
 }
 
+/** Remote target behind one local mirrored Session. */
+export interface MirrorTarget {
+  readonly hostId: string
+  readonly hostLabel: string
+  readonly remoteSessionId: string
+}
+
 /** Result of resolving the remote Web UI. */
 export interface WebUrlResult {
   readonly url: string
@@ -151,6 +163,7 @@ export type HostApiResult<T> =
 /** Payloads accepted by each endpoint. */
 export interface HostApiPayloads {
   state: undefined
+  'ssh/hosts': undefined
   'settings/copy-model-key': { copyModelKey: boolean }
   'settings/credential-proxy': { credentialProxy: boolean }
   'host/model-source': { hostId: string; source: 'proxy' | 'direct' | null }
@@ -192,6 +205,14 @@ export interface HostApiPayloads {
   }
   'host/session/cancel': { hostId: string; sessionId: string }
   'host/web-url': { hostId: string }
+  'host/model-catalog': { hostId: string }
+  'host/session/mirror': { localSessionId: string }
+  'host/session/model': {
+    localSessionId: string
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }
   'host/files/list': { sessionId: string; path: string }
   'host/files/read': { sessionId: string; path: string; offset?: number; limit?: number }
   'host/files/stat': { sessionId: string; path: string }
@@ -201,6 +222,7 @@ export interface HostApiPayloads {
 /** Values returned by each endpoint. */
 export interface HostApiValues {
   state: RemoteHostsState
+  'ssh/hosts': { hosts: string[]; error: string | null }
   'settings/copy-model-key': { copyModelKey: boolean }
   'settings/credential-proxy': { credentialProxy: boolean }
   'host/model-source': HostView
@@ -228,6 +250,9 @@ export interface HostApiValues {
   'host/session/prompt': AcceptedResult
   'host/session/cancel': AcceptedResult
   'host/web-url': WebUrlResult
+  'host/model-catalog': ModelCatalogResult
+  'host/session/mirror': MirrorTarget | null
+  'host/session/model': { accepted: true }
   'host/files/list': MirrorFileResult
   'host/files/read': MirrorFileResult
   'host/files/stat': MirrorFileResult

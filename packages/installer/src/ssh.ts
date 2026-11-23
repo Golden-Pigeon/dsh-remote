@@ -17,6 +17,8 @@ export interface ParsedTarget {
   readonly destination: string
   readonly port: number | null
   readonly canonical: string
+  /** Extra ssh argv parsed from a full ssh command by the local plugin. */
+  readonly sshArgs?: readonly string[]
 }
 
 /** Target parsing failure. */
@@ -116,6 +118,7 @@ export interface RemoteResult {
 /** Build the common ssh argv. */
 export function sshArgs(target: ParsedTarget, options: SshOptions): string[] {
   return [
+    ...target.sshArgs ?? [],
     '-o', 'BatchMode=yes',
     '-o', `ConnectTimeout=${Math.max(1, Math.ceil(options.timeoutMs / 1_000))}`,
     '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,
@@ -125,11 +128,58 @@ export function sshArgs(target: ParsedTarget, options: SshOptions): string[] {
   ]
 }
 
+/**
+ * Translate ssh-only options into scp-compatible argv.
+ *
+ * scp shares many ssh options but not all: -B is ssh's bind interface and
+ * scp's batch flag, -b/-m/-I/-w are not scp options, and forwarding/escape
+ * options are irrelevant to an upload. Passing them verbatim can turn an
+ * otherwise valid full ssh command into a broken scp invocation.
+ */
+function scpExtraArgs(args: readonly string[] | undefined): string[] {
+  if (args === undefined) return []
+  const translated: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]!
+    const option = token.length >= 2 ? token.slice(0, 2) : token
+    const attached = token.length > 2
+    const connectionValue: Record<string, string> = {
+      '-B': 'BindInterface',
+      '-b': 'BindAddress',
+      '-m': 'MACs',
+      '-I': 'PKCS11Provider',
+      '-w': 'Tunnel',
+    }
+    const key = connectionValue[option]
+    if (key !== undefined) {
+      const value = attached ? token.slice(2) : args[index + 1]
+      if (value !== undefined) {
+        translated.push('-o', `${key}=${value}`)
+        if (!attached) index += 1
+      }
+      continue
+    }
+    if (option === '-e' || option === '-L' || option === '-R' || option === '-D') {
+      // sftp/scp does not need forwarding or the interactive escape character.
+      if (!attached) index += 1
+      continue
+    }
+    if (['-K', '-k', '-X', '-x', '-Y', '-y', '-a'].includes(option)) {
+      // X11/GSSAPI/agent-forwarding flags are ssh-only or have different scp
+      // arity; none is needed for the install upload.
+      continue
+    }
+    translated.push(token)
+  }
+  return translated
+}
+
 /** Build the common scp argv. */
 export function scpArgs(target: ParsedTarget, options: ScpOptions, local: string, remote: string): string[] {
   return [
     // BatchMode keeps the upload from blocking on a password prompt; sshArgs
     // already refuses interactive auth for the install itself.
+    ...scpExtraArgs(target.sshArgs),
     '-o', 'BatchMode=yes',
     ...options.timeoutMs === undefined
       ? []

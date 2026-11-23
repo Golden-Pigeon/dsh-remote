@@ -382,7 +382,7 @@ test.describe('remote new-session mode selection', () => {
     await page.getByRole('menuitem', { name: /Playwright Remote · Beta/ }).click()
     await expect(page.locator('button').filter({ hasText: /^(Standard|PTC|Minimal|Creator) mode$/ })).toBeVisible({ timeout: 30_000 })
     await openModelMenu()
-    await page.getByText('DeepSeek-V4.1-Flash', { exact: true }).click()
+    await page.getByRole('menuitemradio', { name: 'DeepSeek-V4.1-Flash' }).click()
     await selectMode('PTC')
     const before = host.fake.createRequests.length
     const input = page.locator('textarea, [contenteditable="true"]').first()

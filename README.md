@@ -47,19 +47,23 @@ pinned with `remoteDshVersion`.
 | One-click local plugin install (`scripts/install-local.sh`) | Available |
 | Plugin-owned remote provisioning over SSH | Available |
 | Host registry, discovery, SSH tunnel, health, reconnect | Available |
+| SSH config alias suggestions and full `ssh` command input | Available |
 | Remote workspaces appear as normal local workspaces | Available |
 | Remote sessions appear in the normal sidebar | Available |
 | Remote sessions open in the normal Conversation UI | Available |
 | Localized UI follows the DSH language (zh / en) | Available |
 | Prompts, stop, transcripts, tool cards, usage | Available |
 | Direct remote key (default) or optional local key proxy | Available |
+| Remote-only model list for mirrored Sessions | Available (agent-backed) |
 | Remote file tree and file previews | Available (agent-backed over the SSH tunnel) |
 | Remote terminal per Session | Available (local Sessions keep local PTY; remote Sessions use the remote agent PTY over the SSH tunnel) |
 | Agent tools for host/workspace/session operations | Available |
 | Approval prompts bridged into the local UI | Available |
 | Relay/NAT traversal, cloud sandbox, multi-tenant | Not yet |
 
-> Remote file and terminal operations require the agent-backed API. If the connected remote agent is older, file/terminal actions fail with a Reinstall instruction instead of opening extra SSH connections.
+> Remote file, terminal, and model-catalog operations require the agent-backed API. If the connected
+> remote agent is older, those actions fail with a clear update/Reinstall instruction instead of
+> opening extra SSH connections or silently substituting local models.
 
 ## Install
 
@@ -107,7 +111,7 @@ Reopen DSH. **Settings → Remote development** appears.
 
 ## Use
 
-1. In **Settings → Remote development**, enter the SSH target (`my-host`) and click **Save and connect**.
+1. In **Settings → Remote development**, enter an SSH config alias (`my-host`), a `user@host[:port]` target, or a full `ssh` command such as `ssh -p 2222 -i ~/.ssh/key my-host`. Concrete aliases from `~/.ssh/config` are suggested as you type; wildcard and `Match` rules stay with the real `ssh` client.
 2. On first use the plugin discovers or installs the remote agent, starts remote `dsh web`, opens the
    loopback tunnel, and copies the resolved model key into the remote environment. The card shows
    **Installing → Connected** and **Model credentials: Remote direct**.
@@ -117,7 +121,9 @@ Reopen DSH. **Settings → Remote development** appears.
 4. The create flow opens a remote Session, creates a local mirror, and **opens it in the ordinary
    Conversation UI**. The workspace row's **New session** action uses the same remote path.
 5. Type in the usual composer. The remote DSH runs the turn; the local transcript updates live. Tool
-   calls, usage, stop, and multi-turn follow-ups behave like a local session.
+   calls, usage, stop, and multi-turn follow-ups behave like a local session. A mirrored Session's
+   model menu lists only models the remote host advertises; it never merges local models into that
+   list.
 6. The **Workspace files** and **New terminal** panels follow the selected Session: local Sessions
    use the local machine, remote mirror Sessions use the remote workspace.
 

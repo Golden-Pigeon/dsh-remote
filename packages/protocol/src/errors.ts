@@ -22,6 +22,7 @@ export const PROTOCOL_ERROR_CODES = [
   'workspace/not-found',
   'session/not-found',
   'session/not-live',
+  'session/model-unavailable',
   'agent/not-ready',
   'workspace-file/not-found',
   'workspace-file/not-regular-file',
@@ -51,6 +52,7 @@ export function httpStatusForCode(code: ProtocolErrorCode): number {
     case 'auth/forbidden':
       return 403
     case 'request/invalid':
+    case 'session/model-unavailable':
       return 400
     case 'request/too-large':
       return 413
