@@ -30,7 +30,12 @@ import {
   type HostInfo,
   type ListPresetsResult,
   type ListSessionsResult,
+  type ModelCatalogResult,
   type PromptSessionRequest,
+  type RemoteModel,
+  type RemoteModelFailure,
+  type RemoteModelGroup,
+  type RemoteModelReasoning,
   type SelectModelRequest,
   type ListWorkspacesResult,
   type RemoteSessionSummary,
@@ -179,6 +184,7 @@ export class RemoteAgentService {
         'file.bytes',
         'file.watch',
         'directory.list',
+        'llm.catalog',
         'terminal',
       ],
       workspaceCount: this.ctx.workspaceRegistry.list().length,
@@ -322,12 +328,16 @@ export class RemoteAgentService {
 
   /** Select and install the model/reasoning effort for one remote session. */
   async selectModel(sessionId: string, request: SelectModelRequest): Promise<AcceptedResult> {
-    await this.ctx.sessionController.selectModel({
-      sessionId: sessionId as SessionId,
-      provider: request.provider,
-      model: request.model,
-      ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort as never },
-    })
+    try {
+      await this.ctx.sessionController.selectModel({
+        sessionId: sessionId as SessionId,
+        provider: request.provider,
+        model: request.model,
+        ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort as never },
+      })
+    } catch (error) {
+      throw translateModelSelectionError(error, request)
+    }
     return { accepted: true }
   }
 
@@ -360,14 +370,22 @@ export class RemoteAgentService {
       throw new RemoteProtocolError({ code: 'request/invalid', message: 'prompt content must not be empty' })
     }
     if (request.provider !== undefined && request.model !== undefined) {
-      await this.ctx.sessionController.selectModel({
-        sessionId: sessionId as SessionId,
-        provider: request.provider,
-        model: request.model,
-        ...request.reasoningEffort === undefined
-          ? {}
-          : { reasoningEffort: request.reasoningEffort as never },
-      })
+      try {
+        await this.ctx.sessionController.selectModel({
+          sessionId: sessionId as SessionId,
+          provider: request.provider,
+          model: request.model,
+          ...request.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: request.reasoningEffort as never },
+        })
+      } catch (error) {
+        throw translateModelSelectionError(error, {
+          provider: request.provider,
+          model: request.model,
+          ...request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort },
+        })
+      }
     }
     await this.ctx.sessionController.prompt({
       requestId: randomUUID() as never,
@@ -641,6 +659,104 @@ export class RemoteAgentService {
     }
   }
 
+  /**
+   * Describe the model catalog this host can actually route to.
+   *
+   * The local mirror uses this list only; a mirrored Session must never offer a
+   * model the remote cannot run.
+   */
+  async modelCatalog(): Promise<ModelCatalogResult> {
+    const llm = (this.ctx as unknown as { get(name: string): unknown }).get('llm') as {
+      listProviders(): readonly { id: string; name: string }[]
+      listModels(provider: string): Promise<readonly { id: string; name?: string; description?: string; badge?: string }[]>
+      resolveModelInfo?(provider: string, model: string): Promise<{
+        reasoning?: { efforts: readonly { id: string; name: string; description?: string }[]; defaultEffort?: string }
+      }>
+    } | undefined
+    const fallback = (): ModelCatalogResult => ({
+      default: { provider: 'deepseek-official', model: 'deepseek-flash' },
+      routableProviders: [],
+      groups: [],
+      failures: [],
+    })
+    try {
+      if (llm === undefined) {
+        this.ctx.logger.warn('dsh-remote-agent: llm registry unavailable; reporting an empty model catalog')
+        return fallback()
+      }
+      const groups: RemoteModelGroup[] = []
+      const failures: RemoteModelFailure[] = []
+      for (const provider of llm.listProviders()) {
+        try {
+          const models = await llm.listModels(provider.id)
+          const entries: RemoteModel[] = []
+          for (const model of models) {
+            let reasoning: RemoteModelReasoning | undefined
+            try {
+              const resolved = await llm.resolveModelInfo?.(provider.id, model.id)
+              const source = resolved?.reasoning
+              if (source !== undefined) {
+                reasoning = {
+                  efforts: source.efforts.map(effort => ({
+                    id: effort.id,
+                    name: effort.name,
+                    ...effort.description === undefined ? {} : { description: effort.description },
+                  })),
+                  ...source.defaultEffort === undefined ? {} : { defaultEffort: source.defaultEffort },
+                }
+              }
+            } catch {
+              // Reasoning metadata is optional; a failure must not drop the model.
+            }
+            entries.push({
+              id: model.id,
+              name: model.name ?? model.id,
+              ...model.description === undefined ? {} : { description: model.description },
+              ...reasoning === undefined ? {} : { reasoning },
+              ...model.badge === undefined ? {} : { badge: model.badge },
+            })
+          }
+          if (entries.length > 0) groups.push({ id: provider.id, name: provider.name, models: entries })
+        } catch (error) {
+          failures.push({
+            id: provider.id,
+            name: provider.name,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      if (groups.length === 0) return { ...fallback(), failures }
+      return {
+        default: this.#defaultSelectionForCatalog(groups),
+        routableProviders: groups.map(group => group.id),
+        groups,
+        failures,
+      }
+    } catch (error) {
+      this.ctx.logger.warn('dsh-remote-agent: model catalog failed: %s', String(error))
+      return fallback()
+    }
+  }
+
+  /** Deployment default when known, otherwise the first routable model. */
+  #defaultSelectionForCatalog(groups: readonly RemoteModelGroup[]): { provider: string; model: string } {
+    try {
+      const defaults = this.ctx.get('agentDefaultModel') as
+        | { currentSelection?: () => { provider?: unknown; model?: unknown } }
+        | undefined
+      const current = defaults?.currentSelection?.()
+      if (typeof current?.provider === 'string' && typeof current.model === 'string') {
+        return { provider: current.provider, model: current.model }
+      }
+    } catch {
+      // Fall through to the first routable model.
+    }
+    const first = groups[0]
+    const model = first?.models[0]
+    if (first !== undefined && model !== undefined) return { provider: first.id, model: model.id }
+    return { provider: 'deepseek-official', model: 'deepseek-flash' }
+  }
+
   /** Publish the final state and wait for it to reach disk. */
   async dispose(): Promise<void> {
     this.terminals.dispose()
@@ -678,6 +794,33 @@ export class RemoteAgentService {
       return new Map()
     }
   }
+}
+
+/**
+ * Recognize DSH's model-availability rejection. The class is not exported, so
+ * the stable code field is the contract.
+ */
+function isModelUnavailableError(error: unknown): error is { code: 'session/model-unavailable'; details?: unknown } {
+  return typeof error === 'object'
+    && error !== null
+    && (error as { code?: unknown }).code === 'session/model-unavailable'
+}
+
+/** Translate a model rejection into a stable protocol error. */
+function translateModelSelectionError(error: unknown, request: SelectModelRequest): unknown {
+  if (!isModelUnavailableError(error)) return error
+  const details = typeof error.details === 'object' && error.details !== null
+    ? error.details as { provider?: unknown; model?: unknown }
+    : {}
+  return new RemoteProtocolError({
+    code: 'session/model-unavailable',
+    message: `model ${request.provider}/${request.model} is not available on this remote host`,
+    retryable: false,
+    details: {
+      provider: typeof details.provider === 'string' ? details.provider : request.provider,
+      model: typeof details.model === 'string' ? details.model : request.model,
+    },
+  })
 }
 
 function toWorkspaceLike(workspace: Workspace): WorkspaceLike {

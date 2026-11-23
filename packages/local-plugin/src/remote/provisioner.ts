@@ -99,6 +99,7 @@ export class RemoteProvisioner {
     try {
       await provisionRemoteAgent({
         target: target.canonical,
+        ...target.sshArgs === undefined ? {} : { sshArgs: target.sshArgs },
         agentTarballPath: tarball,
         ...agentPackageSpec === undefined ? {} : { agentPackageSpec },
         sshBinary: this.#config.sshBinary,

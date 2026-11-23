@@ -20,6 +20,8 @@ export interface ParsedSshTarget {
   readonly destination: string
   /** Canonical user/host/port spelling used for ids and duplicate checks. */
   readonly canonical: string
+  /** Extra ssh argv options parsed from a user-entered ssh command. */
+  readonly sshArgs?: readonly string[]
 }
 
 const USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/u
@@ -115,6 +117,173 @@ function validate(input: {
     destination,
     canonical,
   }
+}
+
+/** Attach user-entered ssh options to a parsed target. */
+export function withSshArgs(target: ParsedSshTarget, sshArgs: readonly string[] | undefined): ParsedSshTarget {
+  return sshArgs === undefined || sshArgs.length === 0 ? target : { ...target, sshArgs: [...sshArgs] }
+}
+
+/** A target plus the optional ssh argv prefix parsed from free-form input. */
+export interface ParsedSshInput {
+  readonly raw: string
+  readonly target: ParsedSshTarget
+  /** Options only; the destination and remote command are not included. */
+  readonly sshArgs: readonly string[]
+}
+
+/** Options that consume the following argv item. */
+const VALUE_OPTIONS = new Set([
+  'B', 'b', 'c', 'D', 'E', 'e', 'F', 'I', 'i', 'J', 'L', 'm', 'O', 'o', 'Q', 'R', 'S', 'W', 'w',
+])
+
+/** Options that cannot be combined with the plugin's own non-interactive commands. */
+const INCOMPATIBLE_OPTIONS = new Set(['-G', '-N', '-O', '-M', '-f', '-s', '-W', '-t', '-Q'])
+
+/** Split a command line without a shell; quotes and backslashes are honoured. */
+function tokenize(input: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let started = false
+  let quote: '"' | "'" | null = null
+  let escaped = false
+  for (const char of input) {
+    if (escaped) {
+      current += char
+      started = true
+      escaped = false
+      continue
+    }
+    if (char === '\\' && quote !== "'") {
+      started = true
+      escaped = true
+      continue
+    }
+    if (quote !== null) {
+      if (char === quote) quote = null
+      else current += char
+      started = true
+      continue
+    }
+    if (char === '"' || char === "'") {
+      started = true
+      quote = char
+      continue
+    }
+    if (/\s/u.test(char)) {
+      if (started) {
+        tokens.push(current)
+        current = ''
+        started = false
+      }
+      continue
+    }
+    current += char
+    started = true
+  }
+  if (escaped) current += '\\'
+  if (quote !== null) throw new LocalError('host/invalid', 'SSH command has an unterminated quote')
+  if (started) tokens.push(current)
+  return tokens
+}
+
+function safeArg(value: string): void {
+  if (/[\u0000-\u001f]/u.test(value)) {
+    throw new LocalError('host/invalid', 'SSH command arguments must not contain control characters')
+  }
+}
+
+function rebuildTarget(base: ParsedSshTarget, user: string | null, port: number | null): ParsedSshTarget {
+  if (user === null && port === null) return base
+  if (user !== null && base.user !== null && user !== base.user) {
+    throw new LocalError('host/invalid', 'SSH user is specified twice')
+  }
+  if (port !== null && base.port !== null && port !== base.port) {
+    throw new LocalError('host/invalid', 'SSH port is specified twice')
+  }
+  const resolvedUser = user ?? base.user
+  const resolvedPort = port ?? base.port
+  const destination = resolvedUser === null ? base.host : `${resolvedUser}@${base.host}`
+  return parseSshTarget(resolvedPort === null ? destination : `${destination}:${resolvedPort}`)
+}
+
+/**
+ * Parse a plain destination or a complete `ssh` command line.
+ *
+ * The command is tokenized into argv; it is never passed to a shell. Options
+ * that need a remote command (ProxyCommand is an ssh option, not a remote
+ * command) are preserved as ssh argv so the real ssh client handles config,
+ * Match exec, ProxyJump, and ProxyCommand exactly as it normally would.
+ */
+export function parseSshInput(raw: string): ParsedSshInput {
+  const input = raw.trim()
+  if (input === '') throw new LocalError('host/invalid', 'SSH target must not be empty')
+  const tokens = tokenize(input)
+  if (tokens.length === 0) throw new LocalError('host/invalid', 'SSH target must not be empty')
+  const first = tokens[0]!
+  if (!/^(?:.*[\\/])?ssh(?:\.exe)?$/u.test(first) || tokens.length === 1) {
+    if (tokens.length !== 1) {
+      throw new LocalError('host/invalid', 'SSH input with spaces must be a command starting with "ssh"')
+    }
+    return { raw: input, target: parseSshTarget(first), sshArgs: [] }
+  }
+
+  let index = 1
+  let targetToken: string | undefined
+  let user: string | null = null
+  let port: number | null = null
+  const sshArgs: string[] = []
+  while (index < tokens.length) {
+    const token = tokens[index]!
+    if (token === '--') {
+      index += 1
+      targetToken = tokens[index]
+      index += 1
+      break
+    }
+    if (!token.startsWith('-') || token === '-') {
+      targetToken = token
+      index += 1
+      break
+    }
+    const option = token.length >= 2 ? token.slice(0, 2) : token
+    if (INCOMPATIBLE_OPTIONS.has(option)) {
+      throw new LocalError('host/invalid', `SSH option ${option} is incompatible with a managed host connection`)
+    }
+    if (option === '-p' || option === '-l') {
+      const attached = token.length > 2
+      const value = attached ? token.slice(2) : tokens[index + 1]
+      if (value === undefined) throw new LocalError('host/invalid', `SSH option ${option} needs a value`)
+      safeArg(value)
+      if (option === '-p') {
+        if (!/^\d{1,5}$/u.test(value)) throw new LocalError('host/invalid', `invalid SSH port: ${JSON.stringify(value)}`)
+        port = Number(value)
+      } else {
+        user = value
+      }
+      index += attached ? 1 : 2
+      continue
+    }
+    safeArg(token)
+    sshArgs.push(token)
+    const takesValue = VALUE_OPTIONS.has(option.slice(1))
+    const attached = token.length > 2
+    if (takesValue && !attached) {
+      const value = tokens[index + 1]
+      if (value === undefined) throw new LocalError('host/invalid', `SSH option ${option} needs a value`)
+      safeArg(value)
+      sshArgs.push(value)
+      index += 2
+    } else {
+      index += 1
+    }
+  }
+  if (targetToken === undefined) throw new LocalError('host/invalid', 'SSH command has no destination')
+  if (index < tokens.length) {
+    throw new LocalError('host/invalid', 'SSH command must not include a remote command')
+  }
+  const target = withSshArgs(rebuildTarget(parseSshTarget(targetToken), user, port), sshArgs)
+  return { raw: input, target, sshArgs }
 }
 
 /** Validate a display label. */

@@ -101,6 +101,8 @@ async function dispatch(
         mirroredWorkspaces,
       }
     }
+    case 'ssh/hosts':
+      return service.sshHosts()
     case 'settings/copy-model-key': {
       const body = requireRecord(payload)
       const copyModelKey = optionalBooleanField(body, 'copyModelKey')
@@ -297,6 +299,46 @@ async function dispatch(
     }
     case 'host/web-url':
       return service.webUrl(requireStringField(payload, 'hostId'))
+    case 'host/model-catalog':
+      return service.modelCatalog(requireStringField(payload, 'hostId'))
+    case 'host/session/mirror': {
+      const localSessionId = requireStringField(payload, 'localSessionId')
+      const target = mirrors?.mirrorFor(localSessionId)
+      if (target === undefined) return null
+      const host = service.state().hosts.find(item => item.id === target.hostId)
+      return {
+        hostId: target.hostId,
+        hostLabel: host?.label ?? target.hostId,
+        remoteSessionId: target.remoteSessionId,
+      }
+    }
+    case 'host/session/model': {
+      const body = requireRecord(payload)
+      const localSessionId = requireStringField(body, 'localSessionId')
+      const provider = requireStringField(body, 'provider')
+      const model = requireStringField(body, 'model')
+      const reasoningEffort = optionalStringField(body, 'reasoningEffort')
+      if (mirrors === undefined) throw new LocalError('internal', 'remote mirror service is unavailable')
+      const target = mirrors.mirrorFor(localSessionId)
+      if (target === undefined) throw new LocalError('host/not-connected', 'local Session is not a remote mirror')
+      // A blank mirror has no remote Session yet; its choice is recorded locally
+      // and installed when the Session is materialized. An existing mirror is
+      // checked now so an unavailable model is rejected before the selector
+      // commits it.
+      if (target.remoteSessionId !== '') {
+        await service.selectModel(target.hostId, target.remoteSessionId, {
+          provider,
+          model,
+          ...reasoningEffort === undefined ? {} : { reasoningEffort },
+        })
+      }
+      mirrors.setSelection(localSessionId, {
+        provider,
+        model,
+        ...reasoningEffort === undefined ? {} : { reasoningEffort },
+      })
+      return { accepted: true as const }
+    }
     case 'host/files/list':
     case 'host/files/read':
     case 'host/files/stat':

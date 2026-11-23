@@ -13,6 +13,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   PROTOCOL_VERSION,
+  type ModelCatalogResult,
   RemoteAgentClient,
   RemoteProtocolError,
   type AcceptedResult,
@@ -50,7 +51,8 @@ import { RemoteProvisioner, agentVersionIsOlder, bundledAgentVersion } from './r
 import { uiForErrorCode } from './messages.ts'
 import { discoverAgent } from './ssh/probe.ts'
 import { restartRemoteAgent } from './remote/restart.ts'
-import { parseSshTarget, validateHostLabel, type ParsedSshTarget } from './ssh/target.ts'
+import { scanSshHosts } from './ssh/config.ts'
+import { parseSshInput, parseSshTarget, validateHostLabel, withSshArgs, type ParsedSshTarget } from './ssh/target.ts'
 import { Tunnel } from './ssh/tunnel.ts'
 import { dshUpdateFor, resolveLocalDshVersion } from './version.ts'
 
@@ -199,6 +201,11 @@ export class RemoteHostsService {
     this.#modelReconciled.clear()
   }
 
+  /** Parse a persisted host record and re-attach its ssh options. */
+  #targetFor(record: HostRecord): ParsedSshTarget {
+    return withSshArgs(parseSshTarget(record.sshTarget), record.sshArgs ?? undefined)
+  }
+
   /** Resolve a host's source, falling back to the global default. */
   #sourceFor(record: HostRecord): 'proxy' | 'direct' {
     return record.modelSource ?? (this.#credentialProxy ? 'proxy' : 'direct')
@@ -249,16 +256,23 @@ export class RemoteHostsService {
     })
   }
 
+  /** Read the local SSH config and return selectable concrete aliases. */
+  async sshHosts(): Promise<{ hosts: string[]; error: string | null }> {
+    const result = await scanSshHosts()
+    return { hosts: result.hosts, error: result.error }
+  }
+
   /** Parse a destination without touching SSH. */
   validateTarget(raw: string): { canonical: string; host: string; user: string | null; port: number | null } {
-    const target = parseSshTarget(raw)
+    const target = parseSshInput(raw).target
     return { canonical: target.canonical, host: target.host, user: target.user, port: target.port }
   }
 
   /** Register a host and (by default) start connecting in the background. */
   async add(input: AddHostInput): Promise<HostView> {
     this.#assertAlive()
-    const target = parseSshTarget(input.sshTarget)
+    const parsedInput = parseSshInput(input.sshTarget)
+    const target = parsedInput.target
     if (this.#records.has(hostIdFor(target.canonical, input.label))) {
       throw new LocalError('host/duplicate', `host ${target.canonical} already exists`)
     }
@@ -280,6 +294,7 @@ export class RemoteHostsService {
       label,
       sshTarget: target.canonical,
       sshPort: target.port,
+      ...parsedInput.sshArgs.length === 0 ? {} : { sshArgs: parsedInput.sshArgs },
       remoteAgentPort: input.remoteAgentPort ?? null,
       token: input.token === undefined || input.token.trim() === '' ? null : input.token.trim(),
       autoConnect: input.autoConnect ?? true,
@@ -357,7 +372,7 @@ export class RemoteHostsService {
     const connected = this.#connected(id)
     if (connected === undefined) return this.connect(id)
 
-    const target = parseSshTarget(record.sshTarget)
+    const target = this.#targetFor(record)
     const discovery = await this.#discover(target)
     if (discovery.state.port !== record.remoteAgentPort || discovery.state.token !== record.token) {
       await this.#saveRecord(id, {
@@ -375,7 +390,7 @@ export class RemoteHostsService {
   async provision(id: string): Promise<HostView> {
     this.#assertAlive()
     const record = this.#requireRecord(id)
-    const target = parseSshTarget(record.sshTarget)
+    const target = this.#targetFor(record)
     this.#manualDisconnect.delete(id)
     this.#clearReconnect(id)
     await this.#stopTransport(id)
@@ -453,7 +468,7 @@ export class RemoteHostsService {
   async #runUpgrade(id: string, localVersion: string): Promise<void> {
     try {
       const record = this.#requireRecord(id)
-      const target = parseSshTarget(record.sshTarget)
+      const target = this.#targetFor(record)
       await this.#stopTransport(id)
       const { proxy, proxyToken, direct } = await this.#modelPathFor(record)
       this.#setRuntime(id, {
@@ -493,7 +508,7 @@ export class RemoteHostsService {
   async restart(id: string): Promise<HostView> {
     this.#assertAlive()
     const record = this.#requireRecord(id)
-    const target = parseSshTarget(record.sshTarget)
+    const target = this.#targetFor(record)
     this.#manualDisconnect.delete(id)
     this.#clearReconnect(id)
     await this.#stopTransport(id)
@@ -780,6 +795,16 @@ export class RemoteHostsService {
     return { url: `${connected.tunnel.localUrl}${path.path}` }
   }
 
+  /** Read the model catalog the connected host can route to. */
+  async modelCatalog(id: string): Promise<ModelCatalogResult> {
+    const client = this.#requireClient(id)
+    try {
+      return await client.modelCatalog()
+    } catch (error) {
+      throw this.#remoteFailure(id, error)
+    }
+  }
+
   /** Stop every tunnel and timer. */
   async dispose(): Promise<void> {
     if (this.#disposed) return
@@ -810,7 +835,7 @@ export class RemoteHostsService {
       detail: 'discovering',
     })
 
-    const target = parseSshTarget(record.sshTarget)
+    const target = this.#targetFor(record)
     let proxy: CredentialProxyAddress | undefined
     let proxyToken: string | undefined
     let direct: { readonly baseUrl: string; readonly apiKey: string } | undefined
@@ -1236,7 +1261,7 @@ export class RemoteHostsService {
     const tunnel = this.#tunnels.get(id)
     const client = this.#clients.get(id)
     if (record === undefined || tunnel === undefined || client === undefined) return undefined
-    return { record, target: parseSshTarget(record.sshTarget), tunnel, client }
+    return { record, target: this.#targetFor(record), tunnel, client }
   }
 
   #requireClient(id: string): RemoteAgentClient {
@@ -1313,12 +1338,19 @@ export class RemoteHostsService {
   #remoteFailure(id: string, error: unknown): LocalError {
     if (error instanceof LocalError) return error
     const failure = error instanceof RemoteProtocolError
-      ? new LocalError('agent/error', `remote agent: ${error.message}`, {
-        details: { remoteCode: error.code, ...error.details },
-        retryable: error.retryable,
-        cause: error,
-        ui: { key: 'error.agentError' },
-      })
+      ? error.code === 'session/model-unavailable'
+        ? new LocalError('agent/unavailable', error.message, {
+          details: { remoteCode: error.code, ...error.details },
+          retryable: false,
+          cause: error,
+          ui: { key: 'error.modelUnavailable' },
+        })
+        : new LocalError('agent/error', `remote agent: ${error.message}`, {
+          details: { remoteCode: error.code, ...error.details },
+          retryable: error.retryable,
+          cause: error,
+          ui: { key: 'error.agentError' },
+        })
       : new LocalError('agent/unavailable', 'remote agent request failed', {
         cause: error,
         ui: { key: 'error.agentUnavailable' },

@@ -60,6 +60,7 @@ export const UI_TEXT_KEYS = [
   'error.sshTunnelFailed',
   'error.agentUnavailable',
   'error.modelProxyUnavailable',
+  'error.modelUnavailable',
   'error.agentOutdated',
   'error.agentError',
   'error.directoryUnreadable',

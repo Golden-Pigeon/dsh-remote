@@ -20,7 +20,10 @@ pnpm test:e2e
 The suite creates and removes its temporary home/profile. It installs the
 current local plugin tarball into the temporary profile, then verifies:
 
+- SSH config aliases are suggested in the Settings input and Escape closes only the suggestion list;
+- host cards stay compact and expand only the model-settings detail;
 - the native blank-session mode menu and PTC selection;
+- the mirrored Session model menu offers only the remote catalog and selects it;
 - native model selection (DeepSeek-V4-Pro) is forwarded on the first prompt;
 - no remote Session create before the first prompt;
 - first prompt creates the remote Session with the selected preset;

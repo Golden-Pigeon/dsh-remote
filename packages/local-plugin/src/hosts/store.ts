@@ -43,6 +43,8 @@ export function isHostRecord(value: unknown): value is HostRecord {
     && (record.token === null || (typeof record.token === 'string' && record.token.length >= 16))
     && (record.proxyToken === undefined || record.proxyToken === null
       || (typeof record.proxyToken === 'string' && record.proxyToken.length >= 16))
+    && (record.sshArgs === undefined || record.sshArgs === null
+      || (Array.isArray(record.sshArgs) && record.sshArgs.every(arg => typeof arg === 'string')))
     && (record.modelSource === undefined || record.modelSource === null
       || record.modelSource === 'proxy' || record.modelSource === 'direct')
     && (record.copyModelKey === undefined || record.copyModelKey === null

@@ -116,6 +116,52 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--dshr-accent) 22%, transparent);
 }
 
+/* SSH targets are a focused, fixed-height suggestion list, not a native
+   datalist popup. Keep the menu below the input and let it scroll instead of
+   growing to the viewport. */
+.dshr-ssh-control {
+  position: relative;
+  min-width: 0;
+}
+
+.dshr-ssh-suggest {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--dshr-border);
+  border-radius: 10px;
+  background: Canvas;
+  color: inherit;
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 16%, transparent);
+  scrollbar-width: thin;
+}
+
+.dshr-ssh-option {
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.dshr-ssh-option:hover,
+.dshr-ssh-option[data-active='true'] {
+  background: color-mix(in srgb, var(--dshr-accent) 16%, transparent);
+}
+
 .dshr-setting-list {
   display: flex;
   flex-direction: column;
@@ -191,9 +237,8 @@
 }
 
 .dshr-model-settings {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--dshr-border);
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .dshr-model-settings .dshr-setting-control {
@@ -325,9 +370,40 @@
   background: var(--dshr-soft);
 }
 
+.dshr-host-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: auto;
+  box-sizing: border-box;
+  margin: -12px -12px 0;
+  padding: 12px 12px 0;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.dshr-host-summary:hover {
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.dshr-host-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dshr-accent) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.dshr-host-divider {
+  width: 100%;
+  height: 0;
+  margin-top: 0;
+  border-top: 1px solid var(--dshr-border);
+}
+
 .dshr-host-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
@@ -336,8 +412,30 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
+  flex: 1;
   flex-wrap: wrap;
   min-width: 0;
+}
+
+.dshr-host-chevron {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin: -2px 2px 0 4px;
+  border-right: 1.5px solid color-mix(in srgb, currentColor 42%, transparent);
+  border-bottom: 1.5px solid color-mix(in srgb, currentColor 42%, transparent);
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.dshr-host-chevron[data-open='true'] {
+  transform: rotate(225deg);
+}
+
+.dshr-host-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .dshr-host-title strong {

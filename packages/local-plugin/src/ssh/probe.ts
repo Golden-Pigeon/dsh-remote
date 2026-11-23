@@ -61,6 +61,7 @@ export function baseSshArgs(target: ParsedSshTarget, options: {
   strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
 }): string[] {
   return [
+    ...target.sshArgs ?? [],
     '-o', 'BatchMode=yes',
     '-o', `ConnectTimeout=${Math.max(1, Math.ceil(options.timeoutMs / 1_000))}`,
     '-o', `StrictHostKeyChecking=${options.strictHostKeyChecking}`,

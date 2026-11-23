@@ -20,6 +20,7 @@ import { installRemoteFiles } from './remote-files.ts'
 import { NS, en, zh, type LocaleFace } from './locale.ts'
 import { installWorkspaceAddMenu } from './workspace-add.ts'
 import { installWorkspaceDeleteCopy } from './workspace-delete-copy.ts'
+import { installModelCatalogMerge } from './model-catalog-merge.ts'
 
 /** The Settings shell's slot registry and the authenticated connection. */
 export const inject = ['slots', 'uiWorkspace', 'uiSession', 'locale']
@@ -71,6 +72,13 @@ export function apply(ctx: Context): void {
   installNativeWorkspaceRouting(ctx, api, t)
   installWorkspaceAddMenu(ctx, api, t)
   ctx.effect(() => installWorkspaceDeleteCopy(api), 'dsh-remote: mirrored workspace delete copy')
+  // A mirrored Session lists only what its remote can run; this replaces the
+  // Host's local provider list in the shared per-Session model directory.
+  try {
+    installModelCatalogMerge(ctx, api)
+  } catch (error) {
+    console.warn('dsh-remote-local: model catalog merge unavailable:', error)
+  }
   ctx.inject(['remote.workspaceFiles'], child => {
     installRemoteFiles(child, api)
   })

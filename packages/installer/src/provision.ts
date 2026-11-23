@@ -23,6 +23,8 @@ export interface ProvisionRemoteOptions {
   /** Exact npm spec used before the bundled tarball fallback. */
   readonly agentPackageSpec?: string
   readonly sshBinary: string
+  /** Extra ssh argv parsed from a full ssh command by the local plugin. */
+  readonly sshArgs?: readonly string[]
   /** scp binary; pairs with {@link sshBinary}. */
   readonly scpBinary: string
   readonly strictHostKeyChecking: 'yes' | 'no' | 'ask' | 'accept-new'
@@ -65,7 +67,10 @@ export interface ProvisionRemoteResult {
 
 /** Upload the agent and run the bootstrap script. */
 export async function provisionRemoteAgent(options: ProvisionRemoteOptions): Promise<ProvisionRemoteResult> {
-  const target = parseTarget(options.target)
+  const parsed = parseTarget(options.target)
+  const target = options.sshArgs === undefined || options.sshArgs.length === 0
+    ? parsed
+    : { ...parsed, sshArgs: [...options.sshArgs] }
   if (options.port !== undefined && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65_535)) {
     throw new RangeError(`port must be an integer between 0 and 65535 (got ${String(options.port)})`)
   }

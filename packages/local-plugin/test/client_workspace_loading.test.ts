@@ -57,6 +57,7 @@ async function harness(options: { holdCopy?: boolean } = {}) {
   const modelCalls: unknown[][] = []
   let releaseCopy: (() => void) | undefined
   const api = {
+    sshHosts: async () => ({ hosts: ['fixture-host'], error: null }),
     createWorkspace: async () => ({}),
     setCredentialProxy: async (value: boolean) => {
       modelCalls.push(['global-proxy', value])
@@ -111,11 +112,52 @@ async function harness(options: { holdCopy?: boolean } = {}) {
         await new Promise(resolve => setTimeout(resolve, 0))
       })
     },
+    hostCardSummary: () => renderer.root.findAll(node => node.props.className === 'dshr-host-summary')[0],
+    hostCardBodyCount: () => renderer.root.findAll(node => node.props.className === 'dshr-host-body').length,
+    hasButton: (label: string) => renderer.root.findAllByType('button')
+      .some(button => button.children.includes(label)),
+    async toggleHostCard() {
+      await act(async () => {
+        renderer.root.findAll(node => node.props.className === 'dshr-host-summary')[0]!
+          .props.onClick()
+      })
+    },
     modelCalls: () => modelCalls,
     releaseCopy: () => { releaseCopy?.(); releaseCopy = undefined },
     checkboxStates: () => renderer.root.findAllByType('input')
       .filter(input => input.props.type === 'checkbox')
       .map(input => ({ checked: input.props.checked === true, disabled: input.props.disabled === true })),
+    sshOptions: () => renderer.root.findAll(node => node.props.className === 'dshr-ssh-option')
+      .map(node => node.children.map(child => typeof child === 'string' ? child : '').join('')),
+    sshTargetInput: () => renderer.root.findAllByType('input')
+      .find(input => input.props.id === 'dshr-ssh-target-input'),
+    async focusSshTarget() {
+      await act(async () => {
+        renderer.root.findAllByType('input')
+          .find(input => input.props.id === 'dshr-ssh-target-input')!
+          .props.onFocus()
+      })
+    },
+    async setSshTarget(value: string) {
+      await act(async () => {
+        renderer.root.findAllByType('input')
+          .find(input => input.props.id === 'dshr-ssh-target-input')!
+          .props.onChange({ target: { value } })
+      })
+    },
+    async pressSshEscape() {
+      const calls = { prevented: false, stopped: false }
+      await act(async () => {
+        renderer.root.findAllByType('input')
+          .find(input => input.props.id === 'dshr-ssh-target-input')!
+          .props.onKeyDown({
+            key: 'Escape',
+            preventDefault: () => { calls.prevented = true },
+            stopPropagation: () => { calls.stopped = true },
+          })
+      })
+      return calls
+    },
     async settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) }) },
     async succeed() { await act(async () => { resolve({ workspaces: [] }) }) },
     async fail() { await act(async () => { reject(new Error('fixture request failed')) }) },
@@ -126,9 +168,46 @@ async function harness(options: { holdCopy?: boolean } = {}) {
 }
 
 describe('workspace loading in the real React panel', () => {
+  it('suggests concrete SSH config aliases below the focused input while accepting free-form commands', async () => {
+    const test = await harness()
+    try {
+      await test.settle()
+      assert.equal(test.sshTargetInput()?.props.role, 'combobox')
+      await test.focusSshTarget()
+      await test.settle()
+      assert.deepEqual(test.sshOptions(), ['fixture-host'])
+      await test.setSshTarget('fix')
+      await test.settle()
+      assert.deepEqual(test.sshOptions(), ['fixture-host'])
+      const escape = await test.pressSshEscape()
+      assert.deepEqual(escape, { prevented: true, stopped: true })
+      assert.deepEqual(test.sshOptions(), [])
+      await test.setSshTarget('ssh -p 2222 -i ~/.ssh/key example-host')
+      assert.equal(test.sshTargetInput()?.props.value, 'ssh -p 2222 -i ~/.ssh/key example-host')
+      assert.deepEqual(test.sshOptions(), [])
+    } finally { await test.dispose() }
+  })
+
+  it('starts host cards compact and expands/collapses on the header', async () => {
+    const test = await harness()
+    try {
+      assert.equal(test.hostCardBodyCount(), 0)
+      assert.equal(test.hostCardSummary()?.props['aria-expanded'], false)
+      assert.equal(test.hasButton('settings.rediscover'), true)
+      assert.equal(test.hasButton('settings.remove'), true)
+      await test.toggleHostCard()
+      assert.equal(test.hostCardBodyCount(), 1)
+      assert.equal(test.hostCardSummary()?.props['aria-expanded'], true)
+      await test.toggleHostCard()
+      assert.equal(test.hostCardBodyCount(), 0)
+      assert.equal(test.hostCardSummary()?.props['aria-expanded'], false)
+    } finally { await test.dispose() }
+  })
+
   it('does not disable controls while a model save is in flight', async () => {
     const test = await harness({ holdCopy: true })
     try {
+      await test.toggleHostCard()
       await test.setChecked(1, false)
       assert.deepEqual(test.checkboxStates().map(box => box.disabled), [false, false, false, false])
       test.releaseCopy()
@@ -142,6 +221,7 @@ describe('workspace loading in the real React panel', () => {
   it('edits global defaults and per-host model overrides', async () => {
     const test = await harness()
     try {
+      await test.toggleHostCard()
       await test.setChecked(3, false)
       await test.setChecked(1, false)
       await test.setChecked(0, true)
@@ -158,6 +238,7 @@ describe('workspace loading in the real React panel', () => {
   it('keeps one request in flight across effect rerenders and host polling', async () => {
     const test = await harness()
     try {
+      await test.toggleHostCard()
       await test.click('settings.expandWorkspaces')
       assert.equal(test.calls(), 1)
       await test.poll()
@@ -171,6 +252,7 @@ describe('workspace loading in the real React panel', () => {
   it('refreshes after adding a workspace even when an older listing is still pending', async () => {
     const test = await harness()
     try {
+      await test.toggleHostCard()
       await test.click('settings.expandWorkspaces')
       await test.addWorkspace()
       assert.equal(test.calls(), 1)
@@ -183,6 +265,7 @@ describe('workspace loading in the real React panel', () => {
   it('allows a new request after completion or failure when reopening a host', async () => {
     const test = await harness()
     try {
+      await test.toggleHostCard()
       await test.click('settings.expandWorkspaces')
       await test.fail()
       await test.poll()
