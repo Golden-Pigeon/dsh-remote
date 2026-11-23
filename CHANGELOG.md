@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.23
+
+- Give mirrored Sessions a remote-only model catalog: the composer lists only
+  the providers and models the remote Host advertises, routes remote picks
+  through the mirror bridge, and reports an explicit
+  `session/model-unavailable` error instead of replacing the model silently.
+  The remote agent serves `llm.catalog` and ships as `0.2.14`
+  ([#32](https://github.com/Golden-Pigeon/dsh-remote/issues/32),
+  [#42](https://github.com/Golden-Pigeon/dsh-remote/pull/42)).
+- Discover concrete hosts from `~/.ssh/config`, including nested `Include`
+  files, wildcard directories and bracket classes. Keep wildcard patterns out
+  of the selector and keep distinct aliases distinct. Accept full `ssh ...`
+  commands while preserving extra SSH options and translating ssh-only options
+  for scp
+  ([#33](https://github.com/Golden-Pigeon/dsh-remote/issues/33),
+  [#42](https://github.com/Golden-Pigeon/dsh-remote/pull/42)).
+- Keep Settings host cards compact by default, with a content-width divider,
+  collapsible model settings, and the existing status, update, and action
+  controls visible.
+- Add unit and Playwright coverage for the remote model menu, SSH discovery,
+  Escape handling, and compact host cards.
+
 ## 0.8.22
 
 - Show only Agent presets the remote host declares when starting a new remote
