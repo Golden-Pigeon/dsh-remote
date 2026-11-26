@@ -28,17 +28,17 @@ This plugin is developed for the **official DSH Desktop application**. Supported
 
 | Component | Version |
 |---|---|
-| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.2-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.3) (tested) |
+| [DSH Desktop / official client](https://github.com/deepseek-ai/deepseek-harness) | [**0.2.2-rc.5**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5) (tested) |
 | Plugin | [**0.8.23**](https://www.npmjs.com/package/dsh-remote-local-plugin) |
-| Remote DSH runtime | [**0.2.2-rc.3**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.3) (tested; new installs follow the local DSH version) |
+| Remote DSH runtime | [**0.2.2-rc.5**](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5) (tested; new installs follow the local DSH version) |
 | Remote Node.js | [**22.19+**](https://nodejs.org/en/download) |
 | Remote OS | Linux or macOS |
 
 Other DSH GUI plugins, community forks, modified clients, non-DSH GUIs, and other DSH versions have
 **not** been tested. The package's dependency range is intentionally permissive for installation, but
 it is not a compatibility or support guarantee. The desktop client and the remote runtime are tested
-on `0.2.2-rc.3`; new remote installs follow the local DSH runtime version by default and can be
-pinned with `remoteDshVersion`.
+on `0.2.2-rc.5`; CI also builds and tests the `0.2.2-rc.2` floor. New remote installs follow the local
+DSH runtime version by default and can be pinned with `remoteDshVersion`.
 
 ## What works now
 

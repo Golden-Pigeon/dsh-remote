@@ -7,8 +7,8 @@
  * artifact in place: it swaps the module id and replaces only the apply
  * function with the Session-routing construction.
  *
- * The transform targets the 0.2.2-rc.2 artifact shape and refuses older stock
- * clients, which lack the watch/roster face the current UI calls.
+ * The transform targets the 0.2.2 artifact shape (rc.2 and later) and refuses
+ * stock clients without the watch/roster face the current UI calls.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -29,7 +29,7 @@ if (!idPattern.test(stock)) throw new Error('stock client module id marker not f
 const applyPattern = /function apply\(ctx\)\s*\{\s*new ClientTerminals\(ctx,\s*ctx\.remote\.terminal\)\s*\}/
 if (!applyPattern.test(stock)) throw new Error('stock ClientTerminals apply function not found')
 for (const method of ['watch(', 'boundTerminal(', 'isRepresented(']) {
-  if (!stock.includes(method)) throw new Error('stock client does not expose the 0.2.2-rc.2 terminal face (' + method + ')')
+  if (!stock.includes(method)) throw new Error('stock client does not expose the 0.2.2 terminal face (' + method + ')')
 }
 
 const routing = await readFile(join(here, '..', 'src', 'client', 'routing.js'), 'utf8')

@@ -40,8 +40,8 @@ function routeTerminal(original) {
     close: unary('close'),
     retain: (sessionId, id, signal) => (async function* () {
       if (await isMirror(sessionId)) {
-        // rc.2 TerminalWindowHold treats an ended retention stream as an
-        // unavailable terminal, so the mirror hold must stay open.
+        // The stock TerminalWindowHold treats an ended retention stream as
+        // an unavailable terminal, so the mirror hold must stay open.
         yield { type: 'retained' }
         await holdUntilAborted(signal)
         return

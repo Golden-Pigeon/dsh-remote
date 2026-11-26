@@ -11,7 +11,7 @@ describe('terminal-controller client bundle', () => {
     assert.ok(client.includes('new ClientTerminals(ctx, routed)'))
   })
 
-  it('carries the 0.2.2-rc.2 roster and binding face the stock UI calls', () => {
+  it('carries the stock 0.2.2 roster and binding face the UI calls', () => {
     for (const method of ['watch(', 'boundTerminal(', 'bind(', 'isRepresented(']) {
       assert.ok(client.includes(method), 'missing ClientTerminals.' + method)
     }

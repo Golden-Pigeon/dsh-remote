@@ -75,5 +75,5 @@ before it becomes live on npm.
 
 Keep `engines.dsh` aligned with the DSH releases exercised by `pnpm -r test`; DSH's compatibility
 gate reads it before `@deepseek-ai/dsh*` peer ranges, and `dsh.compatibility.dsh` is metadata only.
-The current supported and tested client is the official [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.2-rc.3`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.3); other DSH GUI plugins, forks,
+The current supported and tested client is the official [DSH Desktop](https://github.com/deepseek-ai/deepseek-harness) [`0.2.2-rc.5`](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.2-rc.5); other DSH GUI plugins, forks,
 modified clients, non-DSH GUIs, and other DSH versions have not been tested.
