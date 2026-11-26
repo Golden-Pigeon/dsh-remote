@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import { describe, it } from 'node:test'
 import { listDirectories, listFile, readBytes, readText, statFile, watchFile } from '../src/files.ts'
-import { RemoteTerminalManager } from '../src/terminal.ts'
+import { RemoteTerminalManager, type TerminalChildProcess } from '../src/terminal.ts'
 
 describe('remote files', () => {
   it('stats, reads, lists, and watches a file', async () => {
@@ -52,6 +54,53 @@ describe('remote terminal', () => {
     } finally {
       manager.dispose()
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+class FakePtyChild extends EventEmitter {
+  readonly stdin = new PassThrough()
+  readonly stdout = new PassThrough()
+  readonly stderr = new PassThrough()
+  readonly control = new PassThrough()
+  readonly stdio = [this.stdin, this.stdout, this.stderr, this.control] as const
+
+  kill(): boolean {
+    return true
+  }
+}
+
+function fakeTerminal(child: FakePtyChild): RemoteTerminalManager {
+  const manager = new RemoteTerminalManager({ spawn: () => child as unknown as TerminalChildProcess })
+  manager.create({ id: 't1', cwd: tmpdir(), cols: 80, rows: 24 })
+  return manager
+}
+
+describe('remote terminal teardown', () => {
+  it('ignores stdio resets emitted while closing the PTY', () => {
+    const child = new FakePtyChild()
+    const manager = fakeTerminal(child)
+    try {
+      const reset = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })
+      for (const stream of [child.stdin, child.stdout, child.stderr, child.control]) {
+        assert.doesNotThrow(() => stream.emit('error', reset))
+      }
+      assert.equal(manager.list()[0]?.state, 'running')
+      manager.close('t1')
+      assert.doesNotThrow(() => child.stdout.emit('error', reset))
+    } finally {
+      manager.dispose()
+    }
+  })
+
+  it('marks a live PTY failed on a non-teardown stream error', () => {
+    const child = new FakePtyChild()
+    const manager = fakeTerminal(child)
+    try {
+      child.stdout.emit('error', new Error('read failed'))
+      assert.equal(manager.list()[0]?.state, 'failed')
+    } finally {
+      manager.dispose()
     }
   })
 })

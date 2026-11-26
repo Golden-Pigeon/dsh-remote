@@ -9,7 +9,7 @@
  */
 
 import { accessSync, constants } from 'node:fs'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptions } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { userInfo } from 'node:os'
 import { basename, resolve } from 'node:path'
@@ -19,6 +19,22 @@ import { RemoteProtocolError, type RemoteTerminalCreateRequest, type RemoteTermi
 const MAX_BUFFERED_BYTES = 512 * 1024
 const MAX_COLS = 240
 const MAX_ROWS = 80
+
+/** Child-process face the PTY manager relies on; stdio[3] is the control channel. */
+export type TerminalChildProcess = ChildProcessWithoutNullStreams & {
+  readonly stdio: [NodeJS.WritableStream, NodeJS.ReadableStream, NodeJS.ReadableStream, NodeJS.WritableStream]
+}
+
+/** Spawns the Python PTY helper; injectable so teardown handling stays testable. */
+export type TerminalSpawn = (command: string, args: readonly string[], options: SpawnOptions) => TerminalChildProcess
+
+/** Optional PTY manager dependencies. */
+export interface RemoteTerminalManagerOptions {
+  readonly spawn?: TerminalSpawn
+}
+
+const spawnPty: TerminalSpawn = (command, args, options) =>
+  spawn(command, [...args], options) as unknown as TerminalChildProcess
 
 /** The passwd login shell, when the platform can report it. */
 function passwdLoginShell(): string | undefined {
@@ -140,6 +156,11 @@ interface TerminalRecord {
 /** Owns every remote PTY and its attachment fan-out. */
 export class RemoteTerminalManager {
   readonly #terminals = new Map<string, TerminalRecord>()
+  readonly #spawn: TerminalSpawn
+
+  constructor(options: RemoteTerminalManagerOptions = {}) {
+    this.#spawn = options.spawn ?? spawnPty
+  }
 
   /** Allocate one PTY; repeated ids are idempotent while running. */
   create(request: RemoteTerminalCreateRequest): RemoteTerminalInfo {
@@ -150,14 +171,14 @@ export class RemoteTerminalManager {
     const cols = clamp(request.cols ?? 80, 1, MAX_COLS)
     const rows = clamp(request.rows ?? 24, 1, MAX_ROWS)
     const shell = request.shellPath?.trim() || resolveLoginShell()
-    let child
+    let child: TerminalChildProcess
     try {
-      child = spawn('python3', ['-u', '-c', PTY_HELPER, cwd, String(rows), String(cols), shell], {
+      child = this.#spawn('python3', ['-u', '-c', PTY_HELPER, cwd, String(rows), String(cols), shell], {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
         env: { ...process.env, TERM: 'xterm-256color' },
         windowsHide: true,
-      }) as ChildProcessWithoutNullStreams & { stdio: [NodeJS.WritableStream, NodeJS.ReadableStream, NodeJS.ReadableStream, NodeJS.WritableStream] }
+      })
     } catch (error) {
       throw new RemoteProtocolError({ code: 'terminal/error', message: `could not allocate remote PTY: ${String(error)}`, cause: error })
     }
@@ -191,6 +212,19 @@ export class RemoteTerminalManager {
       closed: false,
     }
     this.#terminals.set(id, record)
+    const onStreamError = (error: Error): void => {
+      if (record.closed) return
+      const code = (error as NodeJS.ErrnoException).code
+      // Killing the PTY resets its stdio socketpair; the resulting teardown
+      // errors are expected and must never surface as uncaught exceptions.
+      if (code === 'ECONNRESET' || code === 'EPIPE'
+        || code === 'ERR_STREAM_DESTROYED' || code === 'ERR_STREAM_WRITE_AFTER_END') return
+      this.#finish(record, 'failed', null, String(error))
+    }
+    child.stdout.on('error', onStreamError)
+    child.stderr.on('error', onStreamError)
+    child.stdin.on('error', onStreamError)
+    record.control.on('error', onStreamError)
     child.stdout.on('data', (chunk: Buffer) => this.#output(record, record.decoder.write(chunk)))
     child.stderr.on('data', (chunk: Buffer) => {
       record.stderr = `${record.stderr}${chunk.toString('utf8')}`.slice(-8 * 1024)
